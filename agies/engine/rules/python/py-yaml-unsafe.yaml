@@ -1,0 +1,20 @@
+# agies SAST rule: Unsafe yaml.load without Loader
+# CWE-502: Deserialization of Untrusted Data
+id: py-yaml-unsafe
+name: Unsafe yaml.load without safe Loader
+language: python
+severity: high
+cwe: [502]
+message: >-
+  yaml.load() without yaml.SafeLoader or using yaml.Loader can lead to
+  arbitrary code execution. Use yaml.safe_load() instead.
+query: |
+  (call
+    function: (attribute
+      object: (identifier) @module
+      attribute: (identifier) @match
+    )
+    arguments: (argument_list) @args
+  )
+capture_group: match
+match_any: ["load"]

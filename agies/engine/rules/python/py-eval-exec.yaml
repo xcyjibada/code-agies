@@ -1,0 +1,18 @@
+# agies SAST rule: Dangerous eval/exec usage
+# CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code
+id: py-eval-exec
+name: Dangerous eval/exec usage
+language: python
+severity: critical
+cwe: [95]
+message: >-
+  The use of eval() or exec() allows arbitrary code execution.
+  Avoid this pattern, especially with untrusted input.
+  Use safer alternatives like ast.literal_eval() for trusted expressions only.
+query: |
+  (call
+    function: (identifier) @match
+    arguments: (argument_list) @args
+  )
+capture_group: match
+match_any: ["eval", "exec"]

@@ -1,0 +1,28 @@
+# agies SAST rule: Zip Slip via Unsanitized Entry Name Resolution
+# CWE-22: Improper Limitation of a Pathname to a Restricted Directory
+id: py-zip-slip-path-manipulation
+name: Zip Slip — Entry Name Path Manipulation
+language: python
+severity: critical
+cwe: [22]
+message: >-
+  posixpath path manipulation (join/dirname/split) on a zip entry name
+  attribute (e.g. self.at) without sanitizing '../' traversal. This is
+  the CVE-2024-5569 pattern: attacker-controlled zip entry names with
+  '../' can escape the intended directory when the resolved path is
+  later opened via self.root.open().
+query: |
+  (call
+    function: (attribute
+      object: (identifier) @match
+      attribute: (identifier) @func
+    )
+    arguments: (argument_list
+      (attribute
+        object: (identifier) @self
+        attribute: (identifier) @field
+      ) @first_arg
+    )
+  )
+capture_group: match
+match_any: ["posixpath"]

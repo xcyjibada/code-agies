@@ -1,0 +1,26 @@
+# agies SAST rule: subprocess with shell=True
+# CWE-78: OS Command Injection
+id: py-subprocess-shell
+name: subprocess with shell=True
+language: python
+severity: critical
+cwe: [78]
+message: >-
+  Using shell=True with subprocess functions can lead to OS command injection.
+  Pass arguments as a list instead of a string, and avoid shell=True.
+query: |
+  (call
+    function: (attribute
+      object: (identifier) @module
+      attribute: (identifier) @func
+    )
+    arguments: (argument_list
+      (keyword_argument
+        name: (identifier) @kw
+        (#eq? @kw "shell")
+        value: (true) @shell_value
+      )
+    )
+  )
+capture_group: func
+match_any: ["Popen", "call", "check_call", "check_output", "run"]

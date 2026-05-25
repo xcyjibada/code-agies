@@ -1,0 +1,21 @@
+# agies SAST rule: Unsafe pickle deserialization
+# CWE-502: Deserialization of Untrusted Data
+id: py-pickle-unsafe
+name: Unsafe pickle deserialization
+language: python
+severity: high
+cwe: [502]
+message: >-
+  Pickle deserialization of untrusted data can lead to arbitrary code
+  execution. Avoid using pickle.loads() with data from untrusted sources.
+  Consider using a safer serialization format like JSON.
+query: |
+  (call
+    function: (attribute
+      object: (identifier) @module
+      attribute: (identifier) @match
+    )
+    arguments: (argument_list) @args
+  )
+capture_group: match
+match_any: ["loads", "load"]
