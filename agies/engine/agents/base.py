@@ -194,6 +194,11 @@ class BaseAgent(ABC):
     MAX_OUTPUT_CHARS: int = 1500
     MAX_ITERATIONS: int = 7
     MAX_EMPTY_RESPONSES: int = 3
+    PLATEAU_WINDOW: int = 3
+    """Consecutive iterations with identical tool-call patterns before
+    the agent is asked to converge (early-stop).  Catches the "reading
+    the same files over and over" loop without waiting for the hard
+    iteration limit."""
 
     # --- LLM call defaults (forwarded to ``llm.chat_completion``) ---
     DEFAULT_LLM_KWARGS: dict[str, Any] = {}
@@ -541,6 +546,39 @@ class BaseAgent(ABC):
                         iteration=iteration, limit=max_iterations,
                     ),
                 })
+
+            # ---- Plateau detection: same tool pattern repeated ----
+            if has_tool_calls:
+                try:
+                    current_fingerprint = frozenset(
+                        f"{tc.name}({','.join(sorted(json.loads(tc.arguments).keys()))})"
+                        for tc in raw_tool_calls
+                    )
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    current_fingerprint = None
+
+                if current_fingerprint:
+                    if current_fingerprint == getattr(self, "_last_tool_fingerprint", None):
+                        self._plateau_count = getattr(self, "_plateau_count", 0) + 1
+                    else:
+                        self._plateau_count = 0
+                    self._last_tool_fingerprint = current_fingerprint
+
+                    if self._plateau_count >= self.PLATEAU_WINDOW:
+                        logger.warning(
+                            "Agent %s: plateau detected (%d identical tool patterns), forcing convergence.",
+                            self.agent_id, self._plateau_count,
+                        )
+                        messages.append({
+                            "role": "user",
+                            "content": _ITERATION_LIMIT_REACHED.format(limit=max_iterations),
+                        })
+                        final = llm.chat_completion(messages=messages, tools=[], **llm_kwargs)
+                        final_content = (final.content or "").strip()
+                        if final_content:
+                            messages.append({"role": "assistant", "content": final_content})
+                            content = final_content
+                        break
         else:
             # Loop completed without break — iteration limit reached
             logger.warning(

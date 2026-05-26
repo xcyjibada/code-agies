@@ -606,3 +606,50 @@ Brain 分发阶段:
 - `Analyzer.run()` 重构（检测语言 → 选解析器 → 统一 IR）
 - 跨语言 taint 追踪
 
+
+## Step D：稳定性提升 + 跨函数漏洞盲点发现 (2026-05-26)
+
+> 2026-05-26: 三项稳定性改进 + gunicorn/setuptools 实战验证。
+> 发现核心架构盲点：per-function bulk analysis 对跨函数调用链漏洞完全不可见。
+
+### 稳定性改进
+
+- [x] **Plateau 检测** (`engine/agents/base.py`) — 检测 LLM 连续 3 轮调用相同工具模式（相同工具名 + 相同参数字段键），强制收敛输出。防止"一遍遍读同一文件"浪费配额。
+  - 日志：`Agent attack_surface: plateau detected (3 identical tool patterns), forcing convergence.`
+  - 验证效果：gunicorn attack_surface 从 15 轮提前到 8 轮收敛
+- [x] **自适应 max_iterations** (`engine/brain.py`) — mapping/attack_surface 根据项目 Python 文件数动态调整迭代上限：
+  - 0-100 文件: 10, 100-500: 15, 500-2000: 20, 2000+: 30
+  - 快速文件扫描 (`os.walk` 跳过 .git/node_modules/venv) 在 Brain.run() 启动时执行
+- [x] **测试适配** — `test_max_iterations_with_final_summary` 修正（mock 阈值与 MAX_ITERATIONS=7 对齐 + plateau 兼容）
+- [x] 测试通过: **587 passed, 1 known failure** (test_missing_api_key)
+
+### 实战验证
+
+**gunicorn (162 py 文件, 1.9M):**
+- 全流水线无崩溃，~4 分钟完成
+- 45 函数索引, 43 Phase 1 候选, 12 验证 → 全部正确判定为假阳性
+- Plateau 检测在 attack_surface 第 8 轮触发（自适应 15 轮上限）
+
+**setuptools v69.5.1 (327 py 文件, 5.9M, 有 CVE-2024-27309):**
+- 全流水线无崩溃，~8 分钟完成
+- 1413 函数索引, 910 Phase 1 候选, 12 验证 → 全部正确判定为假阳性
+- 漏洞代码存在（`package_index.py` 含 `urlopen` + 动态 URL），但 AI 未检出
+
+### 核心架构发现：跨函数调用链盲点
+
+**问题**：agies 当前架构对跨函数调用链漏洞完全不可见。
+
+以 CVE-2024-27309 为例：
+```
+process_line(url) → _download_url(url, tmpdir) → self.opener.open(url) → urlopen(url)
+```
+- 没有单个函数同时包含"攻击者输入"和"危险 sink"
+- `urlopen` 本身不是危险函数——危险在于"攻击者可控 URL + 自动下载执行"的链式组合
+- Per-function bulk LLM 扫描只能看见单个函数内的注入
+
+**已影响的漏洞类型**：
+- 跨函数数据流漏洞（如 CVE-2024-27309 setuptools 命令注入）
+- 多层调用链才能触发的复杂逻辑漏洞
+- 需要跨函数上下文才能判断危险性的 sink（如 `urlopen`、`exec` 在辅助函数中）
+
+**修复方向**：推荐 Hybrid Call Graph + 选择性展开（方案 1）。详见 `op.md` 四个方案分析。

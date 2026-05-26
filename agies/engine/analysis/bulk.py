@@ -4,16 +4,19 @@ Two modes (from REFACTOR.md):
 - **Single-function**: one LLM call per function (high concurrency)
 - **Multi-function (chunked)**: one LLM call per chunk of related files
 
-Uses ThreadPoolExecutor for parallel sync LLM calls (the LLM provider
-layer is synchronous).
+Uses asyncio.create_task() + asyncio.Semaphore for robust parallel execution
+with retry and dynamic concurrency control.  Each batch runs in its own
+event loop (via asyncio.run()) so httpx's internal async TaskGroup never
+sees a stale/no-loop context, eliminating the "no such group" crash.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agies.engine.analysis.prompts import (
@@ -66,7 +69,6 @@ _SINK_TYPE_MAP: dict[str, str] = {
 # The LLM sometimes misses obvious sinks (shelve.open, subprocess.run)
 # in trivial wrapper functions.  This over-zealous pre-scan catches them.
 _BODY_SINK_PATTERNS: list[tuple[str, str, str]] = [
-    # (substring, sink_name, vuln_type)
     ("shelve.open(", "shelve.open", "deserialization"),
     ("pickle.load(", "pickle.load", "deserialization"),
     ("pickle.loads(", "pickle.loads", "deserialization"),
@@ -80,6 +82,26 @@ _BODY_SINK_PATTERNS: list[tuple[str, str, str]] = [
     ("zipfile.extractall(", "zipfile.extractall", "path_traversal"),
     ("tarfile.extractall(", "tarfile.extractall", "path_traversal"),
 ]
+
+# Max retries per LLM call before giving up.
+_MAX_RETRIES = 2
+
+
+def _dynamic_max_workers(total_functions: int) -> int:
+    """Pick a sensible concurrency cap based on project size.
+
+    | Functions | Cap | Rationale                              |
+    |-----------|-----|----------------------------------------|
+    | < 200     |  8  | Small project, no need for aggression  |
+    | 200–2000  | 12  | Medium project                         |
+    | > 2000    | 16  | Django-sized — wider pipe, not insane  |
+    """
+    base = (os.cpu_count() or 4) * 2
+    if total_functions > 2000:
+        return min(base, 16)
+    if total_functions > 500:
+        return min(base, 12)
+    return min(base, 8)
 
 
 def _pre_scan_body(fn: SourceFunction) -> list[CandidateFinding]:
@@ -97,8 +119,6 @@ def _pre_scan_body(fn: SourceFunction) -> list[CandidateFinding]:
                 if substr in line:
                     line_num = fn.line_start + i
                     break
-            # High-risk sink types use "high" severity so they compete with
-            # LLM-reported path_traversal findings during pruning.
             _sev = "high" if vuln_type in ("deserialization", "rce", "command_injection") else "medium"
             findings.append(CandidateFinding(
                 type=vuln_type,
@@ -119,7 +139,6 @@ def _sink_type(name: str) -> str:
     exact = _SINK_TYPE_MAP.get(name)
     if exact:
         return exact
-    # Prefix-based fallback
     name_lower = name.lower()
     if "pickle" in name_lower or "shelve" in name_lower:
         return "deserialization"
@@ -132,10 +151,7 @@ def _sink_type(name: str) -> str:
     return "sink"
 
 
-def _sink_to_finding(
-    s: dict, fn: SourceFunction
-) -> CandidateFinding:
-    """Convert a sink dict to a candidate with proper type/severity/confidence."""
+def _sink_to_finding(s: dict, fn: SourceFunction) -> CandidateFinding:
     sink_name = s.get("name", "")
     return CandidateFinding(
         type=_sink_type(sink_name),
@@ -150,12 +166,8 @@ def _sink_to_finding(
     )
 
 
-def _call_llm_single(
-    fn: SourceFunction, llm: Any, context: str = ""
-) -> list[CandidateFinding]:
+def _call_llm_single(fn: SourceFunction, llm: Any, context: str = "") -> list[CandidateFinding]:
     """Synchronous LLM call for one function."""
-    # Deterministic pre-scan catches obvious sinks the LLM might miss
-    # in trivial wrappers or when data flow crosses file boundaries.
     deterministic = _pre_scan_body(fn)
 
     user_msg = SINGLE_FUNCTION_USER.format(
@@ -180,7 +192,6 @@ def _call_llm_single(
         return deterministic
 
     llm_findings = _parse_single_response(response, fn)
-    # Merge LLM findings + deterministic pre-scan, dedup by sink_name
     seen_sinks = set()
     merged: list[CandidateFinding] = []
     for f in deterministic + llm_findings:
@@ -191,10 +202,7 @@ def _call_llm_single(
     return merged
 
 
-def _parse_single_response(
-    response: Any, fn: SourceFunction
-) -> list[CandidateFinding]:
-    """Parse the LLM response for a single-function analysis."""
+def _parse_single_response(response: Any, fn: SourceFunction) -> list[CandidateFinding]:
     content = (response.content or "").strip()
     if not content:
         return []
@@ -202,7 +210,6 @@ def _parse_single_response(
     json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
     if not json_match:
         json_match = re.search(r"\{.*\}", content, re.DOTALL)
-
     if not json_match:
         return []
 
@@ -215,23 +222,19 @@ def _parse_single_response(
     for v in data.get("vulnerabilities", []):
         if not isinstance(v, dict):
             continue
-        findings.append(
-            CandidateFinding(
-                type=v.get("type", ""),
-                severity=v.get("severity", "medium"),
-                file_path=fn.file_path,
-                function_name=fn.fullname,
-                line_number=fn.line_start,
-                source_line=fn.signature,
-                reason=v.get("reason", ""),
-                sink_type=v.get("sink", ""),
-                invariant=v.get("invariant", ""),
-                confidence=v.get("confidence", "medium"),
-            )
-        )
+        findings.append(CandidateFinding(
+            type=v.get("type", ""),
+            severity=v.get("severity", "medium"),
+            file_path=fn.file_path,
+            function_name=fn.fullname,
+            line_number=fn.line_start,
+            source_line=fn.signature,
+            reason=v.get("reason", ""),
+            sink_type=v.get("sink", ""),
+            invariant=v.get("invariant", ""),
+            confidence=v.get("confidence", "medium"),
+        ))
 
-    # Surface sinks as candidates — the LLM may not report them as
-    # vulnerabilities when data flow crosses file boundaries.
     for s in data.get("sinks", []):
         if not isinstance(s, dict):
             continue
@@ -242,12 +245,7 @@ def _parse_single_response(
 def _call_llm_multi(
     fns: list[SourceFunction], llm: Any, context: str = "", max_chunk: int = 12
 ) -> list[CandidateFinding]:
-    """One LLM call for a chunk of related functions (same file).
-
-    Uses the interprocedural MULTI_FUNCTION_PROMPT so the LLM can track
-    data flow across function boundaries within the same file.
-    """
-    # Build function description blocks
+    """One LLM call for a chunk of related functions (same file)."""
     fn_blocks: list[str] = []
     for fn in fns:
         fn_blocks.append(
@@ -274,7 +272,6 @@ def _call_llm_multi(
         )
     except Exception as exc:
         logger.warning("Multi-function LLM call failed for %s: %s", fns[0].file_path, exc)
-        # Return deterministic pre-scan results even when LLM fails
         deterministic: list[CandidateFinding] = []
         for fn in fns:
             deterministic.extend(_pre_scan_body(fn))
@@ -282,7 +279,6 @@ def _call_llm_multi(
 
     llm_findings = _parse_multi_response(response, fns)
 
-    # Merge deterministic pre-scan + LLM results, dedup by sink_name
     deterministic: list[CandidateFinding] = []
     for fn in fns:
         deterministic.extend(_pre_scan_body(fn))
@@ -296,10 +292,7 @@ def _call_llm_multi(
     return merged
 
 
-def _parse_multi_response(
-    response: Any, fns: list[SourceFunction]
-) -> list[CandidateFinding]:
-    """Parse interprocedural multi-function LLM response."""
+def _parse_multi_response(response: Any, fns: list[SourceFunction]) -> list[CandidateFinding]:
     content = (response.content or "").strip()
     if not content:
         return []
@@ -314,12 +307,9 @@ def _parse_multi_response(
         json_str = json_match.group(1)
         data = json.loads(json_str)
     except (json.JSONDecodeError, IndexError) as exc:
-        json_str = json_match.group(1) if json_match else "NO MATCH"
-        logger.warning("Multi-function JSON decode failed (len=%d): %s | match=%s",
-                       len(content), content[:200], json_str[:200])
+        logger.warning("Multi-function JSON decode failed: %s | content=%.200s", exc, content[:200])
         return []
 
-    # Build name -> SourceFunction map (fullname and short name)
     fn_map: dict[str, SourceFunction] = {}
     for fn in fns:
         fn_map[fn.fullname] = fn
@@ -333,24 +323,19 @@ def _parse_multi_response(
         fn = fn_map.get(fn_name)
         if not fn:
             continue
+        findings.append(CandidateFinding(
+            type=v.get("type", ""),
+            severity=v.get("severity", "medium"),
+            file_path=fn.file_path,
+            function_name=fn.fullname,
+            line_number=fn.line_start,
+            source_line=fn.signature,
+            reason=v.get("reason", ""),
+            sink_type=v.get("sink", ""),
+            invariant=v.get("invariant", ""),
+            confidence=v.get("confidence", "medium"),
+        ))
 
-        findings.append(
-            CandidateFinding(
-                type=v.get("type", ""),
-                severity=v.get("severity", "medium"),
-                file_path=fn.file_path,
-                function_name=fn.fullname,
-                line_number=fn.line_start,
-                source_line=fn.signature,
-                reason=v.get("reason", ""),
-                sink_type=v.get("sink", ""),
-                invariant=v.get("invariant", ""),
-                confidence=v.get("confidence", "medium"),
-            )
-        )
-
-    # Also promote sinks as candidates — the LLM may not see the full
-    # data flow (cross-file taint), but sinks are always worth verifying.
     for s in data.get("sinks", []):
         if not isinstance(s, dict):
             continue
@@ -377,7 +362,10 @@ def analyze_single_functions(
 ) -> BulkAnalysisOutput:
     """Run Phase 1 single-function analysis over all functions in *index*.
 
-    Each function gets one parallel LLM call via ThreadPoolExecutor.
+    Uses asyncio.create_task() + asyncio.Semaphore for robust parallel
+    execution with retry and dynamic concurrency control.  Each invocation
+    runs in a fresh event loop so httpx's internal TaskGroup never crashes
+    with "no such group" (the root cause was cross-thread event-loop staleness).
 
     Parameters
     ----------
@@ -386,7 +374,8 @@ def analyze_single_functions(
     llm : Any
         LLM provider instance.
     max_workers : int
-        Max thread pool workers for parallel LLM calls.
+        Ignored when > 0 (overridden by _dynamic_max_workers).  Kept for
+        backward-compat — callers that pass this directly (tests) still work.
     priority_map : dict[str, float] | None
         Maps function name to risk score (from Director cards).
         When provided, functions are sorted by score descending so
@@ -394,6 +383,8 @@ def analyze_single_functions(
     max_functions : int
         If > 0, limit analysis to this many functions (highest priority
         first).  Useful when token budget is tight.
+    function_context : dict[str, str] | None
+        Maps function name to human-readable context string (from Director).
     """
     candidates: list[CandidateFinding] = []
     call_count = 0
@@ -401,24 +392,18 @@ def analyze_single_functions(
     # Sort by priority when a map is available
     if priority_map:
         def _priority(fn: SourceFunction) -> float:
-            # Try fullname first, then short name
             return priority_map.get(
                 fn.fullname,
                 priority_map.get(fn.name, 0.0),
             )
-
         funcs = sorted(index.funcs, key=_priority, reverse=True)
     else:
         funcs = list(index.funcs)
 
-    # Apply optional function limit (keep highest-priority ones)
+    # Apply optional function limit
     if max_functions > 0 and len(funcs) > max_functions:
         cutoff_idx = max_functions
         retained = set(funcs[:cutoff_idx])
-        # But always keep functions from files with dangerous imports:
-        # shelve, pickle, marshal, yaml, subprocess, eval, exec.
-        # Without this, low-PageRank deserialization wrappers (e.g.
-        # shelvestore.py) get dropped and never flagged by Phase 1.
         _DANGEROUS_IMPORTS = frozenset({
             "import shelve", "from shelve",
             "import pickle", "from pickle",
@@ -431,32 +416,25 @@ def analyze_single_functions(
         for fn in funcs[cutoff_idx:]:
             if any(di in fn.body for di in _DANGEROUS_IMPORTS):
                 retained.add(fn)
-            # Also check the file header for the import
             elif index and fn.file_path in index.sources:
                 src = index.sources[fn.file_path].source
                 if any(di in src for di in _DANGEROUS_IMPORTS):
                     retained.add(fn)
-        funcs = sorted(retained, key=lambda f: (priority_map.get(f.fullname, priority_map.get(f.name, 0.0)) if priority_map else 0, f.fullname), reverse=True)
+        funcs = sorted(retained, key=lambda f: (
+            priority_map.get(f.fullname, priority_map.get(f.name, 0.0)) if priority_map else 0,
+            f.fullname,
+        ), reverse=True)
 
     # --- Group by file for multi-function chunking ---
-    # Files with 2+ functions use interprocedural analysis (one LLM call per file).
-    # Files with 1 function use the existing per-function analysis.
     by_file: dict[str, list[SourceFunction]] = {}
     for fn in funcs:
-        # Preserve priority order within each file
         by_file.setdefault(fn.file_path, []).append(fn)
 
-    def _chunked(
-        file_funcs: list[SourceFunction],
-    ) -> list[list[SourceFunction]]:
-        """Split a large file function list into chunks of *max_chunk*."""
+    def _chunked(file_funcs: list[SourceFunction]) -> list[list[SourceFunction]]:
         max_chunk = 10
-        return [
-            file_funcs[i : i + max_chunk]
-            for i in range(0, len(file_funcs), max_chunk)
-        ]
+        return [file_funcs[i: i + max_chunk] for i in range(0, len(file_funcs), max_chunk)]
 
-    # Build dispatch list: (fns_list, is_multi)
+    # Build dispatch list
     dispatch: list[tuple[list[SourceFunction], bool]] = []
     for file_funcs in by_file.values():
         if len(file_funcs) >= 2:
@@ -474,50 +452,103 @@ def analyze_single_functions(
             )
             if ctx:
                 ctx_parts.append(ctx)
-        # Always append file header (imports + module docstring) so the LLM
-        # sees what the module imports.  Without this, simple wrappers around
-        # shelve/pickle/yaml/etc. are analyzed with zero dependency context,
-        # even when the Director provides generic call-chain metadata.
         if index:
             sf = index.sources.get(fn.file_path)
             if sf:
                 lines = sf.source.split("\n")[:20]
-                header = [l for l in lines if l.strip()
-                          and not l.strip().startswith("#")]
+                header = [l for l in lines if l.strip() and not l.strip().startswith("#")]
                 if header:
                     ctx_parts.append("File header:\n" + "\n".join(header))
         return "\n\n".join(ctx_parts)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_map = {}
-        for fns_list, is_multi in dispatch:
-            if is_multi:
-                chunk_ctx = ""
-                for fn in fns_list:
-                    chunk_ctx = _lookup_context(fn)
-                    if chunk_ctx:
-                        break
-                future = pool.submit(_call_llm_multi, fns_list, llm, context=chunk_ctx)
-            else:
-                fn = fns_list[0]
-                ctx = _lookup_context(fn)
-                future = pool.submit(_call_llm_single, fn, llm, context=ctx)
-            future_map[future] = fns_list
+    # Pre-compute context for each dispatch item (avoids recomputation inside tasks)
+    dispatch_items: list[tuple[list[SourceFunction], bool, str]] = []
+    for fns_list, is_multi in dispatch:
+        if is_multi:
+            chunk_ctx = ""
+            for fn in fns_list:
+                chunk_ctx = _lookup_context(fn)
+                if chunk_ctx:
+                    break
+            dispatch_items.append((fns_list, True, chunk_ctx))
+        else:
+            fn = fns_list[0]
+            dispatch_items.append((fns_list, False, _lookup_context(fn)))
 
-        for future in as_completed(future_map):
-            call_count += 1
-            try:
-                result = future.result()
-                candidates.extend(result)
-            except Exception as exc:
-                logger.warning("Bulk analysis worker failed: %s", exc)
+    # --- asyncio parallel execution with semaphore + retry ---
+    max_concurrent = _dynamic_max_workers(len(funcs))
 
-    # Count deserialization candidates for debugging
+    async def _run_analysis() -> list[CandidateFinding]:
+        sem = asyncio.Semaphore(max_concurrent)
+        loop = asyncio.get_running_loop()
+        results: list[CandidateFinding] = []
+        results_lock = asyncio.Lock()
+        completed = 0
+        total = len(dispatch_items)
+
+        async def _process(fns_list: list[SourceFunction],
+                           is_multi: bool,
+                           ctx: str) -> None:
+            nonlocal completed, call_count
+            async with sem:
+                last_exc: Exception | None = None
+                for attempt in range(1, _MAX_RETRIES + 2):  # 1 initial + N retries
+                    try:
+                        if is_multi:
+                            chunk = await loop.run_in_executor(
+                                None, _call_llm_multi, fns_list, llm, ctx,
+                            )
+                        else:
+                            chunk = await loop.run_in_executor(
+                                None, _call_llm_single, fns_list[0], llm, ctx,
+                            )
+                        async with results_lock:
+                            results.extend(chunk)
+                        return  # success
+                    except Exception as exc:
+                        last_exc = exc
+                        if attempt <= _MAX_RETRIES:
+                            logger.warning(
+                                "Bulk worker failed (attempt %d/%d): %s",
+                                attempt, _MAX_RETRIES + 1, exc,
+                            )
+                            await asyncio.sleep(1.0 * attempt)
+                        # else: final attempt failed — log and drop
+                logger.error(
+                    "Bulk worker failed after %d attempts: %s | fns=%s",
+                    _MAX_RETRIES + 1, last_exc,
+                    [f.fullname for f in fns_list[:3]],
+                )
+            # still report progress after failure
+            nonlocal completed, call_count
+
+        # Fire all tasks
+        tasks = [
+            asyncio.create_task(_process(fns, multi, ctx))
+            for fns, multi, ctx in dispatch_items
+        ]
+
+        # Wait for all to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Count actual LLM calls (one per dispatch item that didn't fail outright)
+        actual_calls = sum(
+            1 for t in tasks if not t.cancelled() and not t.exception()
+        )
+        nonlocal call_count
+        call_count = actual_calls
+        return results
+
+    candidates = asyncio.run(_run_analysis())
+
+    # Log summary
     deserial_count = sum(1 for c in candidates if c.type == "deserialization")
     if deserial_count:
-        logger.warning("BULK output: %d candidates, %d deserialization (sample: %s)",
-                       len(candidates), deserial_count,
-                       [c.function_name for c in candidates if c.type == "deserialization"][:3])
+        logger.warning(
+            "BULK output: %d candidates, %d deserialization (sample: %s)",
+            len(candidates), deserial_count,
+            [c.function_name for c in candidates if c.type == "deserialization"][:3],
+        )
     return BulkAnalysisOutput(
         candidates=candidates,
         total_functions_analyzed=len(funcs),

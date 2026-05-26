@@ -360,6 +360,7 @@ class TestBaseAgentMaxIterations:
     def test_max_iterations_with_final_summary(self) -> None:
         """When iteration limit hit, the agent calls LLM one more time for summary."""
         agent = SimpleAgent()
+        agent.PLATEAU_WINDOW = 99  # Disable plateau — test iteration limit specifically
 
         class FinalSummaryMock:
             def __init__(self):
@@ -367,7 +368,10 @@ class TestBaseAgentMaxIterations:
 
             def chat_completion(self, messages, tools=None, **kwargs):
                 self.call_count += 1
-                if self.call_count <= 10:
+                # SimpleAgent uses MAX_ITERATIONS=7, so we get 7 loop calls
+                # + 1 final call = 8 total.  Return tool-call responses for
+                # the first 7, then the final summary.
+                if self.call_count <= 7:
                     return MockLLMResponse(
                         content="looping",
                         tool_calls=[MockToolCall(name="echo", arguments='{"text":"x"}', id="c")],

@@ -1715,6 +1715,41 @@ Brain 分发阶段：
 | 不误引入无关知识 | 仅精确匹配函数名/文件路径 |
 | 回归影响 | 所有现有测试继续通过 |
 
+### 架构决策 5：跨函数调用链对 per-function 扫描完全不可见
+
+**发现背景**：2026-05-26 setuptools v69.5.1（含 CVE-2024-27309 漏洞代码）实战验证。
+
+**问题**：
+```
+CVE-2024-27309 调用链:
+  process_line(url)          ← 攻击者控制 URL
+    → _download_url(url, ...)  ← 转发 URL
+      → self.opener.open(url)  ← urllib.request.urlopen
+        → urlopen(url)         ← 网络请求 sink
+
+问题：没有单个函数同时包含"攻击者输入"和"危险 sink"
+      urlopen 本身是正常网络请求，不是危险函数
+      危险在于"攻击者可控 URL + 自动下载执行"的链式组合
+```
+
+**影响的漏洞类型**：
+- 跨函数数据流漏洞（CVE-2024-27309）
+- 多层调用链才能触发的复杂逻辑漏洞
+- 需要跨函数上下文才能判断危险性的 sink（如 `urlopen`、辅助函数中的 `exec`）
+
+**不影响的场景**：
+- 单函数注入（`exec(user_input)`、`subprocess(user_input)`、`pickle.loads(attacker_data)`）— 当前架构已覆盖
+
+**决策方向**：推荐 Hybrid Call Graph + 选择性展开
+- tree-sitter 已有调用边提取（`extractor.py` `PYTHON_CALL_QUERY`）
+- NetworkX 已有 PageRank 基础设施（Director repomap.py）
+- 增量改动：Director 出卡后加一步调用图展开，把调用链上下文注入 bulk prompts
+- 不引入新依赖，不改流水线结构
+
+**四个方案详见 `op.md`**。
+
+---
+
 ### A.7 验证指标
 
 | 指标 | 当前 | 目标 |

@@ -452,6 +452,17 @@ class Brain:
         # --- P6: Share state with tools for blackboard knowledge recording ---
         set_state(state)
 
+        # --- Quick file count for adaptive agent iteration ---
+        try:
+            fc = 0
+            for root, dirs, files in os.walk(project_path):
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'venv', 'env', '__pycache__', 'dist', 'build')]
+                fc += len([f for f in files if f.endswith('.py')])
+            state.file_count = fc
+            logger.info("Brain: project file count = %d", fc)
+        except Exception:
+            state.file_count = 0
+
         # --- P5: Load cross-scan feedback ---
         feedback_path = os.path.join(project_path, ".agies", "feedback.json")
         feedback = FeedbackStore.load(feedback_path)
@@ -701,7 +712,7 @@ class Brain:
         self,
         state: ProjectState,
         candidates: list[CandidateFinding],
-        max_candidates: int = 12,
+        max_candidates: int = 30,
     ) -> list[CandidateFinding]:
         """Prune verification candidates, protecting entry-point files first.
 
@@ -1033,11 +1044,13 @@ class Brain:
     ) -> list[AgentCall]:
         """Build the appropriate calls for one agent type given current state."""
         if name == "mapping":
+            fc = getattr(state, 'file_count', 0)
+            max_iter = 30 if fc > 2000 else 20 if fc > 500 else 15 if fc > 100 else 10
             return [
                 AgentCall(
                     agent_name="mapping",
                     agent=agent,
-                    params={"project_path": state.project_path},
+                    params={"project_path": state.project_path, "max_iterations": max_iter},
                 )
             ]
 
@@ -1358,11 +1371,13 @@ class Brain:
             return calls
 
         if name == "attack_surface":
+            fc = getattr(state, 'file_count', 0)
+            max_iter = 30 if fc > 2000 else 20 if fc > 500 else 15 if fc > 100 else 10
             return [
                 AgentCall(
                     agent_name="attack_surface",
                     agent=agent,
-                    params={"project_path": state.project_path},
+                    params={"project_path": state.project_path, "max_iterations": max_iter},
                 )
             ]
 
