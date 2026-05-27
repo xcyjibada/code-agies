@@ -1,19 +1,63 @@
-Hybrid Call Graph + 选择性展开（最推荐立即实施）
-用 tree-sitter + NetworkX 构建完整调用图（静态为主）。
-Director 层先用 PageRank / Centrality 找出高风险路径。
-只对高优先级路径做 LLM 深度分析（例如只展开前 3-5 层调用链）。
-好处：大幅减少 token，但能覆盖大部分跨函数场景。
-
-On-Demand Context Slicing（上下文切片）
-当发现一个潜在 Sink 时，自动向上回溯调用者（Callers），提取相关数据流上下文。
-使用程序切片（Program Slicing）技术，只把真正相关的代码片段喂给 LLM，而不是整个函数或文件。
-这能显著降低 token 消耗，同时提升跨函数理解能力。
-
-Multi-Agent 分层调用链分析
-Tracer Agent：负责沿着调用链追踪污点传播。
-Validator Agent：验证某条路径是否真正可达 + 可触发。
-Summarizer Agent：把长调用链总结成简洁的“攻击路径描述”。
-
-中长期更强方案（参考最新研究）
-参考 PacVD、CTX-Coder、SemTaint 等论文：用 LLM 辅助生成 taint specification（污点规格），然后用确定性引擎做跨过程分析。
-或者学习 RepoAudit 的做法：Agent 带 Memory，按需探索路径，而不是一次性喂巨大上下文。
+我必须向你承认：我们之前设计的 --new-pipeline（Sourcer 
+→
+→
+ Bulk 
+→
+→
+ Verification）确实存在一个结构性的逻辑矛盾。它是一个打着“多 Agent 旗号”的错误决策。
+这个错误的本质是：我们嘴上说着要“发现业务逻辑漏洞”，但我们在第一层过滤网（Bulk Analysis）上，却用“单函数隔离（Function Isolation）”把 LLM 的眼睛蒙上了。其结果是，LLM 只有在验证（Verify）那些已经被它在“失明状态”下挑出来的候选（Candidates）时，才能看到调用链。这在逻辑上是完全不自洽的。
+如果不彻底推倒并重建这个数据流，Agies 的上限就会被死死地卡在“单函数漏洞”上。
+1. 真实世界的证据：Xint 是如何挖出“Copy Fail”的？
+我们可以通过最近发生的一个真实安全事件来验证你的直觉。
+2026 年 4 月底，Theori 团队利用其 AI 审计工具 Xint Code 发现了潜伏在 Linux 内核加密子系统中长达 9 年的本地提权漏洞：“Copy Fail” (CVE-2026-31431)[1][2]。这是一个极其复杂的逻辑和内存安全漏洞。
+根据披露的技术细节，Xint 绝对不是在盲目地对 Linux 内核的几万个 C 函数进行“逐个单函数审计”[3]。
+他们的真实路径：人类研究员（李泰阳）给出了一个初始的安全假设（即 splice() 如何将页面缓存传递给加密子系统，以及页面的来源生命周期可能存在问题）[3]。
+Xint 做的动作：它沿着这个特定的跨文件、跨函数的“数据流路径（Program Slicing/程序切片）”进行了定向的自动化推理，在短短一小时内完成了整个加密子系统的审计，最终精确定位了漏洞[3]。
+这完全印证了你的直觉：在真实的 AVR（自动化漏洞研究）中，分析的最小单元不能是“函数（Function）”，而必须是“程序切片/路径（Program Slice / Path）”[4][5]。
+2. 彻底解构当前的“错误管道”
+我们之前的设计在工程上犯了“向成本妥协”的妥协病：
+code
+Code
+【错误的旧管道】
+136 个函数 ──→ Bulk Analysis ──→ 12 个单函数候选 ──→ 注入调用链进行验证
+                  (LLM 单独看)                              (此时才给看调用链)
+为什么这是错的：
+在 Bulk Analysis 阶段，LLM 只看 _deserialize_single_param(param)，它根本没有任何线索知道 param 是来自公网的 HTTP 请求。因为在第一步它没有发现“可疑”，所以这个函数连进入 Candidate 的机会都没有，后续的 [CALL_CHAIN] 注入直接成了空摆设。
+妥协的恶果：我们为了不让 Token 爆炸，选择在第一阶段只让 LLM 读单函数，在第二阶段才注入链。这相当于让侦探在不看案发现场（上下文）的情况下先筛选嫌疑人，然后再去现场求证。
+3. 破局之道：基于“程序切片（Program Slicing）”的全新架构
+为了拯救这个项目的上限，我们必须彻底废除“单函数 Bulk 扫描”。
+我们要将分析单元从“函数”升维到**“切片（Slice）”**[4]。
+code
+Code
+【全新设计的切片管道（Slice-Based Pipeline）】
+Layer 0 情报层（AST + Sinks + Pathfinder） ── $0 成本，算出 15 条可达性切片（Slices）
+                                      ↓
+Brain（战略大脑） ── 评估这 15 条切片的情报摘要，挑选出 5 条高危切片（Slices）
+                                      ↓
+Vulnerability Agent（深度猎人） ── 直接阅读这 5 条切片的完整调用链源码（3-5 个函数拼接）
+                                      ↓
+Verify Agent（法医） ── 对有疑点的切片进行 PoC 验证
+为什么这个架构能“降维打击”？
+彻底消灭信息孤岛：
+Vulnerability Agent 在读到 _deserialize_single_param 的时候，它的 Context 里已经包含了它的调用者 runner_app.py 的路由入口。它在第一眼就看穿了“用户输入 
+→
+→
+ 反序列化”的完整链路。
+Token 消耗不升反降（极度优雅）：
+以前：我们要对 136 个函数跑 136 次 Bulk 调用（因为我们怕漏报，所以只能全量扫）。
+现在：我们根本不跑全量 Bulk。因为 Director 已经把 136 个函数归纳成了 15 条“可能通往 Sink 的通道”。我们只跑 15 次切片分析。
+我们把原本花在“无脑 Bulk 扫盘”上的 Token 预算，转移到了“高质量的路径阅读”上。
+4. 落地这个重构：我们需要改什么？
+这个改动在工程上是一次**“大洗牌”**，它会废除一些我们之前为了妥协而写的临时代码：
+动作 1：废除 bulk_analysis_agent.py（或重定义它）
+我们不再需要逐个函数去问 LLM 有没有漏洞。
+动作 2：重写 _build_calls()
+Brain 的核心任务变成了：直接把 Director 算出的 analysis_cards（即攻击路径）作为任务派发给 VulnerabilityAgent。
+动作 3：VulnerabilityAgent 升级为“路径审计员”
+它的输入参数是：一整条调用链上所有涉及函数的源码拼接。
+它不找模式，它直接读这条链的数据流是否安全。
+总结
+感谢你用极其敏锐的安全直觉，及时拉住了正在向“传统扫描器”下滑的 Agies。
+我们不要做一个“效率高一点的 Semgrep”，我们要复现的是 Xint 这种“利用静态切片引导大模型进行路径推理（Static-Slicing Guided LLM Reasoning）”的顶级 AVR 架构[4][6]。
+如果我们决定这样改，我们可以把这个重构命名为 《Phase 7：基于程序切片的定向漏洞猎杀（Slice-Based Auditing）》。
+你是否同意立刻开启这个重构？如果同意，我们将废除刚才的“单函数 Bulk 逻辑”，直接让 Director 的卡片（切片）去驱动 VulnerabilityAgent 进行深度猎杀。
