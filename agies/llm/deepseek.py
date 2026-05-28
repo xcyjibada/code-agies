@@ -2,7 +2,7 @@
 
 import os
 
-from openai import OpenAI
+from openai import OpenAI, Timeout
 
 from .base import LLMProvider, LLMResponse, ToolCall
 
@@ -25,7 +25,11 @@ class DeepSeekProvider(LLMProvider):
         if not self.api_key:
             self._client = None
         else:
-            self._client = OpenAI(api_key=self.api_key, base_url=base_url)
+            self._client = OpenAI(
+                api_key=self.api_key,
+                base_url=base_url,
+                timeout=Timeout(120.0),
+            )
 
     def _chat_completion_impl(
         self, messages, tools=None, **kwargs

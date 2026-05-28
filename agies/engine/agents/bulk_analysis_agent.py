@@ -36,25 +36,59 @@ class BulkAnalysisAgent(BaseAgent):
         llm: Any = None,
         **llm_kwargs: Any,
     ) -> AgentResponse:
-        """Run Phase 1 bulk analysis via ThreadPoolExecutor."""
-        index = params.get("function_index")
-        if index is None:
-            return AgentResponse(
-                content="No FunctionIndex provided",
-                output={
-                    "candidates": [],
-                    "total_functions_analyzed": 0,
-                    "total_llm_calls": 0,
-                },
+        """Run Phase 1 bulk analysis via ThreadPoolExecutor.
+
+        Two modes (driven by ``params["mode"]``):
+
+        - ``"chain"`` (default when Director cards + call_graph available):
+          Analyze each entry point's entire call chain in one LLM call.
+        - ``"single"`` (fallback): Per-function / multi-function chunked
+          analysis over all functions in the index.
+        """
+        mode = params.get("mode", "single")
+
+        # --- Chain mode: analyze each Director card's call chain ---
+        if mode == "chain":
+            cards = params.get("cards", [])
+            index = params.get("function_index")
+            if not cards or index is None:
+                return AgentResponse(
+                    content="Chain mode requires cards and function_index",
+                    output={
+                        "candidates": [],
+                        "total_functions_analyzed": 0,
+                        "total_llm_calls": 0,
+                    },
+                )
+            from agies.engine.analysis.bulk import analyze_entry_chains
+
+            result: BulkAnalysisOutput = analyze_entry_chains(
+                cards=cards,
+                function_index=index,
+                llm=llm,
+                project_path=params.get("project_path", ""),
             )
 
-        result: BulkAnalysisOutput = analyze_single_functions(
-            index,
-            llm,
-            priority_map=params.get("priority_map"),
-            max_functions=params.get("max_functions", 0),
-            function_context=params.get("function_context"),
-        )
+        # --- Single-function mode (original behavior) ---
+        else:
+            index = params.get("function_index")
+            if index is None:
+                return AgentResponse(
+                    content="No FunctionIndex provided",
+                    output={
+                        "candidates": [],
+                        "total_functions_analyzed": 0,
+                        "total_llm_calls": 0,
+                    },
+                )
+
+            result = analyze_single_functions(
+                index,
+                llm,
+                priority_map=params.get("priority_map"),
+                max_functions=params.get("max_functions", 0),
+                function_context=params.get("function_context"),
+            )
 
         return AgentResponse(
             content=(

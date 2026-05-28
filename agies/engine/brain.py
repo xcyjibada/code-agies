@@ -25,7 +25,11 @@ from typing import Any
 from agies.engine.agents.base import BaseAgent
 from agies.engine.director import Director
 from agies.engine.feedback import FeedbackStore
-from agies.engine.router import map_max_iterations
+from agies.engine.router import (
+    classify_card,
+    map_max_iterations,
+    percentile,
+)
 from agies.engine.runner import AgentCall, Runner
 from agies.engine.state import ProjectState
 from agies.engine.task_queue import AgentType, TaskDesc, TaskQueue
@@ -1102,6 +1106,41 @@ class Brain:
             ]
 
         if name == "bulk_analysis":
+            # -- Chain mode: when Director cards + FunctionIndex call_graph available --
+            # Analyzes each hot/warm card's entire call chain in one LLM call,
+            # giving the LLM cross-function visibility into data flow.
+            if (state.analysis_cards
+                    and state.function_index
+                    and state.function_index.call_graph):
+                scores = [getattr(c, "final_score", 0)
+                          for c in state.analysis_cards if hasattr(c, "final_score")]
+                if scores:
+                    p80 = percentile(scores, 80)
+                    p40 = percentile(scores, 40)
+                    hot_warm = [
+                        c for c in state.analysis_cards
+                        if classify_card(
+                            getattr(c, "final_score", 0), p80, p40
+                        ) in ("hot", "warm")
+                    ]
+                    if hot_warm:
+                        logger.info(
+                            "Brain: chain-mode bulk analysis — %d hot/warm cards",
+                            len(hot_warm),
+                        )
+                        return [
+                            AgentCall(
+                                agent_name="bulk_analysis",
+                                agent=agent,
+                                params={
+                                    "mode": "chain",
+                                    "cards": hot_warm[:10],
+                                    "function_index": state.function_index,
+                                    "project_path": state.project_path,
+                                },
+                            )
+                        ]
+
             # Build priority_map from Director cards when available.
             # Higher-score functions enter the analysis queue first,
             # so if token budget runs out, low-risk items are dropped.

@@ -27,7 +27,10 @@ class AnthropicProvider(LLMProvider):
         return "ANTHROPIC_API_KEY"
 
     def _init_client(self, **kwargs):
-        self._client = Anthropic(api_key=self.api_key)
+        self._client = Anthropic(
+            api_key=self.api_key,
+            timeout=120.0,
+        )
         self._last_raw_assistant_blocks = None
 
     def _convert_messages(self, messages: list[dict]):

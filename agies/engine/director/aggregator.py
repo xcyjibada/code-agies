@@ -11,7 +11,7 @@ for fast symbol → location lookup by downstream recursive agents.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -238,3 +238,67 @@ def rank_cards(
         cards.append(card)
 
     return sorted(cards, key=lambda c: c.final_score, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# Call chain expansion (BFS through FunctionIndex call graph)
+# ---------------------------------------------------------------------------
+# This runs at Brain dispatch time (after Sourcer has built the FunctionIndex),
+# not during Director Phase 0.  Director identifies *which* entry points are
+# dangerous; expand_call_chain retrieves *all* reachable functions for analysis.
+
+
+def expand_call_chain(
+    entry_func_name: str,
+    function_index: FunctionIndex,
+    max_depth: int = 8,
+    max_nodes: int = 30,
+) -> list[tuple[str, SourceFunction, int]]:
+    """BFS-expand the call chain from *entry_func_name*.
+
+    Uses ``FunctionIndex.call_graph`` (callee → set[caller]) to traverse
+    callees of each visited node.  Returns ordered list of
+    ``(function_name, SourceFunction, depth)`` tuples where depth=0 is the
+    entry function itself.
+
+    Parameters
+    ----------
+    entry_func_name : str
+        Name of the entry function to expand from.
+    function_index : FunctionIndex
+        Built function index (must have call_graph populated).
+    max_depth : int
+        Maximum call-chain depth to traverse (default 8).
+    max_nodes : int
+        Maximum total nodes to collect (default 30).
+
+    Returns
+    -------
+    list[(str, SourceFunction, int)]
+        Ordered chain: entry → depth=1 → depth=2 → …
+    """
+    from agies.engine.sourcer.models import FunctionIndex, SourceFunction
+
+    visited: set[str] = set()
+    queue: deque[tuple[str, int]] = deque()
+    queue.append((entry_func_name, 0))
+    chain: list[tuple[str, SourceFunction, int]] = []
+
+    while queue and len(chain) < max_nodes:
+        name, depth = queue.popleft()
+        if name in visited or depth > max_depth:
+            continue
+        visited.add(name)
+
+        # Look up function body in the index
+        fns = function_index.lookup(name)
+        if fns:
+            chain.append((name, fns[0], depth))
+
+        # BFS: find what this function calls (forward traversal)
+        callees = function_index._get_direct_callees(name)
+        for callee in sorted(callees):
+            if callee not in visited:
+                queue.append((callee, depth + 1))
+
+    return chain

@@ -16,14 +16,21 @@ import asyncio
 import json
 import logging
 import os
+import os.path
 import re
 from typing import Any
 
 from agies.engine.analysis.prompts import (
+    CHAIN_ANALYSIS_SYSTEM,
+    CHAIN_ANALYSIS_USER,
     MULTI_FUNCTION_SYSTEM,
     MULTI_FUNCTION_USER,
     SINGLE_FUNCTION_SYSTEM,
     SINGLE_FUNCTION_USER,
+)
+from agies.engine.director.aggregator import (
+    EntryAnalysisCard,
+    expand_call_chain,
 )
 from agies.engine.sourcer.models import (
     BulkAnalysisOutput,
@@ -553,4 +560,223 @@ def analyze_single_functions(
         candidates=candidates,
         total_functions_analyzed=len(funcs),
         total_llm_calls=call_count,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chain-level (call chain) analysis
+# ---------------------------------------------------------------------------
+
+
+def _format_chain_for_prompt(
+    chain: list[tuple[str, SourceFunction, int]],
+) -> str:
+    """Format a call chain into a human-readable block for the LLM prompt."""
+    blocks: list[str] = []
+    for name, fn, depth in chain:
+        indent = "  " * depth
+        arrow = "→ " if depth > 0 else ""
+        blocks.append(
+            f"{indent}{arrow}Function: {name} (depth={depth})\n"
+            f"{indent}  File: {fn.file_path}:{fn.line_start}\n"
+            f"{indent}  Signature: {fn.signature}\n"
+            f"{indent}  Body:\n"
+            f"{indent}  ```\n"
+            f"{indent}  {fn.body}\n"
+            f"{indent}  ```"
+        )
+    return "\n\n".join(blocks)
+
+
+def _parse_chain_response(
+    response: Any,
+    entry_name: str,
+) -> list[CandidateFinding]:
+    """Parse the LLM's JSON response from chain-level analysis."""
+    content = (response.content or "").strip()
+    if not content:
+        return []
+
+    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+    if not json_match:
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
+    if not json_match:
+        return []
+
+    try:
+        data = json.loads(json_match.group(1))
+    except (json.JSONDecodeError, IndexError):
+        return []
+
+    findings: list[CandidateFinding] = []
+    for v in data.get("vulnerabilities", []):
+        if not isinstance(v, dict):
+            continue
+        findings.append(CandidateFinding(
+            type=v.get("type", ""),
+            severity=v.get("severity", "medium"),
+            file_path=v.get("sink_file", ""),
+            function_name=v.get("sink_function", ""),
+            line_number=v.get("sink_line", 0),
+            source_line=f"Entry: {entry_name} | Path: {v.get('attack_path', '')}",
+            reason=v.get("reason", ""),
+            sink_type=_sink_type(v.get("sink_function", "")),
+            invariant=v.get("invariant", ""),
+            confidence=v.get("confidence", "medium"),
+        ))
+    return findings
+
+
+def analyze_entry_chains(
+    cards: list[EntryAnalysisCard],
+    function_index: FunctionIndex,
+    llm: Any,
+    project_path: str = "",
+    max_chains: int = 10,
+    max_functions_per_chain: int = 10,
+) -> BulkAnalysisOutput:
+    """Run chain-level analysis over Director cards.
+
+    For each card:
+    1. Expand the call chain via ``expand_call_chain()`` (BFS)
+    2. Build a chain prompt with all function sources
+    3. Call LLM once per chain
+    4. Parse results into ``CandidateFinding`` s
+
+    Parameters
+    ----------
+    cards : list[EntryAnalysisCard]
+        Director cards to analyze (only hot/warm, not cold).
+    function_index : FunctionIndex
+        Built function index (must have ``call_graph`` populated).
+    llm : Any
+        LLM provider instance.
+    project_path : str
+        Project root (for resolving relative paths).
+    max_chains : int
+        Maximum number of chains to analyze (default 10).
+    max_functions_per_chain : int
+        Cap on functions per chain to keep prompt size manageable.
+
+    Returns
+    -------
+    BulkAnalysisOutput
+        Aggregated candidates from all chains.
+    """
+    candidates: list[CandidateFinding] = []
+    chains_analyzed = 0
+    total_llm_calls = 0
+
+    for card in cards[:max_chains]:
+        card_path = getattr(card, "file_path", "")
+        if not card_path:
+            continue
+
+        entry_name = getattr(card, "entry", card_path)
+        entry_type = getattr(card, "entry_type", "function")
+        entry_line = getattr(card, "line_number", 0)
+
+        # Resolve relative card paths to absolute for FunctionIndex lookup
+        resolved_path = card_path
+        if project_path and not os.path.isabs(card_path):
+            resolved_path = os.path.normpath(
+                os.path.join(project_path, card_path)
+            )
+
+        # Find all functions in the card's file (card.entry is a file path,
+        # not a function name — the Director uses file-level granularity).
+        file_funcs = function_index.file_index.get(resolved_path, [])
+        if not file_funcs:
+            logger.debug(
+                "Chain analysis: no functions found for file '%s', skipping.",
+                card_path,
+            )
+            continue
+
+        # BFS-expand from each top-level function in the file.
+        # Collect unique (name, SourceFunction, depth) tuples across all BFS
+        # traversals, deduplicating by function name.
+        seen_names: set[str] = set()
+        merged_chain: list[tuple[str, SourceFunction, int]] = []
+        for fn in file_funcs:
+            sub = expand_call_chain(
+                entry_func_name=fn.fullname,
+                function_index=function_index,
+                max_nodes=max_functions_per_chain,
+            )
+            for name, sf, depth in sub:
+                if name not in seen_names:
+                    seen_names.add(name)
+                    merged_chain.append((name, sf, depth))
+
+        if not merged_chain:
+            logger.debug(
+                "Chain analysis: BFS returned empty for '%s', skipping.",
+                card_path,
+            )
+            continue
+
+        # Sort by depth so LLM sees entry first, then callees
+        merged_chain.sort(key=lambda x: x[2])
+
+        # Build context from card signals
+        sig_tags = [
+            s.tag for s in getattr(card, "aggregated_signals", [])
+            if hasattr(s, "tag")
+        ]
+        context_parts = []
+        context_parts.append(
+            f"This is a security analysis of entry file '{card_path}' "
+            f"and its entire call chain."
+        )
+        if sig_tags:
+            context_parts.append(f"SAST signals: {', '.join(sig_tags)}.")
+
+        chain_functions_str = _format_chain_for_prompt(merged_chain)
+        chain_length = len(merged_chain)
+        chain_depth = max(d for _, _, d in merged_chain) if merged_chain else 0
+
+        user_msg = CHAIN_ANALYSIS_USER.format(
+            context="\n".join(context_parts),
+            entry_name=card_path,
+            entry_type=entry_type,
+            entry_file=card_path,
+            entry_line=entry_line,
+            chain_length=chain_length,
+            chain_depth=chain_depth,
+            chain_functions=chain_functions_str,
+        )
+
+        try:
+            response = llm.chat_completion(
+                messages=[
+                    {"role": "system", "content": CHAIN_ANALYSIS_SYSTEM},
+                    {"role": "user", "content": user_msg},
+                ],
+                max_tokens=2048,
+            )
+            total_llm_calls += 1
+        except Exception as exc:
+            logger.warning(
+                "Chain analysis LLM call failed for '%s': %s", entry_name, exc,
+            )
+            continue
+
+        chain_findings = _parse_chain_response(response, entry_name)
+        candidates.extend(chain_findings)
+        chains_analyzed += 1
+
+        logger.info(
+            "Chain analysis: '%s' → %d functions, %d candidates",
+            entry_name, chain_length, len(chain_findings),
+        )
+
+    logger.info(
+        "Chain analysis complete: %d chains → %d candidates (%d LLM calls)",
+        chains_analyzed, len(candidates), total_llm_calls,
+    )
+    return BulkAnalysisOutput(
+        candidates=candidates,
+        total_functions_analyzed=chains_analyzed,
+        total_llm_calls=total_llm_calls,
     )

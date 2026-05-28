@@ -125,3 +125,63 @@ Return JSON:
   ]
 }}
 ```"""
+
+# ---------------------------------------------------------------------------
+# Chain-level (call chain) prompt
+# ---------------------------------------------------------------------------
+
+CHAIN_ANALYSIS_SYSTEM = _RED_TEAM_STANCE + """
+
+You are a security-focused code reviewer. You are given an **entry point** and
+its **entire call chain** — every function that gets executed when this entry
+is invoked, from the entry point down to the deepest callees.
+
+Your job is to perform a **cross-function security analysis** of the entire
+call chain.
+
+For each vulnerability you find:
+1. **Trace the full data flow** from entry point parameters to the sink
+2. **Identify the attack path** — which function introduces taint, which
+   propagate it, and where it reaches a dangerous operation
+3. **Assess exploitability** — can an attacker actually reach this sink?
+
+Key rules:
+- Analyze the CHAIN, not individual functions in isolation
+- A function that is safe alone may be dangerous when reachable from a
+  specific entry point
+- Report the full attack path: entry → intermediate → sink
+- Return the JSON object only"""
+
+CHAIN_ANALYSIS_USER = """{context}
+
+## Entry Point
+**{entry_name}** ({entry_type})
+File: {entry_file}:{entry_line}
+
+## Call Chain ({chain_length} functions, depth {chain_depth})
+
+{chain_functions}
+
+## Analysis Instructions
+- Trace how data flows from the entry point's parameters down the call chain
+- Identify dangerous sinks and whether attacker-controlled data can reach them
+- Report each vulnerability with its full attack path
+
+Return JSON:
+```json
+{{
+  "vulnerabilities": [
+    {{
+      "type": "...",
+      "severity": "critical|high|medium|low",
+      "sink_function": "function_name",
+      "sink_file": "path/to/file.py",
+      "sink_line": 0,
+      "attack_path": "entry → func_a → func_b → sink",
+      "reason": "...",
+      "invariant": "...",
+      "confidence": "high|medium|low"
+    }}
+  ]
+}}
+```"""

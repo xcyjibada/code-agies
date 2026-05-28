@@ -27,6 +27,15 @@ def audit(
     Configuration is loaded from .agies/config.yml if present.
     CLI flags override config file values.
     """
+    import logging
+
+    if verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(levelname)s %(name)s: %(message)s",
+            force=True,
+        )
+
     from agies.core.config import load_config
 
     cfg = load_config(target)
