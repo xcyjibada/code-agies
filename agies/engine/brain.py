@@ -1123,10 +1123,40 @@ class Brain:
                             getattr(c, "final_score", 0), p80, p40
                         ) in ("hot", "warm")
                     ]
-                    if hot_warm:
+                    cards = hot_warm[:10]
+
+                    # Also include cold cards with SAST-critical signals
+                    # (serialization, cmd_exec, sql_sink, etc.) so that
+                    # SAST-confirmed dangerous sinks are always analyzed
+                    # even when PageRank ranks them low.
+                    _SAST_CRITICAL = frozenset({
+                        "critical_sink", "serialization", "cmd_exec",
+                        "sql_sink", "dynamic_exec",
+                    })
+                    if state.cold_cards:
+                        sast_cold = [
+                            c for c in state.cold_cards
+                            if any(
+                                s.tag in _SAST_CRITICAL
+                                for s in getattr(c, "aggregated_signals", [])
+                            )
+                        ]
+                        if sast_cold:
+                            # Deduplicate against already-selected cards by file_path
+                            seen = {getattr(c, "file_path", "") for c in cards}
+                            fresh = [c for c in sast_cold
+                                     if getattr(c, "file_path", "") not in seen]
+                            if fresh:
+                                logger.info(
+                                    "Brain: adding %d SAST-critical cold card(s) to bulk analysis",
+                                    len(fresh),
+                                )
+                                cards = cards + fresh[:5]  # cap to avoid budget blowout
+
+                    if cards:
                         logger.info(
-                            "Brain: chain-mode bulk analysis — %d hot/warm cards",
-                            len(hot_warm),
+                            "Brain: chain-mode bulk analysis — %d cards (%d hot/warm + %d SAST cold)",
+                            len(cards), len(hot_warm), max(0, len(cards) - len(hot_warm)),
                         )
                         return [
                             AgentCall(
@@ -1134,7 +1164,7 @@ class Brain:
                                 agent=agent,
                                 params={
                                     "mode": "chain",
-                                    "cards": hot_warm[:10],
+                                    "cards": cards,
                                     "function_index": state.function_index,
                                     "project_path": state.project_path,
                                 },
@@ -1350,9 +1380,9 @@ class Brain:
                         "project_path": state.project_path,
                         "function_index": state.function_index,
                         "max_iterations": min(
-                            max(verif_max_iter, len(file_candidates) * 2),
-                            20,
-                        ),  # scale with candidate count
+                            max(verif_max_iter, len(file_candidates) + 2),
+                            10,
+                        ),  # batch mode: preloaded code means less need for read_file iter
                         "_round": state.verification_round,
                     }
                     # Brain-internal index map for _handle_result result unrolling.

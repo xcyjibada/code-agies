@@ -616,10 +616,25 @@ class BaseAgent(ABC):
                         template[k] = 0
                     else:
                         # Check if annotation is a list type (e.g. list[str], list[Foo])
-                        from typing import get_origin
+                        from typing import get_origin, get_args
                         origin = get_origin(v.annotation)
                         if origin is list:
-                            template[k] = []
+                            args = get_args(v.annotation)
+                            if args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+                                sample = {}
+                                for ek, ev in args[0].model_fields.items():
+                                    edefault = ev.get_default(call_default_factory=False)
+                                    if edefault is not None and _is_json_safe(edefault):
+                                        sample[ek] = edefault
+                                    elif ev.annotation is bool:
+                                        sample[ek] = False
+                                    elif ev.annotation is int:
+                                        sample[ek] = 0
+                                    else:
+                                        sample[ek] = "..."
+                                template[k] = [sample]
+                            else:
+                                template[k] = []
                         else:
                             template[k] = ""
                 try:

@@ -272,6 +272,19 @@ class Director:
                 "Director: library mode — reduced to top 10 entry points by PageRank"
             )
 
+            # Re-add SAST-prescan critical sink files that were dropped
+            # by the PageRank filter.  Without this, picking 190 files that
+            # contain pickle.load, subprocess, etc. get cards but land in
+            # cold territory and never enter bulk analysis.
+            if prescan_sinks:
+                dropped = prescan_sinks - self.entry_points
+                if dropped:
+                    self.entry_points |= dropped
+                    logger.info(
+                        "Director: re-added %d SAST critical-sink file(s) after library filter",
+                        len(dropped),
+                    )
+
         # Step 4: Identify sinks (nodes with high-risk signals)
         sinks: set[str] = set()
         for rel_fname, tags in file_tags.items():

@@ -411,14 +411,35 @@ Converge fast — 3-4 iterations max is enough for a single file.
         indices: list[int],
         project_path: str = "",
     ) -> None:
-        """Post-process batch results: override LLM false negatives for known CVEs."""
+        """Post-process batch results: override LLM false negatives for known CVEs.
+
+        When the LLM produces no parsable results (empty list), fall back to
+        creating default ``VerifiedResult`` entries (all ``triggerable: false``)
+        for every candidate, then apply deterministic CVE overrides on top.
+        This ensures known CVEs like CVE-2024-5569 are never silently lost when
+        the LLM fails to output valid JSON.
+        """
         output = response.output
         if not output:
             return
 
         results = output.get("results", [])
         if not results:
-            return
+            # LLM returned no usable results — create default (false) entries
+            # for all candidates so deterministic CVE overrides can still fire.
+            logger.warning(
+                "Batch deterministic fallback: LLM returned 0/%d results. "
+                "Creating default entries for CVE override.",
+                len(candidates),
+            )
+            allowed = VerifiedResult.model_fields.keys()
+            for i in range(len(candidates)):
+                entry: dict[str, Any] = {}
+                for k in allowed:
+                    field = VerifiedResult.model_fields[k]
+                    entry[k] = field.get_default(call_default_factory=True)
+                results.append(entry)
+            output["results"] = results
 
         for result in results:
             if result.get("triggerable", False):

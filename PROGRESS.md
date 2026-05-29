@@ -607,6 +607,36 @@ Brain 分发阶段:
 - 跨语言 taint 追踪
 
 
+## Step E：Batch Verification 确定性回退修复 (2026-05-29)
+
+> **问题**：`_apply_deterministic_batch()` 在 LLM 产出 0 个可解析结果时直接 `return`，CVE-2024-5569 的确定性覆盖逻辑永不触发。
+> **根因**：Brain 给 29 个 batch candidate 设 `max_iterations=20`（`len*2 capped at 20`），LLM 花了 19 轮读文件，最终 16997 字符输出解析不出有效 JSON。
+
+### 修复清单
+
+1. **`verification_agent.py` — deterministic batch fallback**
+   - 当 LLM 返回 0 个结果时，创建默认 `VerifiedResult` 条目（全 `triggerable: false`），再叠加上 CVE 确定性覆盖
+   - 确保已知 CVE 不被 LLM 解析失败吞掉
+
+2. **`brain.py` — batch max_iterations 收紧**
+   - 公式：`min(max(verif_max_iter, len*2), 20)` → `min(max(verif_max_iter, len+2), 10)`
+   - 批处理有预加载代码，不需要大量读文件轮次
+
+3. **`base.py` — 迭代上限 schema 示例条目**
+   - 裸 `{"results": []}` → `[{"candidate_index": 0, "triggerable": false, "conditions": "...", ...}]`
+   - LLM 看到嵌套结构模板，能正确输出格式
+
+### 验证结果（zipp CVE-2024-5569）
+
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| Batch 解析结果 | 0/29 | 27/29 |
+| 确定性 CVE 覆盖 | 永不触发 | 8 个 |
+| Triggerable findings | 0 | 10 |
+| 验证时间 | 70.9s | 57.0s |
+
+---
+
 ## Step D：稳定性提升 + 跨函数漏洞盲点发现 (2026-05-26)
 
 > 2026-05-26: 三项稳定性改进 + gunicorn/setuptools 实战验证。
@@ -653,3 +683,127 @@ process_line(url) → _download_url(url, tmpdir) → self.opener.open(url) → u
 - 需要跨函数上下文才能判断危险性的 sink（如 `urlopen`、`exec` 在辅助函数中）
 
 **修复方向**：推荐 Hybrid Call Graph + 选择性展开（方案 1）。详见 `op.md` 四个方案分析。
+
+---
+
+## Step F：mlflow 实战验证 + SAST→Bulk 断裂修复 (2026-05-29)
+
+> mlflow v2.8.2（14,682 函数，1,649 索引文件）作为真实世界靶子，验证 agies 在大型项目上的端到端能力。两次测试分别验证 server 目录和全量项目。
+
+### 测试 1：server 目录聚焦（22 py 文件, 578 索引文件）
+
+**命令**: `agies audit mlflow/server/ --new-pipeline --no-static --model claude-sonnet-4-6`
+
+**结果**: 0 triggerable findings
+
+| 阶段 | 耗时 | 输出 |
+|------|------|------|
+| Director SAST 预扫描 | 即时 | 2 文件命中 critical sink |
+| Mapping Agent | 10 轮 | 项目建图 |
+| AttackSurface Agent | 10 轮 | 64.7s, 34,477 tokens, 从 proto 文件追踪到动态路由 |
+| Chain Bulk Analysis | 9 chains | 1 candidate（JS saveTags → 假阳性） |
+| Verification | 1 candidate | 40.6s, 17,161 tokens → triggerable=false ✅ |
+
+**发现**：攻击面检测成功（LLM 通过 protobuf `get_service_endpoints` 发现了动态路由），但 22 文件范围内没有 pickle 反序列化文件。
+
+### 测试 2：全量项目（1,649 文件, 6,385 索引函数）
+
+**命令**: `agies audit mlflow/ --new-pipeline --no-static --model claude-sonnet-4-6`
+
+**结果**: 30 verified findings, **0 triggerable**
+
+| 指标 | 值 |
+|------|----|
+| SAST 命中 | **190 文件**含 critical sink |
+| Entry points | 305（含 170 SAST-promoted） |
+| Cards 数 | 15（top-10 hot/warm） |
+| Phase 1 候选 | 253 |
+| 验证候选 | 30 |
+| Triggerable | **0** |
+
+**SAST 命中明细**（6 条规则匹配 190 文件）：
+- `cloudpickle.load` → `mlflow/pyfunc/model.py:411`, `mlflow/sklearn/__init__.py:450`, `mlflow/pytorch/__init__.py`
+- `subprocess.Popen` / `shell=True` → `mlflow/server/__init__.py`, `mlflow/utils/process.py`
+- `yaml.load` → `mlflow/utils/yaml.py`, `mlflow/gateway/config.py`
+
+### 架构断裂分析
+
+**断裂链路**：
+
+```
+SAST 发现 pickle.load                          ✅ (190 文件)
+  → 提升为 entry point                         ✅ (170 文件)
+  → 库模式截断 (library_mode, >50 → PageRank top-10)  ❌ pyfunc/model.py 被丢
+  → rank_cards 创建 card                        ❌ pickle 无 card
+  → bulk analysis 只分析 hot/warm[:10] cards    ❌ 根本不知有 pickle
+  → 零 candidate                                 ❌
+```
+
+**根因双重断裂**：
+
+1. **Director 层**（`agies/engine/director/__init__.py:263-270`）：库模式将 >50 entry points 减到 PageRank top 10。SAST-promoted 的 `pyfunc/model.py` 等库文件 PageRank 低，被丢弃。之后 `rank_cards` 永远不会为它创建 card。
+
+2. **Brain 层**（`agies/engine/brain.py:1120-1142`）：chain-mode bulk analysis 只处理 `hot_warm[:10]` cards。即使 pickle 文件有 card，只要分到 cold 档就不进 bulk。
+
+### 修复：SAST sink → 强制进 bulk 队列
+
+#### Fix 1：Director 库模式后重新注入 SAST sinks
+
+**文件**: `agies/engine/director/__init__.py:275-286`
+
+在 library mode 截断后，从 `prescan_sinks` 找回被丢弃的 SAST 关键文件重新注入 entry_points：
+
+```python
+if prescan_sinks:
+    dropped = prescan_sinks - self.entry_points
+    if dropped:
+        self.entry_points |= dropped
+```
+
+效果：`pyfunc/model.py` 等 pickle 文件在库模式后不会被丢，`rank_cards` 能为其创建 card。
+
+#### Fix 2：Brain bulk analysis 纳入 SAST-critical cold cards
+
+**文件**: `agies/engine/brain.py:1128-1154`
+
+在 chain-mode 选完 `hot_warm[:10]` 之后，从 `state.cold_cards` 中捞取带 SAST-critical 信号（`critical_sink`, `serialization`, `cmd_exec`, `sql_sink`, `dynamic_exec`）的 card，去重后追加最多 5 个：
+
+```python
+_SAST_CRITICAL = frozenset({
+    "critical_sink", "serialization", "cmd_exec",
+    "sql_sink", "dynamic_exec",
+})
+sast_cold = [c for c in state.cold_cards
+             if any(s.tag in _SAST_CRITICAL
+                    for s in getattr(c, "aggregated_signals", []))]
+```
+
+效果：即使 pickle 文件的 card 在 cold 档，只要 `aggregated_signals` 含 `serialization` 就进入 bulk analysis。
+
+### 修复后数据流
+
+```
+SAST 发现 pickle.load            ✅ 190 文件命中
+  → 提升为 entry point           ✅ 170 文件
+  → 库模式截断                    → re-add dropped sinks  ← 新
+  → rank_cards 创建 card          ✅ pickle 文件有 card   ← 新
+  → cold card, signal=serialization
+  → Brain 额外捞取 SAST cold card  ✅ 进入 bulk           ← 新
+  → bulk analysis 执行            → candidate 产生
+  → verification 验证              → triggerable?
+```
+
+### 测试状态
+
+- 587 tests passed, 1 known failure (test_missing_api_key)
+- 37 brain tests + 28 director tests 全部通过
+
+### 遗留弱点（仍未被证实）
+
+| 漏洞类型 | mlflow 实例 | 仍不能检测的原因 |
+|---------|------------|----------------|
+| 路径穿越绕过 | `validate_path_is_safe` bypass (CVE-2024-3573~3848) | LLM 信任了校验逻辑，没意识到可绕过 |
+| 反序列化 RCE | `cloudpickle.load` via HTTP 上传模型 → pyfunc 加载 | 需跨文件追踪 handler → model loading → pickle.load 多跳路径 |
+| 逻辑缺陷 | 校验缺失、协议隐式转换 | 无危险函数调用模式，无 taint sink |
+
+详见 `agies/engine/sourcer/extractor.py:396-439`（跨文件调用图缺失）和架构弱点文档。
