@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 
-from agies.engine.agents.base import AgentResponse, BaseAgent
-from agies.engine.brain import Brain
-from agies.engine.runner import AgentResult, Runner
-from agies.engine.sourcer.models import FunctionIndex
-from agies.engine.state import ProjectState
+from agies.engine.v2.agents.base import AgentResponse, BaseAgent
+from agies.engine.v2.brain import Brain
+from agies.engine.v2.runner import AgentResult, Runner
+from agies.engine.v2.sourcer.models import FunctionIndex
+from agies.engine.v2.state import ProjectState
 
 
 # ---------------------------------------------------------------------------
@@ -650,27 +650,27 @@ class TestCardFileAnalyzed:
     def test_not_analyzed(self):
         state = ProjectState(project_path="/tmp/test")
         state.key_files = [{"path": "app.py"}, {"path": "utils.py", "vuln_analyzed": True}]
-        from agies.engine.brain import _card_file_analyzed
+        from agies.engine.v2.brain import _card_file_analyzed
         card = FakeCard("app", 50, file_path="app.py")
         assert _card_file_analyzed(card, state) is False
 
     def test_analyzed(self):
         state = ProjectState(project_path="/tmp/test")
         state.key_files = [{"path": "app.py", "vuln_analyzed": True}]
-        from agies.engine.brain import _card_file_analyzed
+        from agies.engine.v2.brain import _card_file_analyzed
         card = FakeCard("app", 50, file_path="app.py")
         assert _card_file_analyzed(card, state) is True
 
     def test_empty_file_path(self):
         state = ProjectState(project_path="/tmp/test")
-        from agies.engine.brain import _card_file_analyzed
+        from agies.engine.v2.brain import _card_file_analyzed
         card = FakeCard("app", 50, file_path="")
         assert _card_file_analyzed(card, state) is True
 
 
 class TestPreloadContext:
     def test_empty_symbol_table(self):
-        from agies.engine.brain import Brain
+        from agies.engine.v2.brain import Brain
         card = FakeCard("test", 50, symbol_link_table={})
         result = Brain._preload_context(card, "/tmp/test")
         assert result == ""
@@ -678,7 +678,7 @@ class TestPreloadContext:
     def test_symbol_table_produces_chunks(self):
         import tempfile
         from pathlib import Path
-        from agies.engine.brain import Brain
+        from agies.engine.v2.brain import Brain
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pyfile = Path(tmpdir) / "app.py"
@@ -731,9 +731,9 @@ class TestBrainQuotaMonitor:
 
     def test_quota_records_usage_in_handle_result(self) -> None:
         """_handle_result calls record_usage when result has tokens."""
-        from agies.engine.agents.base import AgentResponse
-        from agies.engine.runner import AgentResult
-        from agies.engine.task_queue import TaskQueue
+        from agies.engine.v2.agents.base import AgentResponse
+        from agies.engine.v2.runner import AgentResult
+        from agies.engine.v2.task_queue import TaskQueue
 
         runner = Runner(llm=SIMPLE_LLM)
         brain = Brain(runner=runner, agents={}, token_budget=10.0)
@@ -754,9 +754,9 @@ class TestBrainQuotaMonitor:
 
     def test_quota_skipped_when_no_tokens(self) -> None:
         """_handle_result doesn't call record_usage when total_tokens is 0."""
-        from agies.engine.agents.base import AgentResponse
-        from agies.engine.runner import AgentResult
-        from agies.engine.task_queue import TaskQueue
+        from agies.engine.v2.agents.base import AgentResponse
+        from agies.engine.v2.runner import AgentResult
+        from agies.engine.v2.task_queue import TaskQueue
 
         runner = Runner(llm=SIMPLE_LLM)
         brain = Brain(runner=runner, agents={}, token_budget=10.0)

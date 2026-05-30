@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from agies.engine.agents.base import AgentResponse, ToolResult
-from agies.engine.agents.mapping import (
+from agies.engine.v2.agents.base import AgentResponse, ToolResult
+from agies.engine.v2.agents.mapping import (
     MAPPING_TOOLS,
     MappingAgent,
     MappingOutput,
@@ -17,9 +17,9 @@ from agies.engine.agents.mapping import (
     KeyFileEntry,
     TrustAssumption,
 )
-from agies.engine.brain import Brain
-from agies.engine.runner import Runner
-from agies.engine.state import ProjectState
+from agies.engine.v2.brain import Brain
+from agies.engine.v2.runner import Runner
+from agies.engine.v2.state import ProjectState
 
 
 # ---------------------------------------------------------------------------

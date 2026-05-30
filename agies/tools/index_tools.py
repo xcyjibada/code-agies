@@ -48,7 +48,7 @@ def record_knowledge(key: str, value: str, **kwargs: Any) -> str:
     """
     if not key or not value:
         return "Error: key and value are required"
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("record_knowledge", {"key": key, "value": value})
     if err:
         return f"Error: {err}"
@@ -60,7 +60,7 @@ def record_knowledge(key: str, value: str, **kwargs: Any) -> str:
 
 def lookup_function(name: str, file_glob: str = "", **kwargs: Any) -> str:
     """Find functions matching *name*. Optionally filter by file_glob."""
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("lookup_function", {"name": name})
     if err:
         return f"Error: {err}"
@@ -84,7 +84,7 @@ def lookup_function(name: str, file_glob: str = "", **kwargs: Any) -> str:
 
 def find_callers(name: str, **kwargs: Any) -> str:
     """Find functions that directly call *name*."""
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("find_callers", {"name": name})
     if err:
         return f"Error: {err}"
@@ -103,7 +103,7 @@ def find_callers(name: str, **kwargs: Any) -> str:
 
 def find_callees(name: str, **kwargs: Any) -> str:
     """Find functions called by *name*."""
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("find_callees", {"name": name})
     if err:
         return f"Error: {err}"
@@ -150,7 +150,7 @@ def get_call_chain_logic(
     """
     if _index is None:
         return "FunctionIndex not available"
-    from agies.engine.sast.pathfinder import CallChainAnalyzer
+    from agies.engine.v2.sast.pathfinder import CallChainAnalyzer
     finder = CallChainAnalyzer(_index)
     return finder.analyze(
         sink=sink_function,

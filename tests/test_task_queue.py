@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from agies.engine.task_queue import AgentType, TaskDesc, TaskQueue
+from agies.engine.v2.task_queue import AgentType, TaskDesc, TaskQueue
 
 
 class TestTaskQueue:

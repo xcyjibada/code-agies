@@ -77,7 +77,7 @@ def get_config():
 
 class TestTagExtraction:
     def test_extracts_def_tags(self, sample_project):
-        from agies.engine.director.repomap import get_tags_raw
+        from agies.engine.v2.director.repomap import get_tags_raw
 
         fname = os.path.join(sample_project, "app.py")
         tags = list(get_tags_raw(fname, "app.py"))
@@ -87,7 +87,7 @@ class TestTagExtraction:
         assert "helper_func" in def_names
 
     def test_extracts_ref_tags(self, sample_project):
-        from agies.engine.director.repomap import get_tags_raw
+        from agies.engine.v2.director.repomap import get_tags_raw
 
         fname = os.path.join(sample_project, "app.py")
         tags = list(get_tags_raw(fname, "app.py"))
@@ -96,7 +96,7 @@ class TestTagExtraction:
         assert len(ref_names) > 0
 
     def test_extracts_signal_tags(self, sample_project):
-        from agies.engine.director.repomap import get_tags_raw
+        from agies.engine.v2.director.repomap import get_tags_raw
 
         fname = os.path.join(sample_project, "utils.py")
         tags = list(get_tags_raw(fname, "utils.py"))
@@ -109,7 +109,7 @@ class TestTagExtraction:
         # json.loads is not currently pattern-matched in .scm; this is fine
 
     def test_app_py_signal_tags(self, sample_project):
-        from agies.engine.director.repomap import get_tags_raw
+        from agies.engine.v2.director.repomap import get_tags_raw
 
         fname = os.path.join(sample_project, "app.py")
         tags = list(get_tags_raw(fname, "app.py"))
@@ -119,7 +119,7 @@ class TestTagExtraction:
         assert "sql_sink" in signal_types
 
     def test_tag_namedtuple_structure(self, sample_project):
-        from agies.engine.director.repomap import get_tags_raw, Tag
+        from agies.engine.v2.director.repomap import get_tags_raw, Tag
 
         fname = os.path.join(sample_project, "app.py")
         tags = list(get_tags_raw(fname, "app.py"))
@@ -143,7 +143,7 @@ class TestTagExtraction:
 
 class TestBuildGraph:
     def test_build_graph_returns_graph_and_scores(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         fnames = [
@@ -159,8 +159,8 @@ class TestBuildGraph:
         assert len(pr_scores) > 0
 
     def test_signal_weighting_boosts_sink_files(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
-        from agies.engine.director.signals import SIGNAL_MUL
+        from agies.engine.v2.director.repomap import RepoMap
+        from agies.engine.v2.director.signals import SIGNAL_MUL
 
         rm = RepoMap(root=sample_project)
         fnames = [
@@ -180,7 +180,7 @@ class TestBuildGraph:
         assert app_score > 0 or utils_score > 0
 
     def test_entry_point_personalization(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         fnames = [
@@ -205,7 +205,7 @@ class TestBuildGraph:
 
 class TestSymbolLinkTable:
     def test_build_symbol_link_table(self):
-        from agies.engine.director.aggregator import (
+        from agies.engine.v2.director.aggregator import (
             NodeMetadata,
             build_symbol_link_table,
         )
@@ -228,7 +228,7 @@ class TestSymbolLinkTable:
         assert table["execute_query"] == "db.py:10"
 
     def test_symbol_link_table_deduplicates(self):
-        from agies.engine.director.aggregator import (
+        from agies.engine.v2.director.aggregator import (
             NodeMetadata,
             build_symbol_link_table,
         )
@@ -242,7 +242,7 @@ class TestSymbolLinkTable:
         assert table["main"] == "app.py:3"  # first wins
 
     def test_symbol_link_table_empty(self):
-        from agies.engine.director.aggregator import build_symbol_link_table
+        from agies.engine.v2.director.aggregator import build_symbol_link_table
 
         assert build_symbol_link_table([]) == {}
 
@@ -255,7 +255,7 @@ class TestSymbolLinkTable:
 class TestAttackPathScores:
     def test_simple_path(self):
         import networkx as nx
-        from agies.engine.director.aggregator import compute_attack_path_scores
+        from agies.engine.v2.director.aggregator import compute_attack_path_scores
 
         G = nx.MultiDiGraph()
         G.add_edge("app.py", "utils.py", weight=1.0)
@@ -274,7 +274,7 @@ class TestAttackPathScores:
 
     def test_no_path(self):
         import networkx as nx
-        from agies.engine.director.aggregator import compute_attack_path_scores
+        from agies.engine.v2.director.aggregator import compute_attack_path_scores
 
         G = nx.MultiDiGraph()
         G.add_edge("app.py", "utils.py", weight=1.0)
@@ -291,7 +291,7 @@ class TestAttackPathScores:
         assert scores.get("utils.py", 0) == 0
 
     def test_missing_nodes(self):
-        from agies.engine.director.aggregator import compute_attack_path_scores
+        from agies.engine.v2.director.aggregator import compute_attack_path_scores
         import networkx as nx
 
         G = nx.MultiDiGraph()
@@ -314,7 +314,7 @@ class TestAttackPathScores:
 class TestRankCards:
     def test_rank_cards_returns_sorted(self):
         import networkx as nx
-        from agies.engine.director.aggregator import rank_cards
+        from agies.engine.v2.director.aggregator import rank_cards
 
         G = nx.MultiDiGraph()
         G.add_edge("app.py", "utils.py", weight=1.0)
@@ -336,7 +336,7 @@ class TestRankCards:
 
     def test_card_has_symbol_link_table(self):
         import networkx as nx
-        from agies.engine.director.aggregator import rank_cards
+        from agies.engine.v2.director.aggregator import rank_cards
 
         G = nx.MultiDiGraph()
         cards = rank_cards(
@@ -359,7 +359,7 @@ class TestRankCards:
 
 class TestDirector:
     def test_director_run_returns_cards(self, sample_project):
-        from agies.engine.director import Director
+        from agies.engine.v2.director import Director
 
         director = Director(project_path=sample_project)
         cards = director.run(max_cards=10)
@@ -371,7 +371,7 @@ class TestDirector:
             assert hasattr(cards[0], "functions_involved")
 
     def test_director_run_empty_project(self):
-        from agies.engine.director import Director
+        from agies.engine.v2.director import Director
 
         with tempfile.TemporaryDirectory() as empty_dir:
             director = Director(project_path=empty_dir)
@@ -379,7 +379,7 @@ class TestDirector:
             assert cards == []
 
     def test_director_summary(self, sample_project):
-        from agies.engine.director import Director
+        from agies.engine.v2.director import Director
 
         director = Director(project_path=sample_project)
         director.run(max_cards=5)
@@ -394,7 +394,7 @@ class TestDirector:
 
 class TestSignals:
     def test_signal_mul_has_expected_keys(self):
-        from agies.engine.director.signals import SIGNAL_MUL
+        from agies.engine.v2.director.signals import SIGNAL_MUL
 
         assert "sql_sink" in SIGNAL_MUL
         assert "cmd_exec" in SIGNAL_MUL
@@ -402,14 +402,14 @@ class TestSignals:
         assert SIGNAL_MUL["sql_sink"] >= 50  # high risk
 
     def test_compute_confidence(self):
-        from agies.engine.director.signals import compute_confidence
+        from agies.engine.v2.director.signals import compute_confidence
 
         assert compute_confidence(5, 80) == 80.0
         assert compute_confidence(2, 80) == 56.0
         assert compute_confidence(1, 80) == 24.0
 
     def test_has_negative_signal(self):
-        from agies.engine.director.signals import has_negative_signal
+        from agies.engine.v2.director.signals import has_negative_signal
 
         assert has_negative_signal("test_code") is True
         assert has_negative_signal("sql_sink") is False
@@ -423,7 +423,7 @@ class TestSignals:
 class TestLibraryMode:
     def test_library_mode_caps_entry_points(self):
         """Verify the >50 → top 10 guard logic in Director."""
-        from agies.engine.director import Director
+        from agies.engine.v2.director import Director
 
         # Create a project with 3 files
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -454,14 +454,14 @@ def helper{i}(y):
 
 class TestRepoMap:
     def test_repo_map_initialization(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         assert rm.root == sample_project
         assert "RepoMap" in repr(rm)
 
     def test_repo_map_get_tags(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         fname = os.path.join(sample_project, "app.py")
@@ -473,14 +473,14 @@ class TestRepoMap:
         assert len(tags2) == len(tags)
 
     def test_repo_map_clear_cache(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         rm.clear_cache()
         assert len(rm._tags_cache) == 0
 
     def test_repo_map_rel_fname(self, sample_project):
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         rm = RepoMap(root=sample_project)
         fname = os.path.join(sample_project, "app.py")
@@ -488,7 +488,7 @@ class TestRepoMap:
         assert rel == "app.py"
 
     def test_get_scm_fname(self):
-        from agies.engine.director.repomap import get_scm_fname
+        from agies.engine.v2.director.repomap import get_scm_fname
 
         path = get_scm_fname("python")
         assert path is not None

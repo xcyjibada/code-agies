@@ -184,7 +184,7 @@ class AnthropicProvider(LLMProvider):
     ) -> LLMResponse:
         # Apply prompt cache annotations (system + last user/tool messages)
         # to reduce costs on repeated system prompts and tool results.
-        from agies.engine.context import apply_cache_annotations
+        from agies.engine.v2.context import apply_cache_annotations
 
         apply_cache_annotations(messages)
 

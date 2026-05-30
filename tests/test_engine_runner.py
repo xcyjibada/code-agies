@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from agies.engine.agents.base import AgentResponse, BaseAgent
-from agies.engine.runner import AgentCall, AgentResult, Runner
+from agies.engine.v2.agents.base import AgentResponse, BaseAgent
+from agies.engine.v2.runner import AgentCall, AgentResult, Runner
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ class SlowAgent(BaseAgent):
 @dataclass
 class MockLLM:
     def chat_completion(self, messages, tools=None, **kwargs):
-        from agies.engine.agents.base import ToolCall  # noqa: PLC0415
+        from agies.engine.v2.agents.base import ToolCall  # noqa: PLC0415
         return type("Resp", (), {"content": "mock", "tool_calls": None, "usage": None})()
 
 

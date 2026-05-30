@@ -141,10 +141,10 @@ def main() -> None:
     print("STEP 2: Running Brain → Mapping → Vulnerability pipeline", flush=True)
     print("=" * 60, flush=True)
 
-    from agies.engine.runner import Runner
-    from agies.engine.brain import Brain
-    from agies.engine.agents.mapping import MappingAgent, MappingOutput
-    from agies.engine.agents.vulnerability import (
+    from agies.engine.v2.runner import Runner
+    from agies.engine.v2.brain import Brain
+    from agies.engine.v2.agents.mapping import MappingAgent, MappingOutput
+    from agies.engine.v2.agents.vulnerability import (
         VulnerabilityAgent, VulnerabilityOutput,
     )
 

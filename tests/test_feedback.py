@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from agies.engine.feedback import (
+from agies.engine.v2.feedback import (
     CONFIRMED_BOOST,
     FP_SUPPRESS_MUL,
     FP_THRESHOLD,
@@ -358,7 +358,7 @@ class TestBuildGraphFeedback:
     def test_confirmed_ident_boosts_edge_weight(self) -> None:
         """A confirmed ident should have higher edge weights, leading to
         higher PageRank for its file."""
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # File A defines a confirmed ident, file B references it
@@ -390,7 +390,7 @@ def handle_request():
     def test_suppressed_file_lowers_signal_score(self) -> None:
         """A file in suppressed_files should have its signal scores reduced,
         leading to lower PageRank contribution."""
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a file with signals
@@ -422,7 +422,7 @@ def run_cmd(cmd):
 
     def test_both_params_simultaneously(self) -> None:
         """confirmed_idents and suppressed_files should work together."""
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         with tempfile.TemporaryDirectory() as tmpdir:
             code = """
@@ -446,7 +446,7 @@ def run_build():
 
     def test_empty_sets_noop(self) -> None:
         """Passing empty sets should match default behavior."""
-        from agies.engine.director.repomap import RepoMap
+        from agies.engine.v2.director.repomap import RepoMap
 
         with tempfile.TemporaryDirectory() as tmpdir:
             Path(tmpdir, "app.py").write_text("x = 1")
@@ -481,9 +481,9 @@ class TestBrainFeedbackIntegration:
 
     def test_brain_completes_with_mapping_only(self) -> None:
         """Brain still completes when feedback is loaded/recorded."""
-        from agies.engine.agents.base import AgentResponse
-        from agies.engine.brain import Brain
-        from agies.engine.runner import Runner
+        from agies.engine.v2.agents.base import AgentResponse
+        from agies.engine.v2.brain import Brain
+        from agies.engine.v2.runner import Runner
         from dataclasses import dataclass
 
         @dataclass

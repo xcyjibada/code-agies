@@ -57,7 +57,7 @@ def main() -> None:
         print()
 
     # --- Create MappingAgent ---
-    from agies.engine.agents.mapping import MappingAgent
+    from agies.engine.v2.agents.mapping import MappingAgent
 
     agent = MappingAgent()
 
@@ -94,7 +94,7 @@ def main() -> None:
 
     # --- Validate output against schema ---
     if response.output:
-        from agies.engine.agents.mapping import MappingOutput
+        from agies.engine.v2.agents.mapping import MappingOutput
 
         print("=" * 60)
         print("SCHEMA VALIDATION")

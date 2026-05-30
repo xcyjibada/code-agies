@@ -20,7 +20,7 @@ def _find_rg() -> str | None:
 
 def grep_search(pattern: str, path: str, glob: str | None = None) -> str:
     """Search for a pattern in files using ripgrep (falls back to grep)."""
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("grep_search", {"pattern": pattern, "glob": glob})
     if err:
         return f"Error: {err}"

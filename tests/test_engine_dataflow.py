@@ -18,17 +18,17 @@ from typing import Any
 
 import pytest
 
-from agies.engine.agents.base import AgentResponse, ToolResult
-from agies.engine.agents.dataflow import (
+from agies.engine.v2.agents.base import AgentResponse, ToolResult
+from agies.engine.v2.agents.dataflow import (
     DATAFLOW_TOOLS,
     DataFlowAgent,
     DataFlowPath,
     DataFlowOutput,
     DataFlowPathStep,
 )
-from agies.engine.brain import Brain
-from agies.engine.runner import Runner, AgentResult, AgentCall
-from agies.engine.state import ProjectState
+from agies.engine.v2.brain import Brain
+from agies.engine.v2.runner import Runner, AgentResult, AgentCall
+from agies.engine.v2.state import ProjectState
 
 
 @dataclass
@@ -683,7 +683,7 @@ class TestExistingBrainStillWorks:
 
     def test_mapping_only_brain_stops(self) -> None:
         """Brain with only MappingAgent should still work."""
-        from agies.engine.agents.mapping import MappingAgent
+        from agies.engine.v2.agents.mapping import MappingAgent
 
         runner = Runner(llm=SIMPLE_LLM, max_workers=1)
         mapping_agent = MappingAgent()

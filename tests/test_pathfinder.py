@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from agies.engine.sast.pathfinder import (
+from agies.engine.v2.sast.pathfinder import (
     NOISE_FUNCTIONS,
     CallChainAnalyzer,
     _is_noise_call,
@@ -25,7 +25,7 @@ from agies.engine.sast.pathfinder import (
     _has_auth_gate,
     _detect_lang,
 )
-from agies.engine.sourcer.models import FunctionIndex, SourceFile, SourceFunction
+from agies.engine.v2.sourcer.models import FunctionIndex, SourceFile, SourceFunction
 
 
 # ===================================================================

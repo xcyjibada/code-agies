@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agies.engine.agents.base import AgentResponse
-from agies.engine.agents.verify import VerifyAgent
-from agies.engine.sast.matcher import SASTMatcher, get_matcher
+from agies.engine.v2.agents.base import AgentResponse
+from agies.engine.v2.agents.verify import VerifyAgent
+from agies.engine.v2.sast.matcher import SASTMatcher, get_matcher
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -267,7 +267,7 @@ class TestVerificationAgentSast:
     """_apply_sast on VerificationAgent — works on top-level output fields."""
 
     def test_tags_evidence_on_triggerable(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -287,7 +287,7 @@ class TestVerificationAgentSast:
             assert any("SAST:" in e for e in response.output["evidence"])
 
     def test_boosts_confidence_on_match(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -306,7 +306,7 @@ class TestVerificationAgentSast:
             assert response.output["confidence"] == "high"
 
     def test_no_candidate_noop(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         response = AgentResponse(
@@ -323,7 +323,7 @@ class TestVerificationAgentSast:
         assert response.output["evidence"] == []
 
     def test_no_match_unchanged(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -343,7 +343,7 @@ class TestVerificationAgentSast:
             assert response.output["confidence"] == "low"
 
     def test_relative_path_resolved(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -363,7 +363,7 @@ class TestVerificationAgentSast:
             assert any("SAST:" in e for e in response.output["evidence"])
 
     def test_file_not_found_skips(self) -> None:
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         candidate = type("C", (), {"file_path": "/nonexistent/vuln.py"})()

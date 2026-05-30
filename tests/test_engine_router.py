@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agies.engine.router import (
+from agies.engine.v2.router import (
     percentile,
     classify_card,
     classify_cards,

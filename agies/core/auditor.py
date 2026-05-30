@@ -35,7 +35,7 @@ def _run_new_pipeline(
 ) -> None:
     """Run the new Xint-inspired pipeline: sourcer → bulk → verification."""
     from agies.engine import Brain, Runner
-    from agies.engine.agents import (
+    from agies.engine.v2.agents import (
         MappingAgent, AttackSurfaceAgent, SourcerAgent, BulkAnalysisAgent,
         VerificationAgent, VulnerabilityAgent, ReportAgent,
     )
@@ -58,7 +58,7 @@ def _run_new_pipeline(
         # Just build the index, no LLM calls
         console.print("  [dim]Static-only: building FunctionIndex...[/dim]")
         with console.status("[bold]Building FunctionIndex...[/bold]"):
-            from agies.engine.sourcer.loader import build_index
+            from agies.engine.v2.sourcer.loader import build_index
             idx = build_index(target)
         s = idx.summary()
         console.print(f"  Files: {s['files']}, Functions: {s['functions']}, Languages: {s['languages']}")
@@ -66,7 +66,7 @@ def _run_new_pipeline(
 
     # LLM-powered pipeline
     from agies.llm import get_model
-    from agies.engine.prompt.manager import init_prompts
+    from agies.engine.v2.prompt.manager import init_prompts
     model_instance = get_model(model)
     if not model_instance.api_key:
         console.print(f"[red]Error: {model_instance.env_key_name} environment variable not set[/red]")

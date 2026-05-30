@@ -29,19 +29,33 @@ agies audit /tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f24
 
 ## Architecture
 
-### Current file structure (2026-05-25)
+### Current file structure (2026-05-30)
 ```
 agies/
-├── engine/                       # State machine engine (multi-agent)
-│   ├── brain.py                  # Decision loop (submit → poll → execute → register)
-│   ├── state.py                  # ProjectState + dedup + checkpoint + blackboard
-│   ├── runner.py                 # ThreadPoolExecutor parallel executor
-│   ├── context.py                # Context compression + Anthropic prompt cache
-│   ├── router.py                 # Priority Router (QuotaMonitor + Crash Defender + percentile)
-│   ├── feedback.py               # Cross-scan feedback loop (FeedbackStore persistence)
-│   ├── director/                 # Intelligence aggregation (Phase 0)
-│   │   ├── __init__.py           # Director orchestrator
-│   │   ├── repomap.py            # Risk-weighted PageRank (Aider-based)
+├── engine/                       # Engine — v2 (xint-style) + v3 (graph-based)
+│   ├── v2/                       # v2: per-function bulk LLM analysis pipeline
+│   │   ├── brain.py              # Decision loop (submit → poll → execute → register)
+│   │   ├── state.py              # ProjectState + dedup + checkpoint + blackboard
+│   │   ├── runner.py             # ThreadPoolExecutor parallel executor
+│   │   ├── context.py            # Context compression + Anthropic prompt cache
+│   │   ├── router.py             # Priority Router (QuotaMonitor + Crash Defender + percentile)
+│   │   ├── feedback.py           # Cross-scan feedback loop (FeedbackStore persistence)
+│   │   ├── director/             # Intelligence aggregation (Phase 0)
+│   │   ├── sast/                 # SAST pattern matching engine
+│   │   ├── agents/               # 11 agent definitions
+│   │   ├── sourcer/              # Function-level code indexing
+│   │   ├── analysis/             # Phase 1 bulk analysis
+│   │   ├── prompt/ + prompts/    # Prompt management
+│   │   ├── task_queue/           # Priority task scheduling
+│   │   └── rules/                # SAST YAML rules (6 rules)
+│   │
+│   ├── graph/                    # v3: Joern/tree-sitter graph generators
+│   │   ├── base.py               # GraphGenerator ABC
+│   │   ├── models.py             # GraphNode, ProgramGraph, ProgramSlice
+│   │   ├── joern.py              # JoernGraphGenerator (Docker CPG)
+│   │   ├── joern_docker.py       # Docker lifecycle management
+│   │   ├── treesitter.py         # TreeSitterGraphGenerator
+│   │   └── codeql.py             # CodeQLGraphGenerator (stub)
 │   │   ├── signals.py            # 13 SAST signal types + weights
 │   │   └── aggregator.py         # Attack chain cards (EntryAnalysisCard, has_path)
 │   ├── sast/                     # SAST pattern matching engine
@@ -144,10 +158,17 @@ mapping → sourcer (tree-sitter function index, no LLM)
 1. Read `IDEA.md` for current architecture thinking and design decisions
 2. Read `PROGRESS.md` for current state and task checklist
 3. Read `DEVELOPMENT.md` for original architecture context
-4. Implement per checklist
-5. Run `python3 -m pytest tests/ -v` before marking done (586 pass, 2 known failures)
-6. Update `PROGRESS.md` with date when completing items
-7. Update `IDEA.md` if architecture decisions change
+4. Read `docs/v3/plan.md` for v3 graph-based vulnerability discovery plan
+5. Read `docs/v3/noise_reduction_research.md` for noise reduction research
+6. Implement per checklist
+7. Run `python3 -m pytest tests/ -v` before marking done (586 pass, 2 known failures)
+8. Update `PROGRESS.md` with date when completing items
+9. Update `IDEA.md` if architecture decisions change
+
+### Archive Docs
+- `docs/v1/` — tree-sitter / SAST era docs (cahe.md, sandyaa_paper.md, etc.)
+- `docs/v2/` — graph layer / Joern / CodeQL era docs (ARCHITECTURE-v2.md, etc.)
+- `docs/v3/` — graph-based vulnerability discovery (当前阶段)
 
 ### Quick Test
 ```bash

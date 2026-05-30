@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agies.engine.analysis.bulk import analyze_single_functions
-from agies.engine.sourcer.models import FunctionIndex, SourceFile, SourceFunction
+from agies.engine.v2.analysis.bulk import analyze_single_functions
+from agies.engine.v2.sourcer.models import FunctionIndex, SourceFile, SourceFunction
 
 
 @dataclass

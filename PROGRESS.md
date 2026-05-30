@@ -807,3 +807,48 @@ SAST 发现 pickle.load            ✅ 190 文件命中
 | 逻辑缺陷 | 校验缺失、协议隐式转换 | 无危险函数调用模式，无 taint sink |
 
 详见 `agies/engine/sourcer/extractor.py:396-439`（跨文件调用图缺失）和架构弱点文档。
+
+---
+
+## v3: 基于静态调用链图 + 数据流图的漏洞发现（当前阶段）
+
+> 2026-05-30 进入 v3。核心变化：从"给 LLM 看代码"变为"给 LLM 看图"。
+> v2 完成了图生成层（Joern/tree-sitter ABC 接口），v3 在图之上做噪音剪枝、数据流分析、攻击路径枚举。
+> 详见 `docs/v3/plan.md`。
+
+### 已完成
+
+- [x] 2026-05-30: v1/v2 文档归档到 `docs/v1/`、`docs/v2/`
+- [x] 2026-05-30: 去噪技术调研 → `docs/v3/noise_reduction_research.md`
+  - OriginPruner、ZeroFalse、LLM4PFA、Aikido Reachability 等
+- [x] 2026-05-30: v3 规划文档 → `docs/v3/plan.md`
+
+### P1: 噪音剪枝
+
+- [ ] `pruner.py` — FileLevelPruner（protobuf/vendor/test 路径过滤）
+- [ ] `pruner.py` — OriginPruner（方法起源聚类，builder 样板去重）
+- [ ] `pruner.py` — ReachabilityPruner（从入口点反向 BFS）
+- [ ] 在 mlflow Java 图上验证：1,850 边 → <100 边
+
+### P2: 数据流分析
+
+- [ ] `dataflow.py` — Joern 脚本提取 REACHING_DEF 数据流边
+- [ ] `dataflow.py` — tree-sitter 轻量级符号执行（Python 回退）
+- [ ] 集成到 ProgramGraph，新增 DataFlowPath 数据类型
+
+### P3: 可达性 + 攻击路径
+
+- [ ] `reachability.py` — 入口点 → sink 可达性矩阵
+- [ ] `aggregator.py` — 攻击路径评分增强（结合数据流完整性）
+
+### P4: LLM 分析回接
+
+- [ ] `slicer_v3.py` — v3 切片格式（含调用链 + 数据流路径）
+- [ ] Bulk Analysis 以切片为单位输入 LLM
+- [ ] Director `use_v3=True` 开关
+
+### v3 待定项
+
+- [ ] 上下文管理（原 Phase 3 内容，v3 完成后做）
+- [ ] POC 生成（原 Phase 4）
+- [ ] SARIF 输出（原 Phase 5）

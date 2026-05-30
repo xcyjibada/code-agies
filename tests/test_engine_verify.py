@@ -18,16 +18,16 @@ from typing import Any
 
 import pytest
 
-from agies.engine.agents.base import AgentResponse, ToolResult
-from agies.engine.agents.verify import (
+from agies.engine.v2.agents.base import AgentResponse, ToolResult
+from agies.engine.v2.agents.verify import (
     VERIFY_TOOLS,
     VerifyAgent,
     VerifiedFinding,
     VerifyOutput,
 )
-from agies.engine.brain import Brain
-from agies.engine.runner import Runner, AgentResult, AgentCall
-from agies.engine.state import ProjectState
+from agies.engine.v2.brain import Brain
+from agies.engine.v2.runner import Runner, AgentResult, AgentCall
+from agies.engine.v2.state import ProjectState
 
 
 @dataclass

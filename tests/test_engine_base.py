@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agies.engine.agents.base import (
+from agies.engine.v2.agents.base import (
     BaseAgent,
     AgentResponse,
     ToolCall,
@@ -610,7 +610,7 @@ class TestBaseAgentLogging:
     def test_no_hardcoded_strings_in_logic(self) -> None:
         """All prompt fragments should be module-level constants."""
         import inspect
-        import agies.engine.agents.base as base_module
+        import agies.engine.v2.agents.base as base_module
 
         source = inspect.getsource(base_module)
         method_bodies = []
@@ -671,5 +671,5 @@ class TestAgentBuildMessages:
 def test_import_does_not_break_existing_tests() -> None:
     """Importing the new module should not affect existing imports."""
     from agies.engine import ProjectState  # noqa: F811
-    from agies.engine.state import ProjectState as PS
+    from agies.engine.v2.state import ProjectState as PS
     assert ProjectState is PS

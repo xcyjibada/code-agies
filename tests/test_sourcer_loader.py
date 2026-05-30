@@ -6,9 +6,9 @@ import os
 import tempfile
 from pathlib import Path
 
-from agies.engine.sourcer.extractor import extract_functions
-from agies.engine.sourcer.loader import build_index
-from agies.engine.sourcer.models import SourceFile
+from agies.engine.v2.sourcer.extractor import extract_functions
+from agies.engine.v2.sourcer.loader import build_index
+from agies.engine.v2.sourcer.models import SourceFile
 
 
 def _write_py_file(tmpdir: str, name: str, code: str) -> str:

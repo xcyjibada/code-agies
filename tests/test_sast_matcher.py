@@ -6,8 +6,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from agies.engine.sast import MatchResult, SASTRule, confidence_from_severity
-from agies.engine.sast.matcher import (
+from agies.engine.v2.sast import MatchResult, SASTRule, confidence_from_severity
+from agies.engine.v2.sast.matcher import (
     SASTMatcher,
     load_rules_from_dir,
     _ext_to_lang,

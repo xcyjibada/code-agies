@@ -3,7 +3,7 @@
 
 def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
     """Read a file or a range of lines from a file."""
-    from agies.engine.router import validate_tool_call
+    from agies.engine.v2.router import validate_tool_call
     err = validate_tool_call("read_file", {"file_path": path})
     if err:
         return f"Error: {err}"

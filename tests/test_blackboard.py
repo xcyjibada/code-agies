@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from agies.engine.state import ProjectState
+from agies.engine.v2.state import ProjectState
 
 
 # ===================================================================
@@ -81,7 +81,7 @@ class TestDiscoveredLogic:
 class TestPriorKnowledgeInjection:
     def test_prior_knowledge_in_system_prompt(self) -> None:
         """Prior knowledge should be injected as [PRIOR_KNOWLEDGE] block."""
-        from agies.engine.agents.base import BaseAgent
+        from agies.engine.v2.agents.base import BaseAgent
 
         class TestAgent(BaseAgent):
             agent_id = "test"
@@ -116,7 +116,7 @@ class TestPriorKnowledgeInjection:
 
     def test_no_prior_knowledge_no_change(self) -> None:
         """Without prior_knowledge param, system prompt is unchanged."""
-        from agies.engine.agents.base import BaseAgent
+        from agies.engine.v2.agents.base import BaseAgent
 
         class TestAgent(BaseAgent):
             agent_id = "test"
@@ -136,7 +136,7 @@ class TestPriorKnowledgeInjection:
 
 class TestCollectPriorKnowledge:
     def test_found(self) -> None:
-        from agies.engine.brain import _collect_prior_knowledge
+        from agies.engine.v2.brain import _collect_prior_knowledge
 
         state = ProjectState()
         state.record_knowledge("db_query", "relevant discovery")
@@ -144,14 +144,14 @@ class TestCollectPriorKnowledge:
         assert "relevant discovery" in result
 
     def test_not_found(self) -> None:
-        from agies.engine.brain import _collect_prior_knowledge
+        from agies.engine.v2.brain import _collect_prior_knowledge
 
         state = ProjectState()
         result = _collect_prior_knowledge("ghost", state)
         assert result == ""
 
     def test_empty_key(self) -> None:
-        from agies.engine.brain import _collect_prior_knowledge
+        from agies.engine.v2.brain import _collect_prior_knowledge
 
         state = ProjectState()
         assert _collect_prior_knowledge("", state) == ""
@@ -243,7 +243,7 @@ class TestToolRegistration:
 
 class TestVerificationAgentTools:
     def test_record_knowledge_included(self) -> None:
-        from agies.engine.agents.verification_agent import VERIFICATION_TOOLS
+        from agies.engine.v2.agents.verification_agent import VERIFICATION_TOOLS
 
         names = {t["name"] for t in VERIFICATION_TOOLS}
         assert "record_knowledge" in names
@@ -251,7 +251,7 @@ class TestVerificationAgentTools:
 
 class TestVerifyAgentTools:
     def test_record_knowledge_included(self) -> None:
-        from agies.engine.agents.verify import VERIFY_TOOLS
+        from agies.engine.v2.agents.verify import VERIFY_TOOLS
 
         names = {t["name"] for t in VERIFY_TOOLS}
         assert "record_knowledge" in names
@@ -265,9 +265,9 @@ class TestVerifyAgentTools:
 class TestBrainStateIntegration:
     def test_brain_sets_state_on_run(self) -> None:
         """Brain.run() should call set_state so record_knowledge works."""
-        from agies.engine.agents.base import AgentResponse
-        from agies.engine.brain import Brain
-        from agies.engine.runner import Runner
+        from agies.engine.v2.agents.base import AgentResponse
+        from agies.engine.v2.brain import Brain
+        from agies.engine.v2.runner import Runner
         from dataclasses import dataclass
 
         @dataclass
@@ -313,9 +313,9 @@ class TestPriorKnowledgeInBuildCalls:
     def test_verification_gets_prior_knowledge(self) -> None:
         """When a candidate's function_name is in discovered_logic,
         the verification AgentCall should include prior_knowledge."""
-        from agies.engine.brain import Brain
-        from agies.engine.runner import Runner, AgentCall
-        from agies.engine.sourcer.models import CandidateFinding
+        from agies.engine.v2.brain import Brain
+        from agies.engine.v2.runner import Runner, AgentCall
+        from agies.engine.v2.sourcer.models import CandidateFinding
 
         # Create a brain with a mock runner
         class MockRunner:
@@ -344,7 +344,7 @@ class TestPriorKnowledgeInBuildCalls:
         ]
 
         # Build calls for verification
-        from agies.engine.agents.verification_agent import VerificationAgent
+        from agies.engine.v2.agents.verification_agent import VerificationAgent
 
         agent = VerificationAgent()
         calls = brain._build_calls("verification", agent, state)
