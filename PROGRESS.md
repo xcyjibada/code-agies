@@ -810,45 +810,87 @@ SAST 发现 pickle.load            ✅ 190 文件命中
 
 ---
 
-## v3: 基于静态调用链图 + 数据流图的漏洞发现（当前阶段）
+## v3: 基于 CodeQL source→sink + 并行 LLM 的漏洞发现（当前阶段）
 
-> 2026-05-30 进入 v3。核心变化：从"给 LLM 看代码"变为"给 LLM 看图"。
-> v2 完成了图生成层（Joern/tree-sitter ABC 接口），v3 在图之上做噪音剪枝、数据流分析、攻击路径枚举。
+> 2026-05-30 进入 v3。2026-06-02 revised plan（废弃 Joern PDG，改用 CodeQL source→sink 查询）。
+> 核心变化：从"给 LLM 看代码"变为"给 LLM 看图 + 并行分析"。
 > 详见 `docs/v3/plan.md`。
 
-### 已完成
+### 已完成（修订版计划 P0-P11）
 
 - [x] 2026-05-30: v1/v2 文档归档到 `docs/v1/`、`docs/v2/`
 - [x] 2026-05-30: 去噪技术调研 → `docs/v3/noise_reduction_research.md`
-  - OriginPruner、ZeroFalse、LLM4PFA、Aikido Reachability 等
-- [x] 2026-05-30: v3 规划文档 → `docs/v3/plan.md`
+- [x] 2026-05-30: v3 规划文档 → `docs/v3/plan.md`（含 op.md 驱动修订）
+- [x] 2026-06-01: CodeQL 查询模块（codeql/ 含 models + query + runner）
+- [x] 2026-06-01: 7 类 QL 查询（rce/lfi/ssrf/sqli/xss/afo/idor/ + rce_dataflow）
+- [x] **2026-06-04: P0 目录骨架** — 所有 v3 子模块目录 + `__init__.py`
+- [x] **2026-06-04: P3 切片排序引擎** — `slicer/sorter.py`（score_path + select_top_k + is_anomalous + Explore/Exploit 分配）
+- [x] **2026-06-04: P4 漏洞专项 prompt** — `prompts/` 7 类 prompt（rce/lfi/ssrf/sqli/xss/afo/idor/readme_summary），含 bypass 示例
+- [x] **2026-06-04: P5 Intent Agent 池** — `agents/intent_agent.py`（4-5 函数 → 开发者意图）+ `agents/merge.py`（确定性排列）
+- [x] **2026-06-04: P6 Logic Agent 矛盾检测** — `agents/logic_agent.py`（伪代码链 → 意图/实现矛盾分析）
+- [x] **2026-06-04: P7 黑板聚合器** — `aggregator/blackboard.py`（Intent 缓存 + 跨路径知识注入 + 合并）
+- [x] **2026-06-04: P8 路径代码加载器** — `agents/path_code_loader.py`（路径坐标 → 函数分组 + 黑板缓存查询）
+- [x] **2026-06-04: TreeSitterPathFinder** — `pathfinder/`（tree-sitter 代替 CodeQL 做 Phase A 路径发现，输出兼容 CodeQlPath）
+- [x] **2026-06-04: 主编排器更新** — `runner.py` 默认走 tree-sitter，可选 CodeQL
+- [x] **2026-06-04: 测试套件** — `test_v3_slicer.py`(22) + `test_v3_prompts.py`(10) + `test_v3_blackboard.py`(12) + `test_v3_agents.py`(16) + `test_v3_pathfinder.py`(15+)
 
-### P1: 噪音剪枝
+### v3 当前模块结构
 
-- [ ] `pruner.py` — FileLevelPruner（protobuf/vendor/test 路径过滤）
-- [ ] `pruner.py` — OriginPruner（方法起源聚类，builder 样板去重）
-- [ ] `pruner.py` — ReachabilityPruner（从入口点反向 BFS）
-- [ ] 在 mlflow Java 图上验证：1,850 边 → <100 边
+```
+agies/engine/v3/
+├── __init__.py                    # 模块说明
+├── runner.py                      # 主编排器（已有，CLI 入口）
+├── codeql/                        # CodeQL 集成（已有）
+│   ├── models.py                  #   CodeQlPath, PathNode, VulnType
+│   ├── query.py                   #   CodeQLQueryRunner ― 建库 + 查询 + 解析
+│   └── queries/                   #   8 个 QL 查询文件
+├── slicer/                        # ★ NEW 切片排序
+│   ├── models.py                  #   PathSlice, SortResult
+│   └── sorter.py                  #   score_path, select_top_k, is_anomalous
+├── prompts/                       # ★ NEW 漏洞专项 prompt
+│   ├── rce.py / lfi.py / ssrf.py / sqli.py / xss.py / afo.py / idor.py
+│   └── readme_summary.py          #   README 总结 prompt
+├── aggregator/                    # ★ NEW 黑板聚合
+│   ├── blackboard.py              #   Intent 缓存 + 知识注入 + 相位结果
+│   └── models.py                  #   IntentResult, KnowledgeEntry, AgentPhaseResult
+└── agents/                        # ★ NEW 三阶段 Agent 池
+    ├── intent_agent.py            #   4-5 函数 → 开发者意图
+    ├── logic_agent.py             #   伪代码链 → 矛盾检测
+    ├── merge.py                   #   Intent 输出确定性排列
+    ├── path_code_loader.py        #   路径坐标 → 分组 + 黑板缓存查询
+    └── aggregator.py              #   多条路径结果合并 + 排序
+```
 
-### P2: 数据流分析
+### 待实现（依赖 CodeQL CLI）
 
-- [ ] `dataflow.py` — Joern 脚本提取 REACHING_DEF 数据流边
-- [ ] `dataflow.py` — tree-sitter 轻量级符号执行（Python 回退）
-- [ ] 集成到 ProgramGraph，新增 DataFlowPath 数据类型
+| 步骤 | 内容 | 依赖 | 状态 |
+|------|------|------|------|
+| P1 | CodeQL 数据库创建 + 查询执行 | **CodeQL CLI 安装** | 🔴 等待下载 |
+| P2 | 所有 QL 查询已在代码库中 | 无 | ✅ 已完成 |
+| P3-P7 | 切片/Agent/黑板（纯代码） | 无 | ✅ 已完成 |
+| P8 | 主编排器集成（runner.py 已有骨架） | P1 | 🟡 骨架已搭 |
+| P9 | CLI 集成 `--v3` 开关 | P1 | 🟡 等待 |
+| P10 | 动态沙箱验证（Docker PoC） | 无 | 🔴 待做 |
+| P11 | 已知 CVE 项目上验证 | P1+P9 | 🔴 待做 |
 
-### P3: 可达性 + 攻击路径
+### 关键设计决策（记录）
 
-- [ ] `reachability.py` — 入口点 → sink 可达性矩阵
-- [ ] `aggregator.py` — 攻击路径评分增强（结合数据流完整性）
+- **Explore/Exploit 分离**：25 exploit（高评分热门路径）+ 5 explore（反常路径），解决确认偏误
+- **Sanitizer 降权改为加分**：`score *= 0.5` → `score += 0.2`，高价值 0-day 往往是 bypass 而非缺失
+- **Intent/Logic 分离**：Intent Agent 只问"在做什么"，Logic Agent 只找"矛盾在哪"，各做一件 LLM 擅长的事
+- **黑板缓存**：同一函数在多条路径中出现时，Intent 只计算一次，后面直接读缓存
+- **泛化 sink 权重**：非标准 sink 默认权重 0.3（非 0），Explore 槽捕获
+- **数据流查询为可选项**：rce_dataflow.ql 失败不阻塞 sink 查询
 
-### P4: LLM 分析回接
+### 需要下载 CodeQL CLI 后验证
 
-- [ ] `slicer_v3.py` — v3 切片格式（含调用链 + 数据流路径）
-- [ ] Bulk Analysis 以切片为单位输入 LLM
-- [ ] Director `use_v3=True` 开关
+```bash
+# 1. 安装
+python3 -c "from agies.engine.graph.codeql import CodeQLGraphGenerator; CodeQLGraphGenerator.ensure_installed()"
 
-### v3 待定项
+# 2. 运行测试
+python3 -m pytest tests/test_v3_*.py -v --tb=short
 
-- [ ] 上下文管理（原 Phase 3 内容，v3 完成后做）
-- [ ] POC 生成（原 Phase 4）
-- [ ] SARIF 输出（原 Phase 5）
+# 3. 端到端
+agies audit /tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f2408c --v3
+```

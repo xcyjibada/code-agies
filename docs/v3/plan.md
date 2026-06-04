@@ -8,6 +8,24 @@
 >   - 新增 **切片排序引擎** — 路径按风险评分排序，Top K 喂 LLM
 >   - 引入 **VulnHuntr 风格专项 prompt** — 每种漏洞类型有独立分析指引 + bypass 示例
 >   - **并行 LLM Agent** — 多条路径同时分析，复用 agies 现有 runner
+>
+> ### op.md 驱动的修订记录（2026-06-03）
+>
+> 以下修订源自对 op.md（Huntr 实战策略文档）的技术批评分析：
+>
+> | 意见来源 | 意见 | 修订位置 | 修正确认 |
+> |---------|------|---------|---------|
+> | op.md 第 1 轮 | 编译屏障 — Java 建库成功率低 | 发现 6 | ✅ 第一阶段聚焦 Python/JS/TS |
+> | op.md 第 1 轮 | Sanitizer 降权 (`score *= 0.5`) 漏掉高价值 bypass | 排序指标 | ✅ 改为 `score += 0.2` + 标记 [BYPASS_TARGET] |
+> | op.md 第 1 轮 | 动态类型断流导致 CodeQL 路径为 0 | 回退方案 | ✅ 增加 tree-sitter 局部后向追踪 |
+> | op.md 第 1 轮 | 缺乏动态 PoC 沙箱验证 | Phase F.5 | ✅ 新增 `--sandbox-verify` 可选步骤 |
+> | 架构讨论 | 评分模型确认偏误 — 非标准 sink 被结构性过滤 | Top K 策略 | ✅ Explore/Exploit 分离（25+5 槽位） |
+> | op.md 第 2 轮 | CPRVul 结构化推理 — 4 步推理链提升跨函数逻辑审查 | Phase D prompt | ✅ 替换 build_agent_prompt 为 Structured Reasoning |
+> | 架构讨论 | LLM 发现项目特有 sink → 动态追加 CodeQL 查询 | Phase A' | ✅ 新增 Phase A'（非标准 sink 自动发现） |
+> | 架构讨论 | 并行 Intent Agent + Merge + Logic Agent 替代单 Agent | Phase D | ✅ 三阶段 Agent 池（注意力隔离 + 矛盾检测） |
+> | op.md 第 2 轮 | 验证 v3 架构方向与学术界 SOTA 一致 | 整体 | ✅ 方向确认，无需修改 |
+>
+> 详见 `docs/v3/revisions_from_op.md`。
 
 ---
 
@@ -101,6 +119,19 @@ CodeQL 路径的每个节点包含 `(file_path, line_number)`，正好是 extrac
 
 **结论**：不需要造"提取函数"的轮子。需要新增的是**组装层**——把 CodeQL 输出的坐标列表转成 extractor 的输入，再把拿到的函数代码拼接成 LLM 的 prompt。
 
+### 发现 6：编译屏障 — CodeQL 自动化的实际死穴
+
+CodeQL `database create` 在编译型语言上存在严重的成功率问题：
+
+| 语言 | 建库方式 | 实战成功率 | 原因 |
+|------|---------|-----------|------|
+| Python/JS/TS | 纯静态解析，零依赖 | ~100% | 不需要编译 |
+| Go | `go build` 拦截 | 高 | 依赖模型简单 |
+| Java | `mvn`/`gradle` 拦截 | **中低** | JDK 版本、私有仓库、奇葩插件 |
+| C++/C# | `make`/`dotnet build` 拦截 | **低** | 环境依赖极其复杂 |
+
+**实战决策**：第一阶段 100% 聚焦 Python/JS/TS。Java/C++ 项目作为理论支持目标，在 CodeQL 基础设施成熟后再扩展。
+
 ---
 
 ## 整体架构
@@ -112,8 +143,15 @@ CodeQL 路径的每个节点包含 `(file_path, line_number)`，正好是 extrac
 CodeQL 数据库构建（codeql database create）
   │
   ▼
-Phase A: CodeQL 路径生成 ─── 预定义的 source→sink 查询
-  │    输出: 所有 source→sink 路径（精确调用链 + 数据流）
+Phase A: CodeQL 路径生成 ─── 预定义的 7 类 source→sink 查询
+  │    输出: 基础路径列表（已知 sink 模式）
+  │
+  ▼
+Phase A': 动态 Sink 发现 ─── LLM 读项目代码，发现项目特有、非标准的 sink
+  │  Step 1: 快速扫描项目 import + 核心 API
+  │  Step 2: LLM 推断可能构成 sink 的函数
+  │  Step 3: 追加到 CodeQL 查询定义，重新查询
+  │    输出: 新增路径（非标准 sink 的路径，7 类查询找不到的）
   │
   ▼
 Phase B: 路径切片与混合筛选
@@ -125,8 +163,14 @@ Phase B: 路径切片与混合筛选
 Phase C: README 理解 ─── 1 次 LLM 调用，注入项目上下文
   │
   ▼
-Phase D: 并行 LLM Agent ─── 每条路径独立分析（复用 agies runner）
-  │    每条路径携带: 路径代码 + 漏洞类型 prompt + bypass 示例
+Phase D: 并行意图提取 + 矛盾检测（全新设计）
+  │  Step 1: PathCodeLoader 将路径上的函数分组
+  │  Step 2: N 个 Intent Agent 并行，每个分析 4-5 个函数
+  │          输出: 每个函数的"开发者意图"伪代码
+  │  Step 3: Merge Agent（确定性排列，轻量检查）
+  │          输出: 完整伪代码链（原始代码的 10-20% token 量）
+  │  Step 4: Logic Agent 读伪代码链 → 发现意图与实现之间的矛盾
+  │  Step 5: 黑板缓存（同一函数多次出现只 Intent 一次）
   │
   ▼
 Phase E: 黑板聚合 ─── 并行 agent 的知识交叉注入
@@ -222,10 +266,148 @@ select cfg, source, sink
 
 ### 回退方案：tree-sitter SAST
 
-当 CodeQL 不可用（未安装、无数据库等）时，回退到 v2 的 tree-sitter SAST + 函数索引：
+当 CodeQL 不可用时，回退到 v2 的 tree-sitter SAST + 函数索引：
+
+| 回退触发条件 | 回退路径 |
+|------------|---------|
+| CodeQL 未安装/无数据库 | v2 完整管线（SAST → bulk → verification） |
+| CodeQL 路径数为 0（动态类型断流） | **局部后向追踪**：tree-sitter 定位所有危险 sink → LLM 局部向后检索补全调用路径 |
+| CodeQL 路径数 < 阈值 | v3 管线降级（不切片，全部送分析） |
+
+动态类型断流的典型场景：
+
+```python
+# Python: getattr 动态调用 — CodeQL 无法追踪
+method = getattr(obj, user_input)
+method()  # CodeQL 看不到这里调用了什么
+
+# JS: 动态属性读取 — CodeQL 断流
+const handler = obj[key]  # key 来自用户输入
+handler(data)
+```
+
+回退路径示意：
 
 ```
 tree-sitter SAST (13 信号) → Director 打分 → 单函数 bulk → verification
+```
+
+---
+
+## Phase A': 动态 Sink 发现（LLM 驱动的非标准 sink 检测）
+
+### 为什么要这一层
+
+7 类预定义 CodeQL 查询只能覆盖已知的 sink 模式。但真实世界的大量漏洞来自**项目特有的、非标准库的自定义函数**：
+
+```python
+# 7 类查询找不到这个 sink:
+class DataExporter:
+    def export(self, data, filename):
+        # data 是用户传入的，filename 也是
+        # 内部调用了 subprocess.call 或 os.system
+        # 但 CodeQL 不认识 DataExporter.export 是 sink
+        pass
+
+# 或者这个:
+class ModelEvaluator:
+    def score(self, model_path, samples):
+        # model_path 来自用户上传
+        result = subprocess.check_output(f"python score.py {model_path}", shell=True)
+        return result
+```
+
+`DataExporter.export` 和 `ModelEvaluator.score` 函数名里不包含 `exec`/`eval`/`subprocess`，但内部调用了危险操作。**LLM 读代码能识别出这是 sink，但 CodeQL 不认识。**
+
+### 设计
+
+```
+Phase A 基础查询（7 类已知 sink）
+  │  输出: 基础路径
+  │
+  ▼
+Phase A' — 动态 Sink 发现
+
+  Step 1: 项目快速扫描（1 次 LLM 调用）
+    Input: 项目 import 列表 + 前 20 个最常被调用的函数签名
+    Task: "识别项目中所有可能构成安全 sink 的自定义函数"
+    Output:
+      [
+        {"function": "DataExporter.export", "reason": "内部调用了 subprocess"},
+        {"function": "ModelEvaluator.score", "reason": "shell=True + 用户输入"},
+        {"function": "ConfigLoader.load", "reason": "yaml.load + 用户上传"}
+      ]
+
+  Step 2: 动态追加 CodeQL 查询
+    把 Step 1 的输出转为 QL 查询定义:
+      sink DataExporter.export  → 追加到 RCE sink
+      sink ModelEvaluator.score → 追加到 RCE sink
+      sink ConfigLoader.load    → 追加到反序列化 sink
+
+  Step 3: 增量查询
+    只跑新增的 sink 查询（不需要重建 database）
+    Output: 新增路径列表
+
+  Step 4: 合并
+    基础路径 + 新增路径 → 送 Phase B 统一排序
+```
+
+### 不是让 LLM 写 QL，是让 LLM 定义 sink
+
+关键区别：
+
+| 方案 | LLM 的任务 | 技术难度 | 可靠性 |
+|------|-----------|---------|--------|
+| ❌ LLM 写完整 QL 查询 | 生成 Datalog 代码 | 高（QL 语法复杂） | 低 |
+| ✅ LLM 发现 sink + 参数 | 读代码发现可疑函数签名 | 低（LLM 擅长这个） | 高 |
+
+LLM 的输出不是 QL 代码，而是一个 sink 定义列表：
+
+```json
+[
+  {
+    "sink_name": "DataExporter.export",
+    "file_path": "src/exporters/data_exporter.py",
+    "vuln_type": "RCE",
+    "sink_param": "command",
+    "reason": "内部调用了 subprocess.call(command, shell=True) 且 command 是用户可控的"
+  }
+]
+```
+
+这个结构可以直接映射到 CodeQL 查询模板，不需要 LLM 懂 QL 语法。
+
+### 与 v3 现有设计的关系
+
+```
+Phase A → Phase A' → Phase B → Phase C → Phase D → Phase E → Phase F
+
+不冲突:
+  Phase A 跑基础 7 类 → 覆盖已知模式
+  Phase A' 跑新增 sink → 覆盖项目特有模式
+  两者合并送 Phase B → 统一排序
+
+代价:
+  1 次 LLM 调用（项目扫描）+ 1 次 CodeQL 增量查询
+  ~2000 tokens + 几秒到几分钟
+  几乎可忽略
+```
+
+### 与黑板的关系
+
+Phase A' 发现的 sink 定义也写入黑板。如果后续其他路径经过这些 sink，Logic Agent 可以直接引用"这是一个动态发现的 sink"。
+
+### 成本
+
+```
+1 次 LLM 调用（扫描项目 import + 核心函数）:
+  ~2000 tokens input
+  ~500 tokens output
+  DeepSeek: ~$0.001
+
+1 次 CodeQL 增量查询:
+  几秒到几十秒（取决于新增 sink 的路径数）
+  无 token 成本
 ```
 
 ---
@@ -262,17 +444,27 @@ CodeQL 路径 (几百条)
   │   "LFI: request.getParameter → FileReader.read (路径完整, 但经过 PathValidation.sanitize)"
   │   LLM 选出最可疑的 Top K
   │
-  Top 15-30
+  Top 30 分析配额
+  │
+  ├── Exploit 25 条 ← 按 score_path() 排序
+  │    目的: 确认已知 sink 模式的漏洞（高概率中）
+  │
+  └── Explore 5 条 ← is_anomalous() 筛选
+       目的: 发现非标准 sink 的漏洞（低概率高回报）
+       选入条件: sink 不在预定义列表 / 路径包含非常见命名函数 /
+                跨模块边界多 / 平均函数行数大
+       配额不足时从 Exploit 候选池补满
   │
   ▼ Step 3: 全量分析
   │   每条路径的完整代码 + 对应漏洞 prompt + bypass → LLM Agent
 ```
 
-为什么两步筛选：
+为什么两步筛选 + Explore/Exploit 分离：
 
 - **静态粗筛**保证不遗漏——即使 LLM 判断失误，规则层的 Top 50 已经保留了最有价值的路径
 - **LLM 微选**用一次简短调用（几百 token 的路径摘要，不需要看代码）做语义判断，省掉的是几十条误报路径的全量分析（几千 token × N 条）
 - **默认情况下可以先跳过 LLM 微选**（直接静态 Top K），只有在路径数超阈值时启用
+- **Explore/Exploit 分离**解决"确认偏误"问题：Exploit 槽最大化已知模式的命中率，Explore 槽专门筛选"反常路径"让 LLM 发现非标准 sink
 
 ### 排序指标
 
@@ -300,11 +492,12 @@ def score_path(path: CodeQlPath) -> float:
     length_penalty = 1.0 / (1.0 + 0.1 * max(0, len(path.nodes) - 3))
     score += length_penalty * 0.2
 
-    # 3. 校验函数惩罚 — 路径经过 sanitize/validate 则降权
+    # 3. 校验函数标记 — 路径经过 sanitize/validate 不降权，反而标记为高 bypass 潜力
+    #    高价值 0-day 往往是"写了校验但写错了"（sanitizer bypass），不是"没写校验"
     has_validation = any("sanitize" in n or "validate" in n or "escape" in n
                          for n in path.nodes)
     if has_validation:
-        score *= 0.5
+        score += 0.2  # bypass 潜力加分
 
     # 4. 路径完整性奖励 — 完整路径（无断点）加分
     if path.is_full_path:
@@ -319,19 +512,70 @@ def score_path(path: CodeQlPath) -> float:
 Step 1: 静态粗筛
   排除: 路径在 test/gen 目录 → 直接丢弃
   打分: 按排序指标算分排序
-  结果: Top 50（硬限制，CLI 参数 --max-path-candidates）
+  标记: 经过 sanitize/validate/escape 函数的路径 → 标记为 [BYPASS_TARGET]
+       这些路径不降权，优先进入 Top K
+  结果: Top 50 = Exploit 候选池（硬限制，CLI 参数 --max-path-candidates）
 
 Step 2: LLM 微选（可选，默认关闭）
   触发条件: Top 50 中同一 sink 类型超过 5 条时启用
   做法: LLM 看每条路径的一句话摘要，选出 Top 15-30
   跳过: 如果 Top 50 中已经少于 30 条，直接跳过此步
 
-  若 LLM 微选关闭（默认）：
-    总路径数 < 30  → 全部送
-    总路径数 >= 30 → Top 30（每类 sink 至少保留 1 条）
+Step 3: Explore/Exploit 分离
+  分配规则:
+    Exploit 25 条 ← 按 score_path() 在候选池中排序取前 25
+    Explore 5 条  ← 从候选池中按 is_anomalous() 筛选
+                    若反常路径不足 5 条，从 Exploit 候选区补满
+
+  这样确保:
+    - 已知高危模式（高评分热门路径）不会漏
+    - 非标准 sink（低评分但可能高危）不会被评分模型过滤掉
 ```
 
-K 值可配：`--max-paths`（默认 30），启用 LLM 微选：`--llm-select-paths`。
+K 值可配：`--max-paths`（默认 30），Explore 槽位 `--explore-slots`（默认 5）。
+
+### Explore 筛选逻辑
+
+提交给 LLM 的 Explore 槽路径使用与 Exploit 相同的 prompt 模板，但 LLM 在分析时会被显式要求先评估"这条路径上的函数是否构成非标准 sink"，再做漏洞确认。
+
+```python
+def is_anomalous(path: CodeQlPath) -> list[str]:
+    """
+    判断一条路径是否"反常"——反常 = 值得 LLM 看一眼。
+    返回反常原因列表，空列表 = 不反常。
+    """
+    reasons = []
+
+    # 1. 最终 sink 不在预定义 sink 列表中（非标准 sink）
+    if path.sink_name not in KNOWN_SINKS:
+        reasons.append("non_std_sink")
+
+    # 2. 路径上的函数平均体量异常大（复杂自研逻辑）
+    if avg_function_lines(path) > 100:
+        reasons.append("complex_custom_logic")
+
+    # 3. 路径上的函数名不常见（不是 get/set/parse/validate 等）
+    if has_unusual_function_names(path):
+        reasons.append("unusual_naming")
+
+    # 4. 路径跨越了异常多的模块边界
+    if cross_module_count(path) > 3:
+        reasons.append("multi_module_flow")
+
+    return reasons
+
+
+def select_explore_slots(candidates: list[CodeQlPath], slots: int = 5) -> list[CodeQlPath]:
+    """从候选池中选出最反常的路径。"""
+    scored = []
+    for path in candidates:
+        reasons = is_anomalous(path)
+        if reasons:
+            scored.append((len(reasons), path))
+    scored.sort(key=lambda x: -x[0])
+    selected = [p for _, p in scored[:slots]]
+    return selected
+```
 
 ### 切片格式
 
@@ -368,154 +612,297 @@ class PathSlice:
 
 ---
 
-## Phase D: 并行 LLM Agent（VulnHuntr 借鉴 + agies 优势）
+## Phase D: 并行意图提取 + 矛盾检测（全新设计）
+
+### 设计哲学
+
+v3 plan 原有 Phase D 设计是"一条路径 → 一个 LLM Agent → 分析结果"。这个设计有两个未解决的根本问题：
+
+**问题 1 — 注意力稀释**：一条 10-20 跳的路径，把所有函数代码拼接后可能 4000-8000 tokens。LLM 需要同时做三件事——理解每个函数的意图、追踪数据流、判断逻辑错误——注意力在长上下文中被稀释，核心细节被模板代码和日志淹没。
+
+**问题 2 — 确认偏误**：prompt 引导 LLM 做"确认已知漏洞类型"的判断，它不会主动发现非标准 sink 或逻辑矛盾。
+
+**新设计的核心洞察**：安全研究员的工作方式不是一次性读完整条调用链。而是：
+1. 先快速翻阅每个函数的意图（"这个函数在做什么？"）
+2. 再回到调用链上找矛盾（"这里说的和做的不一样"）
+
+将这个过程拆成两个可并行的步骤——**Intent Agent（读代码→转意图）** 和 **Logic Agent（找矛盾）**——各自只做 LLM 最擅长的事。
+
+### 设计优势
+
+| 维度 | 旧设计（单 Agent 分析路径） | 新设计（并行 Intent + Logic） |
+|------|-------------------------|-----------------------------|
+| 注意力 | 1 个 LLM 处理整条路径（~4000 tokens） | 每个 Intent Agent 只处理 4-5 个函数（~800 tokens） |
+| 并行度 | 按路径并行（30 条路径 = 30 Agent） | 按路径 × 按节点并行（30 条路径 × 4 = 120 Agent） |
+| LLM 任务 | 读代码 + 判断漏洞 → 做两件都不熟练的事 | 读代码转意图 → 意图 + 找矛盾 → 各做一件擅长的事 |
+| token 成本 | 随路径长度线性增长 | Intent 固定成本/Agent，越长的路径节省越明显 |
+| 黑板缓存 | 只能缓存最终结论 | 缓存 Intent 结果（同一函数跨路径共享） |
+| 确定性 | CodeQL 提供路径骨架 | CodeQL 路径骨架 + Intent 结果 + Merge 确定性排列 |
+
+**token 成本对比**：
+
+| 路径长度 | 旧方案 | 新方案 | 节省 |
+|---------|-------|-------|------|
+| 8 函数（平均） | 1 Intent × 4000 = 4000 | 2 Intent × 1000 + Logic 500 = **2500** | **-38%** |
+| 40 函数（长） | 1 Intent × 20000 = 20000 | 10 Intent × 1000 + Logic 500 = **10500** | **-48%** |
+| 80 函数（极长） | 1 Intent × 40000 = 40000 | 20 Intent × 1000 + Merge 200 + Logic 500 = **20700** | **-48%** |
 
 ### 核心机制
 
-多条 PathSlice 提交到 agies 现有的并行执行器（`engine/v2/runner.py`）：
-
 ```
-PathSlice 列表
-  │  (按评分排序)
+PathSlice 列表（30 条）
+  │
   ▼
-并发队列 (workers=N, default=5)
-  ├── Agent 1: 分析 PathSlice #1 (RCE)
-  ├── Agent 2: 分析 PathSlice #2 (LFI)
-  ├── Agent 3: 分析 PathSlice #3 (RCE)
-  ├── Agent 4: 分析 PathSlice #4 (SQLI)
-  └── Agent 5: 分析 PathSlice #5 (SSRF)
-  │  (各自独立)
+PathCodeLoader（增强版）
+  │  把路径上的函数分组，每 4-5 个函数一组
+  │  检查黑板缓存：哪些函数已有 Intent 结果？
   ▼
-结果合并
+Intent Agent 池（并行，workers=N）
+  ├── Agent 1: func[0-4]  → 伪代码: "提取 file 参数，拼接路径"
+  ├── Agent 2: func[5-9]  → 伪代码: "replace(\"..\",\"\") 过滤，只做一次"
+  ├── Agent 3: func[10-14] → 伪代码: "检查 role 权限，拼接完整路径"
+  └── Agent 4: func[15-19] → 伪代码: "open 文件，返回内容"
+      │
+      ↓  (每 Agent 输出 50-100 tokens 伪代码)
+  ▼
+黑板缓存（关键）
+  │  validatePath 在 3 条路径中都出现
+  │  → 只在第 1 次执行 Intent Agent
+  │  → 后 2 次直接从黑板读取 Intent 结果
+  ▼
+Merge 层（确定性，无需 LLM）
+  │  按 CodeQL 节点序号排列 Intent 输出
+  │  得到完整的伪代码调用链（原始代码的 10-20% token 量）
+  ▼
+Logic Agent（并行，每个 PathSlice 一个）
+  │  输入: 伪代码调用链（500-1000 tokens）
+  │  任务: 找"意图与实现之间的矛盾"
+  │  - "这里说校验了，但实际 replace 只做一次"
+  │  - "这里调用了 sanitize，但校验逻辑不完整"
+  │  - "默认 mode=unsafe，条件检查形同虚设"
+  ▼
+结果合并 → Phase E
 ```
 
-复用代码：
-- `runner.py` — ThreadPoolExecutor 并行调度
-- `brain.py` — QuotaMonitor + Crash Defender + 动态并发控制
-- `state.py` — 结果去重 + checkpoints
+### 路径代码加载器（PathCodeLoader — 增强版）
 
-### 路径代码加载（Path Code Loader）
-
-这是 Phase D 的核心工具：把 CodeQL 路径上的函数节点转为 LLM 可读的代码块。
-
-CodeQL 路径的原始输出是一组 `(file, line)` 坐标：
-
-```
-Path "rce-001":
-  node 0: Controller.java:42    request.getParameter("cmd")
-  node 1: Controller.java:45    Helper.parse(cmd)
-  node 2: Helper.java:15        parse(data)
-  node 3: Executor.java:88      run(command)
-  node 4: Executor.java:90      Runtime.exec(command)
-```
-
-需要转换成：每个坐标对应的函数代码 + 路径上下文。
-
-#### 实现方式
-
-复用 agies 现有的 `engine/v2/sourcer/extractor.py`：
+增强点：不再把所有函数等权重拼接，而是**分组**给 Intent Agent。
 
 ```python
 class PathCodeLoader:
-    """把 CodeQL 路径坐标转为 LLM 可读的代码块。
+    """把 CodeQL 路径坐标分组分发给 Intent Agent 池。"""
 
-    依赖现有的 sourcer/extractor.py（tree-sitter 函数提取）。
-    """
+    def __init__(self, project_path: str, blackboard: BlackboardAggregator):
+        self.extractor = FunctionExtractor(project_path)
+        self.blackboard = blackboard
 
-    def __init__(self, project_path: str):
-        self.extractor = FunctionExtractor(project_path)  # 已有
-
-    def load_path_code(self, path: CodeQlPath) -> str:
-        """把一条路径上的所有函数代码打包成 LLM prompt 块。"""
-        blocks = []
+    def prepare_intent_batch(self, path: CodeQlPath) -> tuple[list[IntentTask], list[IntentResult]]:
+        """
+        返回: (需要执行 Intent 的任务列表, 已缓存的 Intent 结果列表)
+        """
+        tasks = []
+        cached = []
         for i, node in enumerate(path.nodes):
             func = self.extractor.get_function_at_line(
                 node.file_path, node.line_number
             )
-            blocks.append(f"""
-### {i+1}. {func.name} ({func.file_path}:{func.line_start}-{func.line_end})
-{func.signature}
-```python
-{func.body}
-```
-""")
-        return "\n".join(blocks)
-```
-
-extractor 的输入输出：
-
-```
-输入: file_path="Controller.java", line_number=42
-输出: SourceFunction(
-        name="handleRequest",
-        file_path="Controller.java",
-        line_start=40,
-        line_end=60,
-        signature="def handleRequest(request):",
-        body="    data = request.getParameter(\"cmd\")\n    return Helper.parse(data)"
-      )
+            cached_intent = self.blackboard.get_intent(func.name, func.file_path)
+            if cached_intent:
+                cached.append(IntentResult(node_id=i, intent=cached_intent))
+            else:
+                tasks.append(IntentTask(
+                    node_id=i,
+                    func_name=func.name,
+                    file_path=func.file_path,
+                    line_start=func.line_start,
+                    line_end=func.line_end,
+                    code=func.body,
+                ))
+        # 每 4-5 个任务合并为一个 Intent Agent 任务
+        return self._group_tasks(tasks), cached
 ```
 
-如果 extractor 找不到函数（如行号在类定义上），回退方案：用 `read_file` 工具读取前后 30 行上下文。
+回退方案（extractor 找不到函数时）：用 `read_file` 工具读取前后 30 行上下文。
 
-### Prompt 设计（VulnHuntr 精华移植）
+### Intent Agent：读代码 → 转意图
 
-每条路径分析时，根据 `PathSlice.vuln_type` 拼接对应的漏洞类型 prompt + bypass 示例：
+**职责**：每个 Intent Agent 只接收 4-5 个函数的代码。它不做任何安全判断，只回答问题——"这个函数在做什么？"
 
 ```python
-def build_agent_prompt(slice: PathSlice, readme_summary: str) -> str:
-    return f"""
-{readme_summary}
+INTENT_AGENT_PROMPT = """
+项目上下文：{readme_summary}
 
-## 需要分析的代码路径
-来源: {slice.source} ({slice.source_file})
-汇点: {slice.sink} ({slice.sink_file})
-路径上的函数:
-{slice.code_block}
+分析以下 {count} 个函数在调用链中的角色。不要做安全判断，只描述"开发者意图"。
 
-## 分析要求
-{_vuln_prompts[slice.vuln_type]}
+{functions}
 
-## Bypass 示例
-{_vuln_bypasses[slice.vuln_type]}
-
-## 输出格式
-```json
-{{{{
-  "scratchpad": "逐步推理过程",
-  "analysis": "最终分析结论",
-  "poc": "攻击 PoC（如适用）",
-  "confidence_score": 0-10,
-  "vulnerability_types": ["{slice.vuln_type.value}"],
-  "requires_additional_context": [...]
-}}}}
+对每个函数，输出格式:
+```
+func_{id} ({name}):
+  意图: [这个函数在做什么？用一句话说清楚]
+  输入: [接收什么数据？来源是谁？]
+  输出: [返回什么？给谁用？]
+  关键逻辑: [核心操作，特别关注: replace/regex/if-check/权限判断/数据变换]
+  可疑点: [你直觉上觉得奇怪的地方，但不要下结论]
 ```
 """
 ```
 
-7 类漏洞的 prompt + bypass 直接从 vulnhuntr 移植（已验证在多个项目挖到 0day），详见 `agies/engine/v3/prompts/`.
+**Intent Agent 的输出示例**（4-5 个函数处理后）：
 
-### 迭代上下文获取（VulnHuntr 借鉴）
+```
+func_2 (validatePath):
+  意图: "检查路径中是否包含 .. 字符串并移除"
+  输入: "BASE_DIR + 用户传入的文件名"
+  输出: "清理后的路径字符串" 
+  关键逻辑: "path.replace(\"..\", \"\") — 只替换一次"
+  可疑点: "replace 只做一次，\"..././\" 可能绕过"
 
-LLM 分析路径后，如果 `requires_additional_context` 不为空，则：
+func_3 (checkPermission):
+  意图: "检查用户是否有读权限"
+  输入: "用户对象，目标路径"
+  输出: "boolean"
+  关键逻辑: "if user.role == \"admin\": return True"
+  可疑点: "role 字段来自 user 对象，如果 user 是用户传入的则可控"
+```
 
-1. 用 agies 的 function index（tree-sitter）或 Jedi 解析符号定义
-2. 把新代码追加到当前路径的 code_block 中
-3. 重新送 LLM 分析
-4. 最多 3 轮
+### Merge 层：确定性排列
 
-与 vulnhuntr 最多 7 轮的区别：v3 的路径已经由 CodeQL 生成，调用链骨架已确定，LLM 只需要补全少量缺失上下文，不需要自己找路径，所以 3 轮足够。
+**无需 LLM 调用。** 按 CodeQL 节点序号排列 Intent Agent 的输出即可。
+
+```
+Intent Agent 1 输出: func_0, func_1, func_2, func_3
+Intent Agent 2 输出: func_4, func_5, func_6, func_7
+                    ↓
+Merge: 按 node_id 排列
+                    ↓
+func_0 → func_1 → func_2 → func_3 → func_4 → func_5 → func_6 → func_7
+```
+
+如果需要接口连贯性检查（可选），可以用一个单次 LLM 调用：
+
+```python
+MERGE_CHECK_PROMPT = """
+检查以下伪代码调用链的接口连贯性：
+{intent_chain}
+
+func_x 的输出作为 func_y 的输入，类型/语义是否一致？
+如不一致，标注问题但不修改。
+"""
+```
+
+但默认跳过——CodeQL 路径已经保证了接口兼容（否则不会被识别为一条路径）。
+
+### Logic Agent：找矛盾（替代原来的"漏洞分析"）
+
+**职责**：读伪代码链，找"意图与实现之间的矛盾"。不做代码阅读——只做矛盾检测。
+
+```python
+LOGIC_AGENT_PROMPT = """
+项目上下文：{readme_summary}
+
+以下是一条 source→sink 路径的伪代码链。每个函数已提取为"开发者意图"。
+
+调用链:
+{intent_chain}
+
+=====
+
+分析要求：
+
+你的任务只有一个：找"意图与实现之间的矛盾"。
+
+对比每个函数的"关键逻辑"和它声称的"意图"：
+  - 意图说"校验路径"，关键逻辑是 replace("..", "") 只做一次 → 矛盾！校验不够
+  - 意图说"检查权限"，role 字段来自用户输入 → 矛盾！权限来源不可信
+  - 意图说"把搜索结果返回"，参数直接拼接到 eval() → 矛盾！用户可控参数进 eval
+  - 意图说"过滤危险字符"，但 filter 列表很短，不在列表中的危险字符可以通过 → 矛盾！
+
+如果找不到矛盾 → 这条路径大概率是安全的。
+
+输出格式：
+```json
+{{
+  "contradictions": [
+    {{
+      "func": "validatePath",
+      "claimed": "移除路径中的 ..",
+      "actual": "replace('..', '') — 只做一次，可绕过",
+      "contradiction_type": "incomplete_sanitization",
+      "bypass_poc": "....// 可绕过单次 replace",
+      "exploit_potential": "可读取任意文件"
+    }}
+  ],
+  "confidence_score": 7,
+  "analysis": "validatePath 声称校验路径安全，但 replace 只做一次，标准绕过技术即可绕过"
+}}
+```
+
+vulnhuntr bypass 示例（参考，不强制）：
+{_vuln_bypasses[slice.vuln_type]}
+"""
+
+```
+
+**Logic Agent 不需要读原始代码。** 它只读 Intent Agent 提取的伪代码链（500-1000 tokens）。注意力 100% 集中在矛盾检测上。
+
+### 黑板缓存
+
+这是新设计的关键杠杆。同一个函数在多条路径中出现是常态：
+
+```
+路径 A: request → validatePath → open          # validatePath 在 node 1
+路径 B: request → parseFile → validatePath → exec  # validatePath 在 node 2
+路径 C: request → auth → validatePath → write   # validatePath 在 node 3
+```
+
+**旧设计**：3 条路径各自分析 validatePath → 3 次重复读取 → 3 倍 token
+
+**新设计**：
+```
+第 1 条路径触发 Intent Agent 分析 validatePath:
+  → "意图: 用 replace(\"..\") 移除路径中的 .. 只替换一次"
+  → 写入黑板: validatePath → {intent, ..., key_logic}
+
+第 2、3 条路径:
+  → PathCodeLoader 检查黑板: validatePath 已有 Intent
+  → 直接读取缓存的 Intent 结果
+  → 0 token 成本
+```
+
+黑板缓存的数据结构：
+
+```python
+@dataclass
+class CachedIntent:
+    func_name: str
+    file_path: str
+    intent: str              # "用 replace(\"..\", \"\") 移除 .."
+    key_logic: str           # "replace 只做一次"
+    suspicious: list[str]    # ["可绕过"]
+    extraction_time: float   # 时间戳，用于缓存失效判断
+```
+
+### 迭代上下文获取（Logic Agent 专用）
+
+Logic Agent 分析伪代码链时，如果发现"关键逻辑描述不够清晰，需要看原始代码"，可以：
+
+1. 调用 `read_code(func_name, file_path)` 工具读取原始代码
+2. 将关键片段追加到当前分析上下文中
+3. 重新分析（最多额外 1 轮）
+
+与旧设计的区别：**只有 Logic Agent 在需要时才请求原始代码**，不是默认就喂全部代码。
 
 ### 置信度评分
 
-LLM 输出 `confidence_score: 0-10`：
+Logic Agent 输出 `confidence_score: 0-10`：
 
 | 分数 | 含义 | 处理 |
 |------|------|------|
-| 0-3 | 误报或无利用路径 | 丢弃 |
-| 4-6 | 可能但不确定 | 保留到报告，标注低置信度 |
-| 7-8 | 很可能可利用 | 进入 verification |
-| 9-10 | 确定可利用，有完整 PoC | 高优先级 |
+| 0-3 | 无明显矛盾 | 丢弃 |
+| 4-6 | 有可疑点但不确定 | 保留到报告，标注低置信度 |
+| 7-8 | 矛盾明确，很可能可利用 | 进入 verification |
+| 9-10 | 矛盾的利用路径清晰，有 PoC | 高优先级 |
 
 低于 7 的路径不再送 verification，节省 token。
 
@@ -655,6 +1042,37 @@ v3 黑板聚合器:      3 个 agent 各分析 1 次
 Report Agent → markdown/json 报告
 ```
 
+### Phase F.5: 动态沙箱验证（可选，面向 Bug Bounty）
+
+op.md 指出的核心问题：LLM 确认不等于漏洞证实。2026 年 bounty 审核要求**实际运行 PoC 拿到回显**（DNSLog、`/etc/passwd` 等）。
+
+仅在 `--sandbox-verify` 开启时启用：
+
+```
+高置信度路径 (>= 7) → Verification Agent → PoC 生成
+                                              ↓
+                                    Docker 沙箱执行
+                                    Python/Node 官方镜像
+                                    pip install / npm install
+                                    运行 PoC 脚本
+                                    捕获 stdout + 文件变更 + 网络回显
+                                              ↓
+                                    通过: 确认真漏洞
+                                    失败: 标记为"未验证"，降低置信度
+```
+
+对于 Python/JS/TS（解释型语言），Docker 沙箱的工程门槛很低：
+
+```python
+def run_poc_in_sandbox(poc_code: str, language: str) -> SandboxResult:
+    """在临时 Docker 容器中执行 PoC 脚本。"""
+    image = "python:3.11-slim" if language == "python" else "node:20-slim"
+    # 安全限制: 网络隔离（除 DNSLog 外）、磁盘配额 100MB、超时 30s
+    # 结果捕获: stdout, stderr, 文件系统变更, 出口码
+```
+
+这个阶段是**可选**的，不影响核心管线完整性。
+
 ---
 
 ## 文件结构
@@ -697,14 +1115,17 @@ agies/engine/
 │   │   ├── idor.py                # IDOR prompt + bypasses
 │   │   └── readme_summary.py      # README 总结 prompt
 │   │
-│   ├── aggregator/                # ★ 黑板聚合（Phase E）
+│   ├── aggregator/                # ★ 黑板聚合 + Intent 缓存（Phase D+E）
 │   │   ├── __init__.py
-│   │   ├── blackboard.py          # BlackboardAggregator（知识收集 + 合并 + 注入）
-│   │   └── models.py              # AgentResult, KnowledgeEntry
+│   │   ├── blackboard.py          # BlackboardAggregator（Intent 缓存 + 知识注入）
+│   │   └── models.py              # CachedIntent, AgentResult, KnowledgeEntry
 │   │
-│   └── agents/                    # LLM Agent 适配层
+│   └── agents/                    # ★ 三阶段 Agent 池（替换原单 Agent）
 │       ├── __init__.py
-│       ├── path_agent.py          # 单条路径分析 Agent（封装 prompt 拼接 + 迭代）
+│       ├── path_code_loader.py    # 路径坐标 → 函数分组 + 黑板缓存查询
+│       ├── intent_agent.py        # Phase D Step 2: 4-5 函数 → "开发者意图"
+│       ├── logic_agent.py         # Phase D Step 4: 伪代码链 → 矛盾检测
+│       ├── merge.py               # Phase D Step 3: 确定性排列 Intent 输出
 │       └── aggregator.py          # 多条路径结果合并 + 排序
 │
 ├── graph/
@@ -753,16 +1174,22 @@ vulnhuntr 的 prompt 已经实战验证挖到多个 0day。但 prompt 是文本�
 |------|------|------|-----------|
 | **P0** | 搭建 v3 目录结构 + pytest 骨架 | 无 | 50 行 |
 | **P1** | CodeQL 集成：database create + 查询执行 + 结果解析 | CodeQL CLI 安装 | 300 行 |
-| **P2** | 7 类 QL 查询文件 | P1 | 200 行 |
+| | *注：P1 实现时优先验证 Python/JS 建库成功率，Java/C++ 作为后续目标* | | |
+| **P2** | 7 类 QL 查询文件（聚焦 AI/ML 特有 sink） | P1 | 200 行 |
 | **P3** | 切片排序引擎：score_path + select_top_k | 无 | 150 行 |
-| **P4** | 漏洞类型 prompt（移植 vulnhuntr） | 无 | 400 行 |
-| **P5** | Path Agent：单条路径分析 + 迭代上下文 | P4 | 200 行 |
-| **P6** | 黑板聚合器：BlackboardAggregator（知识收集 + 合并 + 注入） | P5 | 100 行 |
-| **P7** | 主编排器：CodeQL → 切片 → README → 并行 LLM → 黑板 → 验证 | P1-P6 | 300 行 |
-| **P8** | CLI 集成：`agies audit --v3` 开关 | P7 | 50 行 |
-| **P9** | 在已知 CVE 项目上验证 + 调优 | P8 | 酌情 |
+| | *注：取消 sanitizer 降权逻辑，改为 bypass 标记加分* | | |
+| **P4** | Intent Agent prompt + Logic Agent prompt（替换原单 Agent prompt） | 无 | 300 行 |
+| | *注：Intent prompt 只问"在做什么"，不做安全判断；Logic prompt 只问"矛盾在哪"* | | |
+| **P5** | Intent Agent 池 + 黑板缓存集成 | P4 | 200 行 |
+| **P6** | Logic Agent：伪代码链矛盾检测 + vulnhuntr bypass 示例参考 | P5 | 200 行 |
+| **P7** | 黑板聚合器增强：Intent 缓存 + 跨路径共享 | P6 | 150 行 |
+| **P8** | 主编排器：CodeQL → 切片 → README → Intent 池 → Merge → Logic → 黑板 → 验证 | P1-P7 | 350 行 |
+| | *注：P8 增加回退逻辑——CodeQL 路径数为 0 时降级到 tree-sitter 局部后向追踪* | | |
+| **P9** | CLI 集成：`agies audit --v3` 开关 | P8 | 50 行 |
+| **P10** | 动态沙箱验证（可选）：Docker PoC 执行 + 结果捕获 | P6 | ~300 行 |
+| **P11** | 在已知 CVE 项目上验证 + 调优 + token 成本热力图 | P9 | 酌情 |
 
-合计：~1600 行新增。
+合计：~2100 行新增。
 
 ---
 
@@ -789,16 +1216,24 @@ vulnhuntr 的 prompt 已经实战验证挖到多个 0day。但 prompt 是文本�
 | QL 查询文件 | `engine/v3/codeql/queries/*.ql` | 7 类漏洞的 source→sink 查询 | ~200 行 |
 | 切片排序 | `engine/v3/slicer/sorter.py` | score_path, select_top_k | ~150 行 |
 | 切片数据模型 | `engine/v3/slicer/models.py` | PathSlice | ~60 行 |
-| 路径代码加载 | `engine/v3/agents/path_code_loader.py` | 路径坐标 → 代码块（调用 extractor） | ~100 行 |
-| 路径分析 Agent | `engine/v3/agents/path_agent.py` | prompt 拼接 + 迭代上下文 | ~200 行 |
-| 漏洞类型 prompt | `engine/v3/prompts/*.py` | 7 类 prompt + bypass 示例 | ~400 行 |
-| 主编排器 | `engine/v3/runner.py` | CodeQL → 切片 → README → 并行 LLM → 验证 | ~250 行 |
+| 路径代码加载（增强） | `engine/v3/agents/path_code_loader.py` | 路径坐标 → 分组 + 黑板查询 | ~150 行 |
+| Intent Agent | `engine/v3/agents/intent_agent.py` | 4-5 函数 → "开发者意图"伪代码 | ~150 行 |
+| Logic Agent | `engine/v3/agents/logic_agent.py` | 伪代码链 → 矛盾检测 | ~200 行 |
+| Merge 层 | `engine/v3/agents/merge.py` | 确定性排列 Intent 输出 | ~50 行 |
+| 黑板缓存 | `engine/v3/aggregator/blackboard.py` | Intent 结果缓存 + 跨路径共享 | ~150 行 |
+| 主编排器 | `engine/v3/runner.py` | 全流程编排 | ~350 行 |
 
 ### 需要验证的假设
 
-1. **CodeQL 路径数可控** — 在多个真实项目上验证路径数量级，确保 Top K 策略合理
-2. **extractor 定位精度** — tree-sitter 的 `get_function_at_line` 在 Java/JS/TS 上是否与 Python 一样可靠
-3. **路径代码拼装后的 token 消耗** — 一条完整路径平均需要多少 token（参考：vulnhuntr 一个文件 5000-15000 token）
+1. **CodeQL 建库成功率** — 在 20 个随机 Python/JS 开源项目上验证 `codeql database create` 成功率
+2. **CodeQL 路径数可控** — 在多个真实项目上验证路径数量级，确保 Top K 策略合理
+3. **extractor 定位精度** — tree-sitter 的 `get_function_at_line` 在 Java/JS/TS 上是否与 Python 一样可靠
+4. **Intent Agent 意图提取准确率** — 4-5 个函数的代码压缩为伪代码，是否有信息丢失
+5. **Logic Agent 矛盾检测精确率** — 伪代码链上的矛盾检测 vs 原始代码上的直接分析，效果对比
+6. **黑板缓存命中率** — 实际项目中，同一函数出现在多条路径中的频率
+7. **路径代码拼装后的 token 消耗** — 一条完整路径平均需要多少 token（旧方案基线，用于对比）
+8. **Verification Agent token 放大器效应** — 实际测量验证阶段平均每轮 token 消耗
+9. **动态类型断流频率** — 在 LangChain/Ray 等大量使用元编程的项目上，CodeQL 返回空路径的比例
 
 ---
 

@@ -259,6 +259,7 @@ def run_audit(
     static_only: bool = False,
     verify: bool = True,
     new_pipeline: bool = False,
+    v3: bool = False,
 ):
     """Run the full audit pipeline."""
     target = os.path.abspath(target)
@@ -281,6 +282,14 @@ def run_audit(
     console.print(f"  Languages: {', '.join(context.get('languages', ['none detected']))}")
     console.print(f"  Files: {context['file_count']}")
     console.print()
+
+    # Step 1b: v3 CodeQL pipeline (replaces full pipeline when --v3 is used)
+    if v3:
+        from agies.engine.v3.runner import run_v3_pipeline
+        run_v3_pipeline(target, model=model, verbose=verbose)
+        console.print()
+        console.print("[bold]v3 CodeQL pipeline complete.[/bold]")
+        return
 
     # Step 2: Route analysis (new — build frontend↔backend mapping)
     route_data = None

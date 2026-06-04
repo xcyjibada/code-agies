@@ -21,6 +21,7 @@ def audit(
     static_only: bool = typer.Option(False, "--static-only", help="Run static analysis only (skip LLM)"),
     verify: Optional[bool] = typer.Option(None, "--verify/--no-verify", help="Enable/disable verification pipeline"),
     new_pipeline: bool = typer.Option(False, "--new-pipeline", help="Use new Xint-inspired pipeline (sourcer → bulk → verification)"),
+    v3: bool = typer.Option(False, "--v3", help="Use v3 CodeQL pipeline (source→sink path queries)"),
 ):
     """Run an AI-powered code audit on the target.
 
@@ -50,7 +51,7 @@ def audit(
     run_audit(target, model=final_model, strong_model=final_strong, sandbox=sandbox,
               verbose=verbose, output=final_output, output_format=final_output_format,
               static_analysis=static_analysis, static_only=static_only,
-              verify=final_verify, new_pipeline=new_pipeline)
+              verify=final_verify, new_pipeline=new_pipeline, v3=v3)
 
 
 @app.command()
