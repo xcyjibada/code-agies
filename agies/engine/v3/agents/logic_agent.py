@@ -95,7 +95,7 @@ Source Code
 ```
 {code_block}
 ```
-
+{call_context}
 Checklist:
 - [ ] Is the POC technically correct? (would the described input reach the described sink?)
 - [ ] Are there any guards, validation, or sanitization that block the POC?
@@ -202,6 +202,7 @@ class LogicAgent:
         self,
         result: AgentPhaseResult,
         code_block: str = "",
+        call_context: str = "",
     ) -> str:
         """Build the verification prompt for a finding."""
         return VERIFY_PROMPT_TEMPLATE.format(
@@ -210,6 +211,7 @@ class LogicAgent:
             bypass_poc=(result.contradictions[0].get("bypass_poc", "")
                         if result.contradictions else ""),
             code_block=code_block or "(code not loaded)",
+            call_context=call_context,
         )
 
     def verify(

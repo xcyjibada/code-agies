@@ -17,6 +17,7 @@ class VulnType(str, enum.Enum):
     XSS = "xss"
     AFO = "afo"
     IDOR = "idor"
+    REDOS = "redos"
     UNKNOWN = "unknown"
 
 
@@ -28,6 +29,7 @@ VULN_LABELS: dict[VulnType, str] = {
     VulnType.XSS: "Cross-Site Scripting",
     VulnType.AFO: "Arbitrary File Overwrite",
     VulnType.IDOR: "Insecure Direct Object Reference",
+    VulnType.REDOS: "ReDoS (Regular Expression DoS)",
     VulnType.UNKNOWN: "Unknown",
 }
 

@@ -14,6 +14,7 @@ from agies.engine.v3.prompts.sqli import build_sqli_prompt
 from agies.engine.v3.prompts.xss import build_xss_prompt
 from agies.engine.v3.prompts.afo import build_afo_prompt
 from agies.engine.v3.prompts.idor import build_idor_prompt
+from agies.engine.v3.prompts.redos import build_redos_prompt
 from agies.engine.v3.prompts.readme_summary import build_readme_prompt
 
 PROMPT_BUILDERS = {
@@ -24,6 +25,7 @@ PROMPT_BUILDERS = {
     "xss": build_xss_prompt,
     "afo": build_afo_prompt,
     "idor": build_idor_prompt,
+    "redos": build_redos_prompt,
 }
 
 
@@ -61,7 +63,8 @@ def _build_generic_prompt(
 Project Context
 {readme_summary or "Not available."}
 
-Source Code (call chain)
+Code Path (analysis chain)
+Format: [summary] = intent pseudocode, [DANGEROUS: pass_through] = raw source code.
 ```
 {code_block or "(code not loaded)"}
 ```

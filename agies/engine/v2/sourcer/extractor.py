@@ -436,6 +436,14 @@ def _match_calls_to_functions(
         if callees:
             calls[fn_name] = callees
 
+    # Post-process: capture method refs in map(self.func, ...) / filter(self.func, ...)
+    # tree-sitter captures map/filter as the callee, but not the method reference.
+    source_text = source.decode("utf-8") if isinstance(source, bytes) else source
+    for fn_name, fn_start, fn_end in func_defs:
+        fn_source = source_text[fn_start:fn_end]
+        for m in re.finditer(r"\b(map|filter)\(\s*self\.(\w+)\s*,", fn_source):
+            calls.setdefault(fn_name, set()).add(m.group(2))
+
     return calls
 
 

@@ -8,7 +8,8 @@ IDOR_PROMPT_TEMPLATE = """You are analyzing a code path for **Insecure Direct Ob
 Project Context
 {readme_summary}
 
-Source Code (call chain)
+Code Path (analysis chain)
+Format: [summary] = intent pseudocode, [DANGEROUS: pass_through] = raw source code.
 ```
 {code_block}
 ```

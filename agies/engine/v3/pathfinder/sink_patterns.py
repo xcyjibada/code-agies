@@ -75,6 +75,16 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("shutil.move", VulnType.AFO),
     ("os.remove", VulnType.AFO),
     ("os.unlink", VulnType.AFO),
+    # -- REDOS: regex / pattern matching --
+    ("glob", VulnType.REDOS),
+    ("fnmatch.translate", VulnType.REDOS),
+    ("fnmatch.filter", VulnType.REDOS),
+    ("re.match", VulnType.REDOS),
+    ("re.search", VulnType.REDOS),
+    ("re.findall", VulnType.REDOS),
+    ("re.fullmatch", VulnType.REDOS),
+    ("re.sub", VulnType.REDOS),
+    ("re.compile", VulnType.REDOS),
 ]
 
 # ---------------------------------------------------------------------------
@@ -167,9 +177,12 @@ SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
     (re.compile(r"pathlib\.Path\(.*\)\.write"), VulnType.AFO),
     # File read via less common paths
     (re.compile(r"io\.open"), VulnType.LFI),
-    # Dynamic import / code generation
+    # REDOS: regex operations (body-level detection catches cases not in EXACT_SINKS)
+    (re.compile(r"re\.(match|search|findall|fullmatch|sub|compile|split)"), VulnType.REDOS),
+    (re.compile(r"fnmatch\.(translate|filter)"), VulnType.REDOS),
+    # Dynamic import / code generation (exact built-in compile(), NOT re.compile)
     (re.compile(r"__import__"), VulnType.RCE),
-    (re.compile(r"compile"), VulnType.RCE),
+    (re.compile(r"\bcompile\("), VulnType.RCE),
 ]
 
 
