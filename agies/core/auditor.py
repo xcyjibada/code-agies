@@ -260,6 +260,7 @@ def run_audit(
     verify: bool = True,
     new_pipeline: bool = False,
     v3: bool = False,
+    project_type: str | None = None,
 ):
     """Run the full audit pipeline."""
     target = os.path.abspath(target)
@@ -286,7 +287,10 @@ def run_audit(
     # Step 1b: v3 CodeQL pipeline (replaces full pipeline when --v3 is used)
     if v3:
         from agies.engine.v3.runner import run_v3_pipeline
-        run_v3_pipeline(target, model=model, verbose=verbose)
+        run_v3_pipeline(
+            target, model=model, verbose=verbose,
+            project_type=project_type or "auto",
+        )
         console.print()
         console.print("[bold]v3 CodeQL pipeline complete.[/bold]")
         return

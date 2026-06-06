@@ -139,15 +139,33 @@ class LogicAgent:
     ) -> str:
         """Build the logic analysis prompt using VulnHuntr-style prompts.
 
-        Uses raw source code (``code_block``) when available, falling back
-        to the merged intent chain.
+        Frames the analysis as contradiction detection: prepends the developer
+        intent pseudocode so the LLM compares "what the developer intended"
+        against "what the code actually does".  Without this frame the prompt
+        is just a traditional single-shot vulnerability scan, which suffers
+        from library bias and non-determinism.
         """
         from agies.engine.v3.prompts import get_prompt
 
-        return get_prompt(
+        base_prompt = get_prompt(
             vuln_type,
             code_block=code_block or intent_chain,
             readme_summary=readme_summary,
+        )
+
+        if not intent_chain.strip():
+            return base_prompt
+
+        return (
+            "Developer Intent (pseudocode)\n"
+            "---\n"
+            f"{intent_chain}\n\n"
+            "Your task: Find contradictions between the developer intent above "
+            "and the actual source code below. Does the implementation "
+            "introduce security risks that the intent summary doesn't mention?\n"
+            "For library code: consider what happens when a caller passes "
+            "untrusted data to this API.\n\n"
+            f"{base_prompt}"
         )
 
     def run(

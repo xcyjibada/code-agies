@@ -26,10 +26,14 @@ from agies.engine.v3.aggregator.blackboard import BlackboardAggregator
 from agies.engine.v3.aggregator.models import AgentPhaseResult, IntentResult
 from agies.engine.v3.agents.intent_agent import IntentAgent, IntentAgentTask
 from agies.engine.v3.agents.logic_agent import LogicAgent
+from agies.engine.v3.agents.adversary_agent import AdversaryAgent
+from agies.engine.v3.agents.poc_agent import PoCAgent
 from agies.engine.v3.agents.merge import MergeLayer
 from agies.engine.v3.agents.path_code_loader import PathCodeLoader
 from agies.engine.v3.agents.evidence_checker import EvidenceChecker
-from agies.engine.v3.agents.bridge_verifier import BridgeVerifier, BridgeAnnotation
+from agies.engine.v3.agents.bridge_verifier import (
+    BridgeVerifier, BridgeAnnotation, scan_path_bridge_evidence,
+)
 from agies.engine.v3.classifier import classify_project
 
 logger = logging.getLogger(__name__)
@@ -432,69 +436,135 @@ def _run_phase_d(
         blackboard.record_phase_result(result)
         _print_phase_d_result(console, result)
 
-        # Evidence Checker: code-level verification for interesting findings
-        if result.confidence >= 4 and result.contradictions:
-            checker = EvidenceChecker(
-                llm_call_fn=lambda p: _call_llm(llm, p, console),
-                blackboard=blackboard,
+        # Adversary Agent: try to rebut before PoC generation
+        if result.is_vulnerable or result.confidence >= 7:
+            adversary = AdversaryAgent()
+            contradiction_desc = (
+                result.contradictions[0].get("contradiction_type", "")
+                + ": "
+                + result.contradictions[0].get("actual", "")
+                if result.contradictions else ""
             )
-            with _status(console, f"  Evidence: {slice_.id}..."):
-                evidence = checker.run(result, code_block, slice_.nodes)
-
-            if evidence.evidence_found:
-                _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
-                if evidence.poc:
-                    _print(console, f"      PoC: {evidence.poc[:150]}...")
-                # Update result with evidence-backed analysis
-                result = AgentPhaseResult(
-                    path_id=result.path_id,
-                    vuln_type=result.vuln_type,
-                    score=result.score,
-                    contradictions=result.contradictions,
-                    confidence=result.confidence,
-                    analysis=evidence.analysis or result.analysis,
-                    is_vulnerable=True,
+            with _status(console, f"  Adversary: {slice_.id}..."):
+                adv_result = adversary.run(
+                    vuln_type=slice_.vuln_type.value,
+                    analysis=result.analysis,
+                    contradiction=contradiction_desc,
+                    code_block=code_block,
+                    llm_call=lambda p: _call_llm(llm, p, console),
                 )
-            else:
-                _print(console, f"    [red]✗ no code evidence — downgrading[/red]")
+
+            if adv_result["rebutted"]:
+                _print(console, f"    [red]✗ rebutted: {adv_result['rebuttal'][:120]}[/red]")
                 result = AgentPhaseResult(
-                    path_id=result.path_id,
-                    vuln_type=result.vuln_type,
-                    score=result.score,
-                    contradictions=result.contradictions,
-                    confidence=min(result.confidence, 3),
-                    analysis=result.analysis + "\n[Evidence rejected: " + evidence.analysis[:100] + "]",
+                    path_id=result.path_id, vuln_type=result.vuln_type,
+                    score=result.score, contradictions=result.contradictions,
+                    confidence=min(result.confidence, adv_result["confidence_downgrade"]),
+                    analysis=result.analysis
+                    + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
                     is_vulnerable=False,
+                    rebutted=True,
+                    rebuttal=adv_result["rebuttal"],
                 )
+                all_results[-1] = result
+            else:
+                _print(console, f"    [green]✓ not rebutted (weakness: {adv_result.get('weakness', '')[:80]})[/green]")
+                # PoC Agent: write exploit script for un-rebutted findings
+                with _status(console, f"  PoC Agent: {slice_.id}..."):
+                    poc = PoCAgent(output_dir=os.path.join(os.getcwd(), "pocs"))
+                    poc_path = poc.run(
+                        path_id=slice_.id,
+                        vuln_type=slice_.vuln_type.value,
+                        analysis=result.analysis,
+                        contradiction=contradiction_desc,
+                        code_block=code_block,
+                        weakness=adv_result.get("weakness", ""),
+                        llm_call=lambda p: _call_llm(llm, p, console),
+                    )
+                if poc_path:
+                    _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
+                    result = AgentPhaseResult(
+                        path_id=result.path_id, vuln_type=result.vuln_type,
+                        score=result.score, contradictions=result.contradictions,
+                        confidence=result.confidence,
+                        analysis=result.analysis,
+                        is_vulnerable=result.is_vulnerable,
+                        poc_path=poc_path,
+                    )
+                    all_results[-1] = result
 
+        # Evidence Checker: always run code-level pattern matching
+        checker = EvidenceChecker(
+            llm_call_fn=lambda p: _call_llm(llm, p, console),
+            blackboard=blackboard,
+        )
+        with _status(console, f"  Evidence: {slice_.id}..."):
+            evidence = checker.run(result, code_block, slice_.nodes)
+
+        if evidence.evidence_found:
+            _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
+            if evidence.poc:
+                _print(console, f"      PoC: {evidence.poc[:150]}...")
+            # Boost confidence from code-level evidence
+            result = AgentPhaseResult(
+                path_id=result.path_id,
+                vuln_type=result.vuln_type,
+                score=result.score,
+                contradictions=result.contradictions,
+                confidence=max(result.confidence, 5),
+                analysis=evidence.analysis or result.analysis,
+                is_vulnerable=True,
+            )
             all_results[-1] = result
 
-            # Existing verification (only for evidence-confirmed findings)
-            if evidence.evidence_found:
-                sink_name = slice_.sink
-                sink_file = slice_.sink_file.split(":")[0]
-                call_context = _build_call_context(sink_name, sink_file, function_index)
+            # Verification (only for evidence-confirmed findings)
+            sink_name = slice_.sink
+            sink_file = slice_.sink_file.split(":")[0]
+            call_context = _build_call_context(sink_name, sink_file, function_index)
+            with _status(console, f"  Verifying {slice_.id}..."):
+                verify_prompt = logic_agent.create_verify_prompt(
+                    result, code_block=code_block, call_context=call_context,
+                )
+                verify_response = _call_llm(llm, verify_prompt, console)
 
-                with _status(console, f"  Verifying {slice_.id}..."):
-                    verify_prompt = logic_agent.create_verify_prompt(
-                        result, code_block=code_block, call_context=call_context,
-                    )
-                    verify_response = _call_llm(llm, verify_prompt, console)
-
-                if verify_response:
-                    verified = logic_agent.verify(
-                        result, code_block=code_block, llm_response=verify_response,
-                    )
-                    all_results[-1] = verified
-
-                    if result.confidence >= 7:
-                        if not verified.is_vulnerable:
-                            _print(console, f"    [yellow]↓ verification downgraded (7→{verified.confidence})[/yellow]")
+            if verify_response:
+                verified = logic_agent.verify(
+                    result, code_block=code_block, llm_response=verify_response,
+                )
+                all_results[-1] = verified
+                if result.confidence >= 7:
+                    if not verified.is_vulnerable:
+                        _print(console, f"    [yellow]↓ verification downgraded (7→{verified.confidence})[/yellow]")
+                else:
+                    if verified.is_vulnerable or verified.confidence >= 7:
+                        _print(console, f"    [green]↑ verification upgraded (→{verified.confidence})[/green]")
                     else:
-                        if verified.is_vulnerable or verified.confidence >= 7:
-                            _print(console, f"    [green]↑ verification upgraded (→{verified.confidence})[/green]")
-                        else:
-                            _print(console, f"    [dim]verification: {verified.confidence}/10 — keeping as interesting[/dim]")
+                        _print(console, f"    [dim]verification: {verified.confidence}/10 — keeping as interesting[/dim]")
+        elif evidence.matches:
+            _print(console, f"    [yellow]? pattern match, LLM skeptical ({len(evidence.matches)} match(es))[/yellow]")
+            # Deterministic evidence: pattern matched regardless of LLM opinion
+            pattern_summary = "; ".join(
+                f"{m.function_name or '?'}:{m.line_content[:60]}"
+                for m in evidence.matches[:5]
+            )
+            deterministic_analysis = (
+                f"Code-level pattern evidence ({len(evidence.matches)} matches): "
+                f"{pattern_summary}"
+            )
+            result = AgentPhaseResult(
+                path_id=result.path_id,
+                vuln_type=result.vuln_type,
+                score=result.score,
+                contradictions=result.contradictions or [{
+                    "evidence_checker": "Code-level pattern matched (deterministic)",
+                    "matches": f"{len(evidence.matches)} pattern(s)",
+                    "patterns": pattern_summary,
+                }],
+                confidence=max(result.confidence, 7),
+                analysis=deterministic_analysis,
+                is_vulnerable=True,
+            )
+            all_results[-1] = result
 
     return all_results
 
@@ -507,21 +577,24 @@ def _run_phase_d_lib(
     function_index=None,
     target: str = "",
 ) -> list[AgentPhaseResult]:
-    """Library-mode Phase D — no Intent/Logic agents.
+    """Library-mode Phase D — lightweight Intent+Logic pipeline.
 
-    Libraries/frameworks rarely have intentional vulnerabilities, so
-    Intent+Logic agents produce noise. This lightweight pipeline:
-    1. Builds source code blocks per slice
-    2. Does a single skeptical LLM analysis per sink
-    3. Runs EvidenceChecker if contradictions are found
+    Libraries rarely have intentional vulnerabilities, but may have
+    composition vulnerabilities (path-builder + consumer) or misuse-prone
+    APIs. Uses the same Intent Agent → Merge → Logic Agent flow as app
+    mode, but without README context.
     """
-    all_results: list[AgentPhaseResult] = []
     project_path = os.path.abspath(target) if target else ""
+    loader = PathCodeLoader(project_path=project_path, blackboard=blackboard)
+    intent_agent = IntentAgent()
+    logic_agent = LogicAgent()
+    merge_layer = MergeLayer()
+    all_results: list[AgentPhaseResult] = []
 
     for i, slice_ in enumerate(sort_result.all_slices):
         _print(console, f"  [{i+1}/{len(sort_result.all_slices)}] {slice_.id} ({slice_.sink})")
 
-        # Build pseudo-node from sink metadata
+        # Build nodes from sink metadata + real path nodes
         nodes: list[dict[str, Any]] = [{
             "function_name": slice_.sink,
             "file_path": slice_.sink_file.split(":")[0],
@@ -530,168 +603,262 @@ def _run_phase_d_lib(
         if slice_.nodes:
             nodes = slice_.nodes
 
-        code_block = _build_code_block(nodes)
-        if not code_block.strip():
-            _print(console, f"    [dim]No source code available.[/dim]")
+        # Prepare tasks via PathCodeLoader (checks blackboard cache)
+        load_result = loader.prepare(slice_.id, nodes, readme_summary="")
+
+        if not load_result.tasks and not load_result.cached:
+            _print(console, f"    [dim]No functions to analyze.[/dim]")
             all_results.append(AgentPhaseResult(
                 path_id=slice_.id, vuln_type=slice_.vuln_type.value,
                 score=slice_.score, is_vulnerable=False,
             ))
             continue
 
-        # Direct analysis: skeptical prompt
-        prompt = _LIB_PROMPT_TEMPLATE.format(
-            vuln_type=slice_.vuln_type.value.upper(),
+        # Intent Agent: extract developer intent from each function
+        all_intent_results: list[IntentResult] = list(load_result.cached)
+        for task in load_result.tasks:
+            prompt = intent_agent.prepare_prompt(task)
+            llm_response = _call_llm(llm, prompt, console)
+            if llm_response:
+                results = intent_agent.run(task, llm_response=llm_response)
+                all_intent_results.extend(results)
+                loader.register_intent_results(results)
+
+        # Merge into pseudocode chain (with pass_through for dangerous functions)
+        intent_chain = merge_layer.merge(all_intent_results)
+
+        if not intent_chain.strip():
+            _print(console, f"    [dim]Empty intent chain, skipping Logic Agent.[/dim]")
+            all_results.append(AgentPhaseResult(
+                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
+                score=slice_.score, is_vulnerable=False,
+            ))
+            continue
+
+        # Build raw source block (includes companion methods + aliases for context)
+        code_block = _build_code_block(nodes)
+        logic_prompt = logic_agent.prepare_prompt(
+            path_id=slice_.id,
+            intent_chain=intent_chain,
+            vuln_type=slice_.vuln_type.value,
+            readme_summary="",
             code_block=code_block,
         )
-        response = _call_llm(llm, prompt, console)
-        if not response:
+        logic_response = _call_llm(llm, logic_prompt, console)
+        if not logic_response:
+            _print(console, f"    [red]Logic Agent LLM call failed[/red]")
             all_results.append(AgentPhaseResult(
                 path_id=slice_.id, vuln_type=slice_.vuln_type.value,
                 score=slice_.score, is_vulnerable=False,
             ))
             continue
 
-        # Parse result
-        import json
-        try:
-            data = json.loads(response)
-        except json.JSONDecodeError:
-            data = {"vulnerable": False, "confidence": 0, "analysis": response[:200]}
-
-        contradictions = []
-        if data.get("vulnerable") and data.get("analysis"):
-            contradictions.append({
-                "func": slice_.sink,
-                "claimed": "library API usage",
-                "actual": data.get("analysis", ""),
-                "contradiction_type": data.get("vuln_type", "unknown"),
-                "bypass_poc": data.get("bypass_poc", ""),
-            })
-
-        confidence = data.get("confidence", 0)
-        if not isinstance(confidence, int):
-            try:
-                confidence = int(confidence)
-            except (ValueError, TypeError):
-                confidence = 0
-        confidence = max(0, min(10, confidence))
-
-        result = AgentPhaseResult(
+        result = logic_agent.run(
             path_id=slice_.id,
-            vuln_type=slice_.vuln_type.value,
             score=slice_.score,
-            contradictions=contradictions,
-            confidence=confidence,
-            analysis=data.get("analysis", ""),
-            is_vulnerable=confidence >= 7 and len(contradictions) > 0,
+            vuln_type=slice_.vuln_type.value,
+            intent_chain=intent_chain,
+            llm_response=logic_response,
         )
         all_results.append(result)
         blackboard.record_phase_result(result)
+        _print_phase_d_result(console, result)
 
-        if result.is_vulnerable:
-            _print(console, f"    [red]⚠ {confidence}/10 — {len(contradictions)} contradiction(s)[/red]")
-        elif confidence >= 4:
-            _print(console, f"    [yellow]? {confidence}/10 — interesting[/yellow]")
-        else:
-            _print(console, f"    [dim]✓ {confidence}/10 — safe[/dim]")
+        # Bridge Verifier: handle both attr-bridge and path-bridge patterns
+        bridge_result = _run_lib_bridge_verifier(
+            llm, result, nodes, code_block, console,
+        )
+        if bridge_result:
+            result = bridge_result
+            all_results[-1] = result
+            if result.confidence >= 4 or result.is_vulnerable:
+                _print_phase_d_result(console, result)
 
-        # EvidenceChecker for high-confidence findings
-        if result.confidence >= 4 and result.contradictions:
-            checker = EvidenceChecker(
-                llm_call_fn=lambda p: _call_llm(llm, p, console),
-                blackboard=blackboard,
+        # Adversary Agent: try to rebut before PoC generation (lib mode)
+        if result.is_vulnerable or result.confidence >= 7:
+            adversary = AdversaryAgent()
+            contradiction_desc = (
+                result.contradictions[0].get("contradiction_type", "")
+                + ": "
+                + result.contradictions[0].get("actual", "")
+                if result.contradictions else ""
             )
-            with _status(console, f"  Evidence: {slice_.id}..."):
-                evidence = checker.run(result, code_block, nodes)
+            with _status(console, f"  Adversary: {slice_.id}..."):
+                adv_result = adversary.run(
+                    vuln_type=slice_.vuln_type.value,
+                    analysis=result.analysis,
+                    contradiction=contradiction_desc,
+                    code_block=code_block,
+                    llm_call=lambda p: _call_llm(llm, p, console),
+                )
 
-            if evidence.evidence_found:
-                _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
-            else:
-                _print(console, f"    [red]✗ no code evidence — downgrading[/red]")
+            if adv_result["rebutted"]:
+                _print(console, f"    [red]✗ rebutted: {adv_result['rebuttal'][:120]}[/red]")
                 result = AgentPhaseResult(
-                    path_id=result.path_id,
-                    vuln_type=result.vuln_type,
-                    score=result.score,
-                    contradictions=result.contradictions,
-                    confidence=min(result.confidence, 3),
-                    analysis=result.analysis + "\n[Evidence rejected]",
+                    path_id=result.path_id, vuln_type=result.vuln_type,
+                    score=result.score, contradictions=result.contradictions,
+                    confidence=min(result.confidence, adv_result["confidence_downgrade"]),
+                    analysis=result.analysis
+                    + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
                     is_vulnerable=False,
+                    rebutted=True,
+                    rebuttal=adv_result["rebuttal"],
                 )
-                all_results[-1] = result
-
-        # Bridge Verifier: deep analysis for attribute taint bridge paths
-        for node in nodes:
-            fn_name = node.get("function_name", "")
-            if "[attr bridge" not in fn_name:
-                continue
-            bridge = BridgeAnnotation.parse(fn_name)
-            if not bridge:
-                continue
-            _print(console, f"    [cyan]Bridge: {bridge.storer}→{bridge.reader} (self.{bridge.attr})[/cyan]")
-
-            storer_code = _load_function_source(
-                node.get("file_path", ""), bridge.storer,
-            )
-            reader_code = _load_function_source(
-                node.get("file_path", ""), bridge.reader,
-            )
-            backtrack_chain = _build_backtrack_text(nodes)
-
-            verifier = BridgeVerifier(
-                llm_call_fn=lambda p: _call_llm(llm, p, console),
-            )
-            with _status(console, f"  Bridge: {bridge.storer}→{bridge.reader}..."):
-                bridge_result = verifier.verify(
-                    logic_result=result,
-                    path_nodes=nodes,
-                    storer_code=storer_code,
-                    reader_code=reader_code,
-                    bridge=bridge,
-                    backtrack_chain=backtrack_chain,
-                )
-
-            if bridge_result.is_vulnerable:
-                _print(console, f"    [red]⚠ Bridge confirmed: {bridge.storer}→{bridge.reader} (self.{bridge.attr}) — {bridge_result.vuln_type}[/red]")
-                result = bridge_result
                 all_results[-1] = result
             else:
-                _print(console, f"    [dim]Bridge not confirmed: {bridge.storer}→{bridge.reader}[/dim]")
-            break  # Only handle first bridge annotation per slice
+                _print(console, f"    [green]✓ not rebutted (weakness: {adv_result.get('weakness', '')[:80]})[/green]")
+                with _status(console, f"  PoC Agent: {slice_.id}..."):
+                    poc = PoCAgent(output_dir=os.path.join(os.getcwd(), "pocs"))
+                    poc_path = poc.run(
+                        path_id=slice_.id,
+                        vuln_type=slice_.vuln_type.value,
+                        analysis=result.analysis,
+                        contradiction=contradiction_desc,
+                        code_block=code_block,
+                        weakness=adv_result.get("weakness", ""),
+                        llm_call=lambda p: _call_llm(llm, p, console),
+                    )
+                if poc_path:
+                    _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
+                    result = AgentPhaseResult(
+                        path_id=result.path_id, vuln_type=result.vuln_type,
+                        score=result.score, contradictions=result.contradictions,
+                        confidence=result.confidence,
+                        analysis=result.analysis,
+                        is_vulnerable=result.is_vulnerable,
+                        poc_path=poc_path,
+                    )
+                    all_results[-1] = result
+
+        # Evidence Checker: always run code-level pattern matching
+        checker = EvidenceChecker(
+            llm_call_fn=lambda p: _call_llm(llm, p, console),
+            blackboard=blackboard,
+        )
+        with _status(console, f"  Evidence: {slice_.id}..."):
+            evidence = checker.run(result, code_block, nodes)
+
+        if evidence.evidence_found:
+            _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
+            if evidence.poc:
+                _print(console, f"      PoC: {evidence.poc[:150]}...")
+            result = AgentPhaseResult(
+                path_id=result.path_id, vuln_type=result.vuln_type,
+                score=result.score, contradictions=result.contradictions,
+                confidence=max(result.confidence, 5),
+                analysis=evidence.analysis or result.analysis,
+                is_vulnerable=True,
+            )
+            all_results[-1] = result
+        elif evidence.matches:
+            _print(console, f"    [cyan]? pattern matched (deterministic) ({len(evidence.matches)} match(es))[/cyan]")
+            # Deterministic evidence: pattern matched regardless of LLM opinion
+            pattern_summary = "; ".join(
+                f"{m.function_name or '?'}:{m.line_content[:60]}"
+                for m in evidence.matches[:5]
+            )
+            deterministic_analysis = (
+                f"Code-level pattern evidence ({len(evidence.matches)} matches): "
+                f"{pattern_summary}"
+            )
+            result = AgentPhaseResult(
+                path_id=result.path_id, vuln_type=result.vuln_type,
+                score=result.score, contradictions=result.contradictions or [{
+                    "evidence_checker": "Code-level pattern matched (deterministic)",
+                    "matches": f"{len(evidence.matches)} pattern(s)",
+                    "patterns": pattern_summary,
+                }],
+                confidence=max(result.confidence, 7),
+                analysis=deterministic_analysis,
+                is_vulnerable=True,
+            )
+            all_results[-1] = result
+        else:
+            _print(console, f"    [dim]No code-level evidence patterns.[/dim]")
 
     return all_results
 
 
-_LIB_PROMPT_TEMPLATE = """You are analyzing a **library/framework** utility function for potential security issues.
+def _run_lib_bridge_verifier(
+    llm: Any,
+    result: AgentPhaseResult,
+    nodes: list[dict[str, Any]],
+    code_block: str,
+    console: Any,
+) -> AgentPhaseResult | None:
+    """Run bridge verification on a library slice.
 
-Unlike application code, this function is an API provided to consumers of a library.
-Your job is NOT to find "developer intent contradictions" — instead, determine if
-a **consumer of this library** could misuse this function in a way that causes a security issue.
+    Handles two bridge patterns:
 
-Vulnerability Type: {vuln_type}
+    **Attr-bridge** (``[attr bridge: self.X stored by Y → read by Z]``):
+    Parsed from path node annotations.  Calls the full
+    :class:`BridgeVerifier` pipeline when found.
 
-Source Code:
-```
-{code_block}
-```
+    **Path-bridge**: scans ``code_block`` for path-builder patterns
+    (``PurePosixPath``, ``posixpath.join``, etc.) AND consumer patterns
+    (``open``, ``read_text``, ``extract``, regex ops) appearing together
+    in the same sink function.  When both sets of patterns match,
+    creates a ``BridgeAnnotation`` and runs through ``BridgeVerifier``.
 
-Analysis Focus:
-- Is the dangerous operation (open/ex/eval/re.match/...) reachable with user-controlled data?
-- If so, what would the calling code look like? Is it realistic?
-- Is the function well-guarded (input validation, sanitization, authorization)?
-- Could a consumer call this in an unexpected way?
+    Returns ``None`` when no bridge pattern detected; otherwise returns
+    the (possibly updated) ``AgentPhaseResult``.
+    """
+    # ── Phase 1: check for [attr bridge: ...] annotations ──
+    bridge = None
+    for node in nodes:
+        annotations = node.get("annotations", []) or []
+        for ann_text in annotations:
+            parsed = BridgeAnnotation.parse(ann_text)
+            if parsed:
+                bridge = parsed
+                break
+        if bridge:
+            break
 
-Output:
-```json
-{{
-  "vulnerable": true/false,
-  "vuln_type": "{vuln_type}",
-  "confidence": 0-10,
-  "analysis": "Brief analysis. If vulnerable, describe the calling pattern.",
-  "bypass_poc": "If vulnerable, describe the misuse scenario."
-}}
-```
-"""
+    if bridge:
+        _print(console, f"    [cyan]attr bridge: self.{bridge.attr} ({bridge.storer}→{bridge.reader})[/cyan]")
+
+        storer_code = _load_function_source(
+            nodes[0].get("file_path", ""), bridge.storer,
+        )
+        reader_code = _load_function_source(
+            nodes[-1].get("file_path", ""), bridge.reader,
+        )
+
+        verifier = BridgeVerifier(llm_call_fn=lambda p: _call_llm(llm, p, console))
+        return verifier.verify(
+            logic_result=result,
+            path_nodes=nodes,
+            storer_code=storer_code,
+            reader_code=reader_code,
+            bridge=bridge,
+            backtrack_chain=_build_backtrack_text(nodes),
+        )
+
+    # ── Phase 2: check for path-bridge composition patterns ──
+    path_evidence = scan_path_bridge_evidence(code_block)
+
+    if not path_evidence["path_bridge_found"]:
+        return None
+
+    _print(console, f"    [cyan]path bridge: {len(path_evidence['builder_patterns'])} builder + {len(path_evidence['consumer_patterns'])} consumer[/cyan]")
+
+    verifier = BridgeVerifier()  # pattern-only, no LLM
+
+    bridge = BridgeAnnotation(
+        attr="(path)",
+        storer=", ".join(d for d, _ in path_evidence["builder_patterns"]),
+        reader=", ".join(d for _, _, d in path_evidence["consumer_patterns"]),
+        raw_text=str(path_evidence),
+    )
+
+    return verifier.verify(
+        logic_result=result,
+        path_nodes=nodes,
+        storer_code=code_block,
+        reader_code=code_block,
+        bridge=bridge,
+    )
 
 
 def _call_llm(llm: Any, prompt: str, console: Any) -> str | None:

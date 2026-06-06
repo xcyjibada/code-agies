@@ -60,6 +60,10 @@ SINK_WEIGHTS: dict[str, float] = {
     "pathlib.Path.write_text": 0.6, "pathlib.Path.write_bytes": 0.6,
     # IDOR — direct object reference
     "get_object_or_404": 0.5, "queryset.filter": 0.4,
+    # REDOS — regex operations
+    "glob": 0.6, "re.compile": 0.7, "re.match": 0.6,
+    "re.search": 0.6, "re.findall": 0.5, "re.fullmatch": 0.5,
+    "re.sub": 0.5, "fnmatch.translate": 0.5, "fnmatch.filter": 0.5,
 }
 
 KNOWN_SINKS: set[str] = set(SINK_WEIGHTS.keys())
@@ -203,16 +207,37 @@ def select_top_k(
     ]
     scored.sort(key=lambda x: -x[0])
 
-    # Step 3: Separate into candidate pool
-    candidates = scored[:max_exploit + max_explore]
-    remaining_pool = scored[max_exploit + max_explore:]
+    # Step 3: Guarantee at least one exploit slot per vuln type
+    #   Reserve the path for each unique vuln type, preferring paths where
+    #   the sink name is a KNOWN sink function (not an intermediate helper).
+    #   This prevents a single dominant vuln type (e.g. 13 LFI) from crowding
+    #   out rarer types (e.g. 2 REDOS) that are often higher-value.
+    by_type: dict[str, list[tuple[float, CodeQlPath]]] = {}
+    for s, p in scored:
+        by_type.setdefault(p.vuln_type.value, []).append((s, p))
 
-    # Step 4: Allocate exploit slots (top N)
-    exploit_raw = [p for _, p in candidates[:max_exploit]]
+    exploit_raw: list[CodeQlPath] = []
+    used_keys: set[str] = set()
+    for vt in sorted(by_type.keys()):
+        candidates = by_type[vt]
+        # Prefer known direct sink over intermediate helper function
+        best = max(candidates, key=lambda x: (1.0 if x[1].sink in KNOWN_SINKS else 0.0, x[0]))
+        exploit_raw.append(best[1])
+        used_keys.add(best[1].key)
 
-    # Step 5: Allocate explore slots from the rest
-    explore_candidates = candidates[max_exploit:] + remaining_pool
-    explore_scores, explore_paths = zip(*explore_candidates) if explore_candidates else ([], [])
+    # Step 4: Fill remaining exploit slots from the rest by score
+    remaining_scored = [(s, p) for s, p in scored if p.key not in used_keys]
+    slots_left = max_exploit - len(exploit_raw)
+    if slots_left > 0:
+        for s, p in remaining_scored[:slots_left]:
+            exploit_raw.append(p)
+            used_keys.add(p.key)
+    else:
+        exploit_raw = exploit_raw[:max_exploit]
+
+    # Step 5: Allocate explore slots from leftover candidates
+    explore_pool = [(s, p) for s, p in remaining_scored if p.key not in used_keys]
+    explore_scores, explore_paths = zip(*explore_pool) if explore_pool else ([], [])
     explore_raw = _select_explore(
         list(explore_paths),
         slots=max_explore,
@@ -269,6 +294,7 @@ def _to_slice(
         has_validation=_has_validation(path),
         assigned_slot=slot,
         anomaly_reasons=reasons,
+        nodes=[n.__dict__ for n in path.nodes] if path.nodes else [],
         # code_block is empty here — filled lazily by PathCodeLoader
     )
 

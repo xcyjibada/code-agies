@@ -89,6 +89,15 @@ class AgentPhaseResult:
     is_vulnerable: bool = False
     """Whether this path is flagged as potentially vulnerable."""
 
+    poc_path: str = ""
+    """Path to generated PoC script (empty if not generated)."""
+
+    rebutted: bool = False
+    """Whether the Adversary Agent successfully rebutted this finding."""
+
+    rebuttal: str = ""
+    """Why the Adversary Agent rebutted this (if rebutted)."""
+
 
 @dataclass
 class CachedIntent:

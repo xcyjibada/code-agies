@@ -54,6 +54,67 @@ _STORER_SOURCE_PATTERNS: list[re.Pattern] = [
     re.compile(r"open\s*\(|read\s*\(", re.IGNORECASE),
 ]
 
+# Path-bridge patterns: scanner for builder + consumer composition analysis.
+# Builder patterns: constructs or manipulates a POSIX/Windows path.
+_PATH_BUILDER_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"PurePosixPath|PureWindowsPath"), "PurePath construction"),
+    (re.compile(r"posixpath\.join|ntpath\.join|os\.path\.join"), "path join"),
+    (re.compile(r"Path\(.*\)\.joinpath"), "pathlib joinpath"),
+    (re.compile(r"pathlib\.Path\b"), "pathlib Path"),
+    (re.compile(r"\.resolve\s*\("), "path resolution"),
+    (re.compile(r"\.parent\b"), "path parent"),
+]
+
+# Consumer patterns: file I/O or regex operations that consume a path / pattern.
+_PATH_CONSUMER_PATTERNS: list[tuple[re.Pattern, str, str]] = [
+    (re.compile(r"\bopen\s*\("), "lfi", "file open"),
+    (re.compile(r"\.read_text\s*\("), "lfi", "read_text"),
+    (re.compile(r"\.read_bytes\s*\("), "lfi", "read_bytes"),
+    (re.compile(r"\.write_text\s*\("), "lfi", "write_text"),
+    (re.compile(r"\.write_bytes\s*\("), "lfi", "write_bytes"),
+    (re.compile(r"\.extractall?\s*\("), "zip_entry_traversal", "zipfile extract"),
+    (re.compile(r"self\.root\.(open|extract)"), "zip_entry_traversal", "zipfile root operation"),
+    (re.compile(r"zopen|ZipFile"), "zip_entry_traversal", "zipfile open"),
+    (re.compile(r"re\.compile|re\.search|re\.match|re\.fullmatch|re\.sub|re\.findall"), "redos", "regex operation"),
+]
+
+
+def scan_path_bridge_evidence(code_block: str) -> dict:
+    """Scan code block for path-bridge composition patterns.
+
+    Looks for both path-builder calls (posixpath.join, PurePosixPath, etc.)
+    AND path-consumer calls (open, read_text, extract, regex ops) in the
+    same code region.  When both exist, the library may have a composition
+    vulnerability where a consumer uses an unsanitized path built earlier.
+
+    Returns a dict:
+      ``path_bridge_found`` -- True when both builder and consumer patterns match
+      ``builder_patterns``  -- list of (desc, pattern) tuples matched
+      ``consumer_patterns`` -- list of (desc, sink_type, pattern) tuples matched
+      ``sink_type``         -- first consumer's sink type (or "unknown")
+    """
+    result: dict = {
+        "path_bridge_found": False,
+        "builder_patterns": [],
+        "consumer_patterns": [],
+        "sink_type": "unknown",
+    }
+
+    for pat, desc in _PATH_BUILDER_PATTERNS:
+        if pat.search(code_block):
+            result["builder_patterns"].append((desc, pat.pattern[:40]))
+
+    for pat, sink_type, desc in _PATH_CONSUMER_PATTERNS:
+        if pat.search(code_block):
+            result["consumer_patterns"].append((desc, sink_type, pat.pattern[:40]))
+            if result["sink_type"] == "unknown":
+                result["sink_type"] = sink_type
+
+    if result["builder_patterns"] and result["consumer_patterns"]:
+        result["path_bridge_found"] = True
+
+    return result
+
 
 BRIDGE_VERIFIER_PROMPT = """You are analyzing an attribute taint bridge for a security vulnerability.
 

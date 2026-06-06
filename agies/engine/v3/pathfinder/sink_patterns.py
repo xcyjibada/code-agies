@@ -25,7 +25,6 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     # -- RCE: code / command execution --
     ("exec", VulnType.RCE),
     ("eval", VulnType.RCE),
-    ("compile", VulnType.RCE),
     ("__import__", VulnType.RCE),
     ("os.system", VulnType.RCE),
     ("os.popen", VulnType.RCE),
@@ -85,6 +84,9 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("re.fullmatch", VulnType.REDOS),
     ("re.sub", VulnType.REDOS),
     ("re.compile", VulnType.REDOS),
+    # `compile` must come AFTER `re.compile` so `classify_sink` .endswith
+    # check matches REDOS before the broader RCE match.
+    ("compile", VulnType.RCE),
 ]
 
 # ---------------------------------------------------------------------------
@@ -183,6 +185,24 @@ SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
     # Dynamic import / code generation (exact built-in compile(), NOT re.compile)
     (re.compile(r"__import__"), VulnType.RCE),
     (re.compile(r"\bcompile\("), VulnType.RCE),
+    # RCE: eval/exec in function bodies (catches inline calls in route handlers)
+    (re.compile(r"\beval\s*\("), VulnType.RCE),
+    (re.compile(r"\bexec\s*\("), VulnType.RCE),
+    (re.compile(r"os\.system\s*\("), VulnType.RCE),
+    (re.compile(r"os\.popen\s*\("), VulnType.RCE),
+    (re.compile(r"subprocess\.\w+\s*\("), VulnType.RCE),
+    # RCE: pickle/cloudpickle deserialization in function bodies
+    (re.compile(r"pickle\.loads?\s*\("), VulnType.RCE),
+    (re.compile(r"cloudpickle\.loads?\s*\("), VulnType.RCE),
+    # LFI: bare open() in function bodies
+    (re.compile(r"\bopen\s*\("), VulnType.LFI),
+    # SQLI: execute/executemany in function bodies
+    (re.compile(r"\bexecute\b"), VulnType.SQLI),
+    (re.compile(r"executemany\b"), VulnType.SQLI),
+    # SSRF: requests/urllib in function bodies
+    (re.compile(r"requests\.\w+\s*\("), VulnType.SSRF),
+    (re.compile(r"urlopen\s*\("), VulnType.SSRF),
+    (re.compile(r"httpx\.\w+\s*\("), VulnType.SSRF),
 ]
 
 
