@@ -39,11 +39,14 @@ class DeepSeekProvider(LLMProvider):
                 f"{self.env_key_name} is not set. "
                 "Set it via environment variable or pass api_key to get_model()."
             )
+        # Low top_p reduces sampling noise from DeepSeek MoE architecture
+        call_kwargs = {"top_p": 0.01}
+        call_kwargs.update(kwargs)
         response = self._client.chat.completions.create(
             model=self.model,
             messages=messages,
             tools=tools,
-            **kwargs,
+            **call_kwargs,
         )
         choice = response.choices[0]
         msg = choice.message

@@ -1,7 +1,7 @@
 """PoC Agent — write executable PoC scripts for un-rebutted findings.
 
 Generates a self-contained Python script that reproduces the vulnerability.
-Saved to ``pocs/{path_id}-poc.py`` for manual execution by the user.
+Saved to ``pocs/{target}-{path_id}-poc.py`` for manual execution by the user.
 """
 
 from __future__ import annotations
@@ -13,11 +13,12 @@ import re
 
 logger = logging.getLogger(__name__)
 
-POC_PROMPT = """You are writing a Proof-of-Concept exploit script. The finding below has survived adversarial review — write a working, self-contained Python script.
+POC_PROMPT = """You are writing a Proof-of-Concept exploit script for **{project_desc}**. The finding below has survived adversarial review — write a working, self-contained Python script.
 
 Finding
 -------
 - Vulnerability Type: {vuln_type}
+- Project: {project_desc}
 - Analysis: {analysis}
 - Contradiction: {contradiction}
 - Finding Strength: {weakness}
@@ -66,10 +67,12 @@ def parse_poc_response(response: str) -> str:
 class PoCAgent:
     """Generate PoC scripts for un-rebutted findings."""
 
-    def __init__(self, output_dir: str = "") -> None:
+    def __init__(self, output_dir: str = "", target: str = "") -> None:
         self._output_dir = output_dir or os.path.join(
             os.getcwd(), "pocs",
         )
+        self._project_name = os.path.splitext(os.path.basename(os.path.normpath(target)))[0] if target else "unknown"
+        self._project_desc = f"{self._project_name} ({target})" if target else "unknown project"
 
     def prepare_prompt(
         self,
@@ -82,6 +85,7 @@ class PoCAgent:
         """Build the PoC generation prompt."""
         return POC_PROMPT.format(
             vuln_type=vuln_type.upper(),
+            project_desc=self._project_desc,
             analysis=analysis or "(no analysis)",
             contradiction=contradiction or "(no contradiction)",
             weakness=weakness or "(strong finding)",
@@ -91,15 +95,28 @@ class PoCAgent:
     def write_script(self, path_id: str, script_content: str) -> str:
         """Write PoC script to disk, return the file path."""
         os.makedirs(self._output_dir, exist_ok=True)
+        safe_project = re.sub(r"[^a-zA-Z0-9_-]", "_", self._project_name)
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", path_id)
-        file_path = os.path.join(self._output_dir, f"{safe_id}-poc.py")
+        file_path = os.path.join(self._output_dir, f"{safe_project}-{safe_id}-poc.py")
 
         if not script_content.strip():
             logger.warning("PoCAgent: empty script content for %s", path_id)
             return ""
 
+        # Prepend header comment with project context
+        header = (
+            f"#!/usr/bin/env python3\n"
+            f"# PoC for {self._project_desc}\n"
+            f"# Path: {path_id}\n"
+            f"# Auto-generated — run with: python3 {os.path.basename(file_path)}\n"
+            f"#\n"
+        )
+        content = header + script_content.strip()
+        if not content.endswith("\n"):
+            content += "\n"
+
         with open(file_path, "w") as f:
-            f.write(script_content + "\n")
+            f.write(content)
         os.chmod(file_path, 0o755)
 
         logger.info("PoCAgent: wrote %s", file_path)

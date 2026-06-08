@@ -18,6 +18,7 @@ class VulnType(str, enum.Enum):
     AFO = "afo"
     IDOR = "idor"
     REDOS = "redos"
+    SUSPICIOUS = "suspicious"
     UNKNOWN = "unknown"
 
 
@@ -30,6 +31,7 @@ VULN_LABELS: dict[VulnType, str] = {
     VulnType.AFO: "Arbitrary File Overwrite",
     VulnType.IDOR: "Insecure Direct Object Reference",
     VulnType.REDOS: "ReDoS (Regular Expression DoS)",
+    VulnType.SUSPICIOUS: "Suspicious — requires analysis (path constructor / logic pattern)",
     VulnType.UNKNOWN: "Unknown",
 }
 

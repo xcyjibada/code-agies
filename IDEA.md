@@ -1145,6 +1145,7 @@ Priority gating 逻辑（在 `brain._build_batch()` 或 `brain.run()` 中）：
 ### 开发路线图（更新版）
 
 ```
+v2 Pipeline (完成，保留作回退):
 Step 0:  骨架搭建（Brain + State + Runner + Mapping）                         ✅ 已完成
 Step 1:  Vulnerability Agent（核心 LLM Agent）                               ✅ 已完成
 Step 2:  Xint 架构重构（sourcer + bulk + verification + index_tools）         ✅ 已完成
@@ -1158,8 +1159,17 @@ Step 9:  Director 情报聚合层（风险加权 PageRank + has_path 可达性�
 Step A:  情报驱动型调度重构（三段式分发 + Priority Router + QuotaMonitor）      ✅ 已完成
 Step B:  黑板架构（discovered_logic + record_knowledge + prior_knowledge 注入） ✅ 已完成
 Step C:  上下文注入 + 确定性候选 + SAST 文件保障                               ✅ 已完成
+Step D/E/F:  mlflow/gunicorn 实战验证 + 批量修复 + 断裂修复                    ✅ 已完成
 P4/SAST: Phase A 规则匹配引擎（matcher.py + 6 条 YAML 规则）                   ✅ 已完成
 P5:      SAST ↔ LLM 反馈闭环（FeedbackStore 持久化）                           ✅ 已完成
+
+v3 Pipeline (当前阶段, 详见 docs/v3/plan.md):
+P0-P8:   目录骨架 → pathfinder/slicer/prompt/Intent/Logic/黑板/编排器          ✅ 已完成
+P9:      CLI `--v3` 开关                                                       ✅ 已完成
+进阶:    BridgeVerifier + EvidenceChecker + AdversaryAgent + PoCAgent           ✅ 已完成
+P1:      CodeQL 数据库创建 + 查询执行                                          🔴 等待 CodeQL CLI
+P10:     动态沙箱验证（Docker PoC）                                             🔴 待做
+P11:     已知 CVE 项目上验证                                                    🔴 待做
 ```
 
 ---

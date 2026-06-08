@@ -61,6 +61,7 @@ def run_v3_pipeline(
     max_intent_workers: int = 5,
     exclude_test: bool = False,
     project_type: str = "auto",
+    consensus: bool = False,
 ) -> None:
     """Run the complete v3 pipeline against *target*.
 
@@ -189,6 +190,7 @@ def run_v3_pipeline(
             console=console,
             target=target,
             function_index=function_index,
+            consensus=consensus,
         )
     else:
         _print_header(console, f"Phase D: Library Analysis ({len(sort_result.all_slices)} slices)")
@@ -199,6 +201,7 @@ def run_v3_pipeline(
             console=console,
             function_index=function_index,
             target=target,
+            consensus=consensus,
         )
 
     # ==================================================================
@@ -345,6 +348,7 @@ def _run_phase_d(
     console: Any,
     target: str,
     function_index=None,
+    consensus: bool = False,
 ) -> list[AgentPhaseResult]:
     """Run Phase D with real LLM calls and verification routing.
 
@@ -415,6 +419,7 @@ def _run_phase_d(
             vuln_type=slice_.vuln_type.value,
             readme_summary=readme_summary,
             code_block=code_block,
+            project_type="app",
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
@@ -436,6 +441,13 @@ def _run_phase_d(
         blackboard.record_phase_result(result)
         _print_phase_d_result(console, result)
 
+        # Conditional consensus voting (grey zone, 4-7)
+        if consensus:
+            result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
+            if result is not all_results[-1]:
+                all_results[-1] = result
+                _print_phase_d_result(console, result)
+
         # Adversary Agent: try to rebut before PoC generation
         if result.is_vulnerable or result.confidence >= 7:
             adversary = AdversaryAgent()
@@ -455,7 +467,8 @@ def _run_phase_d(
                 )
 
             if adv_result["rebutted"]:
-                _print(console, f"    [red]✗ rebutted: {adv_result['rebuttal'][:120]}[/red]")
+                _print(console, f"    [red]✗ rebutted[/red]")
+                _print(console, f"      reason: {adv_result['rebuttal']}")
                 result = AgentPhaseResult(
                     path_id=result.path_id, vuln_type=result.vuln_type,
                     score=result.score, contradictions=result.contradictions,
@@ -468,10 +481,14 @@ def _run_phase_d(
                 )
                 all_results[-1] = result
             else:
-                _print(console, f"    [green]✓ not rebutted (weakness: {adv_result.get('weakness', '')[:80]})[/green]")
+                _print(console, f"    [green]✓ not rebutted[/green]")
+                _print(console, f"      weak point: {adv_result.get('weakness', '')}")
                 # PoC Agent: write exploit script for un-rebutted findings
                 with _status(console, f"  PoC Agent: {slice_.id}..."):
-                    poc = PoCAgent(output_dir=os.path.join(os.getcwd(), "pocs"))
+                    poc = PoCAgent(
+                        output_dir=os.path.join(os.getcwd(), "pocs"),
+                        target=target,
+                    )
                     poc_path = poc.run(
                         path_id=slice_.id,
                         vuln_type=slice_.vuln_type.value,
@@ -576,6 +593,7 @@ def _run_phase_d_lib(
     console: Any,
     function_index=None,
     target: str = "",
+    consensus: bool = False,
 ) -> list[AgentPhaseResult]:
     """Library-mode Phase D — lightweight Intent+Logic pipeline.
 
@@ -643,6 +661,7 @@ def _run_phase_d_lib(
             vuln_type=slice_.vuln_type.value,
             readme_summary="",
             code_block=code_block,
+            project_type="lib",
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
@@ -663,6 +682,13 @@ def _run_phase_d_lib(
         all_results.append(result)
         blackboard.record_phase_result(result)
         _print_phase_d_result(console, result)
+
+        # Conditional consensus voting (grey zone, 4-7)
+        if consensus:
+            result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
+            if result is not all_results[-1]:
+                all_results[-1] = result
+                _print_phase_d_result(console, result)
 
         # Bridge Verifier: handle both attr-bridge and path-bridge patterns
         bridge_result = _run_lib_bridge_verifier(
@@ -693,7 +719,8 @@ def _run_phase_d_lib(
                 )
 
             if adv_result["rebutted"]:
-                _print(console, f"    [red]✗ rebutted: {adv_result['rebuttal'][:120]}[/red]")
+                _print(console, f"    [red]✗ rebutted[/red]")
+                _print(console, f"      reason: {adv_result['rebuttal']}")
                 result = AgentPhaseResult(
                     path_id=result.path_id, vuln_type=result.vuln_type,
                     score=result.score, contradictions=result.contradictions,
@@ -706,9 +733,13 @@ def _run_phase_d_lib(
                 )
                 all_results[-1] = result
             else:
-                _print(console, f"    [green]✓ not rebutted (weakness: {adv_result.get('weakness', '')[:80]})[/green]")
+                _print(console, f"    [green]✓ not rebutted[/green]")
+                _print(console, f"      weak point: {adv_result.get('weakness', '')}")
                 with _status(console, f"  PoC Agent: {slice_.id}..."):
-                    poc = PoCAgent(output_dir=os.path.join(os.getcwd(), "pocs"))
+                    poc = PoCAgent(
+                        output_dir=os.path.join(os.getcwd(), "pocs"),
+                        target=target,
+                    )
                     poc_path = poc.run(
                         path_id=slice_.id,
                         vuln_type=slice_.vuln_type.value,
@@ -864,7 +895,13 @@ def _run_lib_bridge_verifier(
 def _call_llm(llm: Any, prompt: str, console: Any) -> str | None:
     """Call the LLM with a prompt and return the response text."""
     try:
-        response = llm.chat_completion([{"role": "user", "content": prompt}])
+        kwargs = {}
+        # DeepSeek JSON mode: prompt MUST contain "json" word or API rejects
+        if "json" in prompt.lower():
+            kwargs["response_format"] = {"type": "json_object"}
+        response = llm.chat_completion(
+            [{"role": "user", "content": prompt}], **kwargs,
+        )
         if response and response.content:
             return response.content
         return None
@@ -880,6 +917,72 @@ def _print_phase_d_result(console: Any, result: AgentPhaseResult) -> None:
         _print(console, f"    [yellow]? {result.confidence}/10 — interesting[/yellow]")
     else:
         _print(console, f"    [dim]✓ {result.confidence}/10 — safe[/dim]")
+
+
+# ======================================================================
+# Consensus voting — grey zone majority vote
+# ======================================================================
+
+
+def _run_consensus_vote(
+    llm: Any,
+    logic_agent: LogicAgent,
+    result: AgentPhaseResult,
+    logic_prompt: str,
+    console: Any,
+) -> AgentPhaseResult:
+    """Conditional majority voting for grey-zone findings (confidence 4-7).
+
+    Runs 2 additional LLM calls (3 total), then takes majority vote
+    on ``is_vulnerable``.  Non-grey-zone results pass through unchanged.
+    """
+    if not (4 <= result.confidence <= 7):
+        return result
+
+    votes_is_vuln: list[bool] = [result.is_vulnerable]
+    votes_conf: list[int] = [result.confidence]
+
+    for i in range(2):
+        r = _call_llm(llm, logic_prompt, console)
+        if not r:
+            continue
+        r2 = logic_agent.run(
+            path_id=result.path_id,
+            score=result.score,
+            vuln_type=result.vuln_type,
+            intent_chain="",
+            llm_response=r,
+        )
+        votes_is_vuln.append(r2.is_vulnerable)
+        votes_conf.append(r2.confidence)
+
+    majority_vuln = sum(votes_is_vuln) >= 2  # 2/3 or 3/3
+    if majority_vuln and not result.is_vulnerable:
+        # Grey zone promoted
+        avg_conf = sum(votes_conf) // len(votes_conf)
+        return AgentPhaseResult(
+            path_id=result.path_id,
+            vuln_type=result.vuln_type,
+            score=result.score,
+            contradictions=result.contradictions,
+            confidence=max(avg_conf, 7),
+            analysis=result.analysis,
+            is_vulnerable=True,
+        )
+    elif not majority_vuln and result.is_vulnerable:
+        # Grey zone demoted
+        avg_conf = sum(votes_conf) // len(votes_conf)
+        return AgentPhaseResult(
+            path_id=result.path_id,
+            vuln_type=result.vuln_type,
+            score=result.score,
+            contradictions=result.contradictions,
+            confidence=min(avg_conf, 3),
+            analysis=result.analysis,
+            is_vulnerable=False,
+        )
+
+    return result
 
 
 # ======================================================================

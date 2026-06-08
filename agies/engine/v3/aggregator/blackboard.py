@@ -27,6 +27,7 @@ from agies.engine.v3.aggregator.models import (
     IntentResult,
     KnowledgeEntry,
     AgentPhaseResult,
+    compute_body_hash,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,9 +67,21 @@ class BlackboardAggregator:
     # Intent cache
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _cache_key(fn_body_hash: str, file_name: str) -> tuple[str, str]:
+        """Normalise cache key — use body hash + filename, not unstable paths."""
+        import os
+        return (fn_body_hash, os.path.basename(file_name))
+
     def cache_intent(self, result: IntentResult) -> None:
         """Cache an Intent Agent result for future reuse."""
-        key = (result.func_name, result.file_path)
+        import os
+        basename = os.path.basename(result.file_path)
+        # Use hash-based key when available, fall back to name-based
+        if result.fn_body_hash:
+            key = (result.fn_body_hash, basename)
+        else:
+            key = (result.func_name, basename)
         if key in self._intent_cache:
             logger.debug("Intent cache: overwriting %s::%s", *key)
 
@@ -79,14 +92,36 @@ class BlackboardAggregator:
         self,
         func_name: str,
         file_path: str,
+        func_body: str = "",
     ) -> IntentResult | None:
         """Retrieve a cached Intent result, incrementing the hit counter.
 
+        Primary lookup uses ``fn_body_hash`` (from *func_body* text).
+        Falls back to ``(func_name, file_name)`` when *func_body* is empty
+        (backward-compatible for callers without source code).
+
         Returns ``None`` if not cached.
         """
-        key = (func_name, file_path)
-        cached = self._intent_cache.get(key)
+        import os
+        basename = os.path.basename(file_path)
+
+        # Primary: hash-based lookup
+        if func_body:
+            body_hash = compute_body_hash(func_body)
+            key = (body_hash, basename)
+            cached = self._intent_cache.get(key)
+            if cached is not None:
+                cached.hit_count += 1
+                return cached.result
+
+        # Fallback: name-based lookup (for callers without body code)
+        name_key = (func_name, basename)
+        cached = self._intent_cache.get(name_key)
         if cached is not None:
+            logger.debug(
+                "Intent cache: name-based hit for %s / %s (hash-based key %s not found)",
+                func_name, file_path, func_body[:40] if func_body else "(no body)",
+            )
             cached.hit_count += 1
             return cached.result
         return None

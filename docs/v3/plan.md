@@ -1084,49 +1084,50 @@ agies/engine/
 │
 ├── v3/                            # ★ NEW v3 模块
 │   ├── __init__.py
-│   ├── runner.py                  # 主编排器（CodeQL → 切片 → LLM → 验证）
+│   ├── runner.py                  # 主编排器（tree-sitter → 切片 → LLM → 验证）
+│   ├── classifier.py              # 项目类型分类器（app vs lib 双管道切换）
 │   │
 │   ├── codeql/                    # CodeQL 集成
 │   │   ├── __init__.py
-│   │   ├── query.py               # 运行 CodeQL 查询、解析结果
-│   │   ├── queries/               # QL 查询文件
-│   │   │   ├── rce.ql
-│   │   │   ├── lfi.ql
-│   │   │   ├── ssrf.ql
-│   │   │   ├── sqli.ql
-│   │   │   ├── xss.ql
-│   │   │   ├── afo.ql
-│   │   │   └── idor.ql
-│   │   └── models.py              # CodeQlPath, PathNode
+│   │   ├── query.py               # CodeQLQueryRunner（建库 + 查询 + 解析）
+│   │   ├── models.py              # CodeQlPath, PathNode
+│   │   └── queries/               # QL 查询文件
+│   │       ├── rce.ql / lfi.ql / ssrf.ql / sqli.ql
+│   │       ├── xss.ql / afo.ql / idor.ql
+│   │       └── rce_dataflow.ql
 │   │
-│   ├── slicer/                    # 切片与排序
+│   ├── pathfinder/                # tree-sitter 路径发现（Phase A 默认引擎）
 │   │   ├── __init__.py
-│   │   ├── sorter.py              # score_path(), select_top_k()
-│   │   └── models.py              # PathSlice
+│   │   ├── sink_patterns.py       # sink 模式定义（8 类漏洞）
+│   │   └── treesitter.py          # TreeSitterPathFinder（反向回溯 caller）
 │   │
-│   ├── prompts/                   # ★ 漏洞类型专项 prompt（VulnHuntr 移植）
+│   ├── slicer/                    # 切片与排序（Phase B）
 │   │   ├── __init__.py
-│   │   ├── rce.py                 # RCE prompt + bypasses
-│   │   ├── lfi.py                 # LFI prompt + bypasses
-│   │   ├── ssrf.py                # SSRF prompt + bypasses
-│   │   ├── sqli.py                # SQLI prompt + bypasses
-│   │   ├── xss.py                 # XSS prompt + bypasses
-│   │   ├── afo.py                 # AFO prompt + bypasses
-│   │   ├── idor.py                # IDOR prompt + bypasses
+│   │   ├── sorter.py              # score_path(), select_top_k(), is_anomalous()
+│   │   └── models.py              # PathSlice, SortResult
+│   │
+│   ├── prompts/                   # ★ 漏洞类型专项 prompt（Phase C）
+│   │   ├── __init__.py
+│   │   ├── rce.py / lfi.py / ssrf.py / sqli.py
+│   │   ├── xss.py / afo.py / idor.py / redos.py
 │   │   └── readme_summary.py      # README 总结 prompt
 │   │
-│   ├── aggregator/                # ★ 黑板聚合 + Intent 缓存（Phase D+E）
+│   ├── aggregator/                # ★ 黑板聚合 + Intent 缓存（Phase E）
 │   │   ├── __init__.py
 │   │   ├── blackboard.py          # BlackboardAggregator（Intent 缓存 + 知识注入）
-│   │   └── models.py              # CachedIntent, AgentResult, KnowledgeEntry
+│   │   └── models.py              # CachedIntent, AgentPhaseResult, KnowledgeEntry
 │   │
-│   └── agents/                    # ★ 三阶段 Agent 池（替换原单 Agent）
+│   └── agents/                    # ★ 四阶段 Agent 池（Phase D+F）
 │       ├── __init__.py
 │       ├── path_code_loader.py    # 路径坐标 → 函数分组 + 黑板缓存查询
-│       ├── intent_agent.py        # Phase D Step 2: 4-5 函数 → "开发者意图"
-│       ├── logic_agent.py         # Phase D Step 4: 伪代码链 → 矛盾检测
-│       ├── merge.py               # Phase D Step 3: 确定性排列 Intent 输出
-│       └── aggregator.py          # 多条路径结果合并 + 排序
+│       ├── intent_agent.py        # Phase D: 4-5 函数 → "开发者意图"伪代码
+│       ├── merge.py               # Phase D: 确定性排列 Intent 输出
+│       ├── logic_agent.py         # Phase D: 伪代码链 → 矛盾检测
+│       ├── aggregator.py          # Phase D: 路径结果合并 + 排序
+│       ├── bridge_verifier.py     # Phase D+: 属性 taint 桥分析
+│       ├── evidence_checker.py    # Phase D+: pattern 扫描 + LLM 证据验证
+│       ├── adversary_agent.py     # Phase F: 反驳型审视（降级误报）
+│       └── poc_agent.py           # Phase F: PoC 脚本生成
 │
 ├── graph/
 │   ├── codeql.py                  # ★ MOD: 从 stub 改为调用 v3/codeql/ 的入口

@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from agies.engine.v3.aggregator.models import IntentResult
+from agies.engine.v3.aggregator.models import IntentResult, compute_body_hash
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +129,13 @@ def parse_intent_response(
                 intent=f"Function {fn.get('func_name', 'unknown')}",
             ))
 
-    # Enrich with source code for pass_through functions
+    # Enrich with source code and compute fn_body_hash for cache key
     fn_map = {}
     for fn in functions:
         name = fn.get("func_name") or fn.get("function_name", "")
         if name:
-            fn_map[name] = fn.get("code") or fn.get("snippet", "")
+            source = fn.get("code") or fn.get("snippet", "")
+            fn_map[name] = source
 
     # Heuristic pass: force pass_through for functions with dangerous patterns
     _DANGEROUS_PATTERNS = [
@@ -154,6 +155,12 @@ def parse_intent_response(
                     break
         if r.pass_through and source:
             r.code = source
+
+    # Compute fn_body_hash for each result (used as cache key in Blackboard)
+    for r in results:
+        source = fn_map.get(r.func_name, "")
+        if source:
+            r.fn_body_hash = compute_body_hash(source)
 
     return results
 

@@ -160,15 +160,18 @@ KNOWN_SINK_NAMES: set[str] = {name for name, _ in EXACT_SINKS}
 # function but involve sensitive operations on untrusted data.
 
 SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
-    # Path manipulation → path traversal (LFI). These construct paths,
-    # not write files — map to LFI for better prompt coverage.
-    (re.compile(r"posixpath\.join"), VulnType.LFI),
-    (re.compile(r"ntpath\.join"), VulnType.LFI),
-    (re.compile(r"os\.path\.join"), VulnType.LFI),
-    (re.compile(r"PurePosixPath"), VulnType.LFI),
-    (re.compile(r"PureWindowsPath"), VulnType.LFI),
-    (re.compile(r"pathlib\.PurePosixPath"), VulnType.LFI),
-    (re.compile(r"zipfile\.Path"), VulnType.LFI),
+    # Path manipulation — suspicious constructors, not necessarily LFI.
+    # These build paths but don't do I/O. The actual vulnerability type
+    # (DoS, path traversal, race condition) depends on how the constructed
+    # path is used by callers. Classify as SUSPICIOUS so the LLM analyzes
+    # freely rather than being pre-judged as LFI.
+    (re.compile(r"posixpath\.join"), VulnType.SUSPICIOUS),
+    (re.compile(r"ntpath\.join"), VulnType.SUSPICIOUS),
+    (re.compile(r"os\.path\.join"), VulnType.SUSPICIOUS),
+    (re.compile(r"PurePosixPath"), VulnType.SUSPICIOUS),
+    (re.compile(r"PureWindowsPath"), VulnType.SUSPICIOUS),
+    (re.compile(r"pathlib\.PurePosixPath"), VulnType.SUSPICIOUS),
+    (re.compile(r"zipfile\.Path"), VulnType.SUSPICIOUS),
     # Archive extraction — zip slip / tar slip → AFO (writes files)
     (re.compile(r"zipfile\.ZipFile"), VulnType.AFO),
     (re.compile(r"zipfile\.ZipFile\.extractall"), VulnType.AFO),

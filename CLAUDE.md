@@ -3,6 +3,14 @@
 ## Project Overview
 AI-native code audit CLI with multi-model LLM support, static analysis, and verification pipeline. Written in Python.
 
+## Core Development Principles
+
+- **通用性优先** — 必须保持高度通用性，能有效支持各种 Python/JS/TS 项目，而不是仅适配当前测试的特定靶子。
+- **以大多数为准** — 所有修改都必须以「大多数真实开源项目和 Bounty 程序」的平均情况为准，禁止针对单个靶子的特性做硬编码或特殊优化。
+- **target-specific hack 必须标记** — 如果某个优化只对特定靶子特别有效，必须明确标记为「target-specific hack」，并提供通用 fallback 方案。
+- **最小改动 + 最大泛化** — 优先考虑「最小必要改动」+「最大泛化能力」。在提出任何修改方案前，先思考：「这个改动在 LangChain、FastAPI、Django、Next.js、Flask 大项目上是否仍然合理？」
+- **每次修改附泛化评估** — 在每次修改建议的最后额外输出一段：【泛化评估】：这个改动对其他项目的潜在影响是？可能引入的过拟合风险等级（低/中/高）及理由。
+
 ## Quick Reference
 
 ### Commands
@@ -29,80 +37,110 @@ agies audit /tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f24
 
 ## Architecture
 
-### Current file structure (2026-05-30)
+### Current file structure (2026-06-08)
 ```
 agies/
-├── engine/                       # Engine — v2 (xint-style) + v3 (graph-based)
+├── engine/                       # Engine — v2 (xint-style) + v3 (path-slice) + graph
 │   ├── v2/                       # v2: per-function bulk LLM analysis pipeline
 │   │   ├── brain.py              # Decision loop (submit → poll → execute → register)
 │   │   ├── state.py              # ProjectState + dedup + checkpoint + blackboard
 │   │   ├── runner.py             # ThreadPoolExecutor parallel executor
 │   │   ├── context.py            # Context compression + Anthropic prompt cache
-│   │   ├── router.py             # Priority Router (QuotaMonitor + Crash Defender + percentile)
-│   │   ├── feedback.py           # Cross-scan feedback loop (FeedbackStore persistence)
+│   │   ├── router.py             # Priority Router (QuotaMonitor + Crash Defender)
+│   │   ├── feedback.py           # Cross-scan feedback loop persistence
 │   │   ├── director/             # Intelligence aggregation (Phase 0)
+│   │   │   ├── __init__.py       # Director orchestrator (run, get_neighbors)
+│   │   │   ├── repomap.py        # Signal-weighted PageRank (from Aider)
+│   │   │   ├── signals.py        # 13 SAST signal types + weights
+│   │   │   ├── aggregator.py     # Attack chain cards (EntryAnalysisCard)
+│   │   │   └── queries/          # .scm tag queries (py/java/js/ts)
 │   │   ├── sast/                 # SAST pattern matching engine
+│   │   │   ├── __init__.py       # SASTRule, MatchResult models
+│   │   │   ├── matcher.py        # tree-sitter pattern matching (302 lines)
+│   │   │   ├── pathfinder.py     # CallChainAnalyzer — Phase B (574 lines)
+│   │   │   └── bound_checker.py  # Recursive depth guard detector
 │   │   ├── agents/               # 11 agent definitions
+│   │   │   ├── base.py           # Agent base class (tool loop + iteration limit)
+│   │   │   ├── mapping.py        # Project structure + trust assumptions
+│   │   │   ├── attack_surface.py # Entry point discovery
+│   │   │   ├── dataflow.py       # Data flow path tracing
+│   │   │   ├── vulnerability.py  # Legacy vulnerability discovery
+│   │   │   ├── sourcer_agent.py  # Deterministic function index builder
+│   │   │   ├── bulk_analysis_agent.py  # Phase 1: per-function LLM scan
+│   │   │   ├── verification_agent.py   # Phase 2: tool-using verification
+│   │   │   ├── verify.py         # Legacy verification agent
+│   │   │   └── report_agent.py   # LLM-powered report generator
 │   │   ├── sourcer/              # Function-level code indexing
+│   │   │   ├── models.py         # SourceFunction, FunctionIndex, CandidateFinding
+│   │   │   ├── extractor.py      # tree-sitter fn + call extraction (Py/Java/JS/TS)
+│   │   │   └── loader.py         # Index builder (traverse, filter, parse)
 │   │   ├── analysis/             # Phase 1 bulk analysis
-│   │   ├── prompt/ + prompts/    # Prompt management
+│   │   │   ├── bulk.py           # asyncio parallel per-function LLM analysis
+│   │   │   └── prompts.py        # Single/multi-function prompt templates
+│   │   ├── prompt/               # Prompt management (YAML + Jinja2)
+│   │   │   ├── models.py         # Pydantic models (PromptMapping, AgentPrompts)
+│   │   │   └── manager.py        # PromptManager (load → compile → bind)
+│   │   ├── prompts/
+│   │   │   └── default.yaml      # All agent prompts as YAML templates
 │   │   ├── task_queue/           # Priority task scheduling
-│   │   └── rules/                # SAST YAML rules (6 rules)
+│   │   │   ├── models.py         # Task, TaskDesc, AgentType, TaskStatus
+│   │   │   └── queue.py          # TaskQueue (heap + concurrency + retry)
+│   │   └── rules/
+│   │       └── python/           # 6 YAML rules (eval-exec, pickle, zip-slip, etc.)
 │   │
-│   ├── graph/                    # v3: Joern/tree-sitter graph generators
+│   ├── v3/                       # v3: source→sink path slicing + Intent/Logic agents
+│   │   ├── __init__.py           # Module doc
+│   │   ├── runner.py             # Main orchestrator (tree-sitter → slice → LLM → verify)
+│   │   ├── classifier.py         # Project type classifier (app vs lib)
+│   │   ├── codeql/               # CodeQL integration (models + query + queries/)
+│   │   ├── slicer/               # Path sorting engine (score_path, select_top_k)
+│   │   │   ├── models.py         # PathSlice, SortResult
+│   │   │   └── sorter.py         # score_path, select_top_k, is_anomalous
+│   │   ├── pathfinder/           # Tree-sitter source→sink path discovery
+│   │   │   ├── sink_patterns.py  # Sink definitions per vuln type
+│   │   │   └── treesitter.py     # TreeSitterPathFinder (reverse caller trace)
+│   │   ├── prompts/              # 8 vuln-type prompts (+ ReDoS)
+│   │   │   ├── rce.py / lfi.py / ssrf.py / sqli.py / xss.py / afo.py / idor.py
+│   │   │   ├── redos.py          # ReDoS prompt (non-vulnhuntr)
+│   │   │   └── readme_summary.py # README summary prompt
+│   │   ├── aggregator/           # Blackboard + Intent cache
+│   │   │   ├── __init__.py
+│   │   │   ├── blackboard.py     # BlackboardAggregator (Intent cache + knowledge)
+│   │   │   └── models.py         # CachedIntent, KnowledgeEntry, AgentPhaseResult
+│   │   └── agents/               # 9 agent definitions
+│   │       ├── __init__.py
+│   │       ├── intent_agent.py       # 4-5 functions → developer intent pseudocode
+│   │       ├── logic_agent.py        # Pseudocode chain → contradiction detection
+│   │       ├── merge.py              # Deterministic Intent output arrangement
+│   │       ├── path_code_loader.py   # Path coords → function grouping + cache query
+│   │       ├── aggregator.py         # Multi-path merge + sort
+│   │       ├── bridge_verifier.py    # Attribute taint bridge path analysis
+│   │       ├── evidence_checker.py   # Code-level evidence verification
+│   │       ├── adversary_agent.py    # Devil's advocate rebuttal
+│   │       └── poc_agent.py          # PoC script generation
+│   │
+│   ├── graph/                    # Graph generators (Joern/tree-sitter/CodeQL)
 │   │   ├── base.py               # GraphGenerator ABC
 │   │   ├── models.py             # GraphNode, ProgramGraph, ProgramSlice
 │   │   ├── joern.py              # JoernGraphGenerator (Docker CPG)
 │   │   ├── joern_docker.py       # Docker lifecycle management
 │   │   ├── treesitter.py         # TreeSitterGraphGenerator
-│   │   └── codeql.py             # CodeQLGraphGenerator (stub)
-│   │   ├── signals.py            # 13 SAST signal types + weights
-│   │   └── aggregator.py         # Attack chain cards (EntryAnalysisCard, has_path)
-│   ├── sast/                     # SAST pattern matching engine
-│   │   ├── __init__.py           # SASTRule, MatchResult models
-│   │   ├── matcher.py            # tree-sitter pattern matching engine (302 lines)
-│   │   ├── pathfinder.py         # CallChainAnalyzer — Phase B (552 lines)
-│   │   └── bound_checker.py      # Recursive depth guard detector
-│   ├── rules/
-│   │   └── python/               # 6 YAML rules (eval-exec, pickle, zip-slip, etc.)
-│   ├── agents/                   # All agent definitions (11 agents)
-│   │   ├── base.py               # Agent base class (tool loop + iteration limit + schema)
-│   │   ├── mapping.py            # Project structure mapping + trust assumptions
-│   │   ├── attack_surface.py     # Entry point discovery (HTTP/CLI/message)
-│   │   ├── dataflow.py           # Data flow path tracing
-│   │   ├── vulnerability.py      # Legacy vulnerability discovery
-│   │   ├── sourcer_agent.py      # Deterministic function index builder (no LLM)
-│   │   ├── bulk_analysis_agent.py# Phase 1: per-function LLM bulk scan
-│   │   ├── verification_agent.py # Phase 2: tool-using verification per candidate
-│   │   ├── verify.py             # Legacy verification agent
-│   │   └── report_agent.py       # LLM-powered report generator
-│   ├── sourcer/                  # Function-level code indexing
-│   │   ├── models.py             # SourceFunction, FunctionIndex, CandidateFinding
-│   │   ├── extractor.py          # tree-sitter function + call extraction (Py/Java/JS/TS)
-│   │   └── loader.py             # Index builder (auto-traverse, filter, parse)
-│   ├── analysis/                 # Phase 1 bulk analysis
-│   │   ├── bulk.py               # asyncio parallel LLM analysis per function
-│   │   └── prompts.py            # Single-function + multi-function prompt templates
-│   ├── prompt/                   # Prompt management system
-│   │   ├── models.py             # Pydantic data models (PromptMapping, AgentPrompts, etc.)
-│   │   └── manager.py            # PromptManager (YAML → Jinja2 → bind to Agent)
-│   ├── prompts/
-│   │   └── default.yaml          # All agent prompts as YAML templates
-│   └── task_queue/               # Priority task scheduling
-│       ├── models.py             # Task, TaskDesc, AgentType, TaskStatus
-│       └── queue.py              # TaskQueue (heap + concurrency control + retry)
+│   │   ├── codeql.py             # CodeQLGraphGenerator
+│   │   └── codeql_queries/       # QL query files
+│   │
+│   └── __init__.py
 │
 ├── llm/                          # LLM provider abstraction (4 providers)
 │   ├── base.py                   # Abstract base provider
 │   ├── deepseek.py               # Native DeepSeek API (OpenAI SDK)
 │   ├── openai_provider.py        # OpenAI API
-│   ├── anthropic_provider.py     # Anthropic API (with cache_breakpoint support)
+│   ├── anthropic_provider.py     # Anthropic API (cache_breakpoint support)
 │   ├── ollama.py                 # Local ollama provider
 │   └── registry.py               # Auto-select provider by model name
 │
 ├── tools/                        # Deterministic tool layer for agents
 │   ├── file_ops.py               # read_file, list_directory
-│   ├── search.py                 # grep_search (with Crash Defender integration)
+│   ├── search.py                 # grep_search (with Crash Defender)
 │   ├── index_tools.py            # lookup_function, find_callers, find_callees, record_knowledge
 │   ├── command.py                # Shell command execution
 │   └── report.py                 # Legacy report generation
@@ -118,6 +156,7 @@ agies/
 ├── strategy/                     # File prioritization
 ├── rules/                        # Audit rule prompts
 ├── tests/
+├── pocs/                         # Generated PoC scripts
 └── cli.py                        # Typer CLI
 ```
 
@@ -161,7 +200,7 @@ mapping → sourcer (tree-sitter function index, no LLM)
 4. Read `docs/v3/plan.md` for v3 graph-based vulnerability discovery plan
 5. Read `docs/v3/noise_reduction_research.md` for noise reduction research
 6. Implement per checklist
-7. Run `python3 -m pytest tests/ -v` before marking done (586 pass, 2 known failures)
+7. Run `python3 -m pytest tests/ -v` before marking done (**703 pass, 1 known failure** — test_missing_api_key)
 8. Update `PROGRESS.md` with date when completing items
 9. Update `IDEA.md` if architecture decisions change
 
@@ -169,6 +208,9 @@ mapping → sourcer (tree-sitter function index, no LLM)
 - `docs/v1/` — tree-sitter / SAST era docs (cahe.md, sandyaa_paper.md, etc.)
 - `docs/v2/` — graph layer / Joern / CodeQL era docs (ARCHITECTURE-v2.md, etc.)
 - `docs/v3/` — graph-based vulnerability discovery (当前阶段)
+
+### Roadmap
+- `docs/huntr_roadmap.md` — huntr 路线图，P0（重分类）→ P1（ML 扩展）→ P2（CodeQL）
 
 ### Quick Test
 ```bash
@@ -184,7 +226,7 @@ agies audit /tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f24
 ## Current Status
 See `PROGRESS.md` for detailed checklist. See `IDEA.md` for architecture design.
 
-Completed: All Phase 0-2, Phase 6 Steps 0-9 + Steps A/B/C, SAST Phase A/B, Feedback Loop.
+Completed: v2 Phases 0-9, Steps A-F, SAST Phase A/B, Feedback Loop. v3 P0-P8 (pending CodeQL CLI for P1/P9).
 
 **所有已知问题已在代码中修复**（收敛警告 + Crash Defender + 文本降级 + 确定性注入）。
-文档更新日期：2026-05-25。
+文档更新日期：2026-06-08。

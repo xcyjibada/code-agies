@@ -283,26 +283,7 @@ Verified findings: 全部  |  Triggerable: 4-6  |  False positives: 99+
 
 ---
 
-## Phase 3: 上下文管理与分区分析 (待定)
-
-- [ ] 上下文压缩 (summary + 折叠)
-- [ ] 分区分析
-- [ ] 跨模块聚合
-
----
-
-## Phase 4: POC 生成与回归检测 (待定)
-
-- [ ] `poc_generator.py` — 漏洞分类 + POC 模板
-- [ ] POC 只读验证
-- [ ] `regression_detector.py` — git blame 回归检测
-
----
-
-## Phase 5: 报告输出增强 (待定)
-
-- [ ] `report_sarif.py` — SARIF 2.1 格式生成
-- [ ] `report_incremental.py` — 增量报告合并
+## Phase 3/4/5: 已整合到下方"下一步工作"章节
 
 ---
 
@@ -558,53 +539,78 @@ Brain 分发阶段:
 
 ---
 
-## 下一步工作（Next Up）2026-05-25
+## 下一步工作（Next Up）2026-06-08
 
-> 注意：以下所有"下一步"项目均在代码中已完成。本清单只记录文档尚未追踪的内容。
-
-### Step B：黑板架构（Cross-Agent Knowledge Sharing）✅
-
-> 2026-05-25: 已在代码中实现。验证 agent 通过 `record_knowledge(key, value)` 将调用链发现写入 `state.discovered_logic`，Brain 在分发下一批 agent 时自动注入 `prior_knowledge`。
-
-### 验证指标 — 文档化
+### 验证指标
 
 | 指标 | 状态 | 备注 |
 |------|------|------|
-| 586 tests passing (2 known failures) | ✅ | test_max_iterations + test_missing_api_key |
-| agies 引擎代码 | 21,244 行 | 不含 tests (9,561 行) |
-| SAST 引擎 | 1,015 行 | matcher + pathfinder + bound_checker |
+| 703 tests passing (1 known failure) | ✅ | test_missing_api_key |
+| agies 引擎代码 | 20,818 行 | 不含 tests (11,020 行) |
+| SAST 引擎 | 966 行 | matcher(302) + pathfinder(574) + bound_checker(90) |
 
-### 真正的待办事项
+### 真正的待办事项（按优先级排序）
 
-按优先级排序：
+> 🔴 = 当前阻塞  🟡 = 短期  🔵 = 中长期
 
-### 1. SAST 规则扩展（6 → 50+ 条）
-- **当前**: 6 条 Python YAML 规则（zip-slip, eval-exec, pickle, subprocess-shell, yaml-unsafe, hardcoded-secret）
-- **目标**: 从 Semgrep 社区翻译到 ~50 条
-- **新增语言**: Java / JS / TS 规则
-- **影响**: 确定性模式匹配覆盖更多漏洞类型
+#### 🔴 P0: DeepSeek 非确定性（最严重阻塞项）
+- **问题**: temperature=0 下每次跑结果不同。有时 3 个 vulnerable 发现，有时 0。CVE-2024-5569 检测成功率 ~50%
+- **影响**: 输出不可信，CI 不可做回归测试
+- **来源**: `docs/v3/impl-2026-06-04.md` #未解决
+- **方向**: 替换为 Claude Sonnet / 修复 DeepSeek provider / 增加结果聚合投票
 
-### 2. BentoML 端到端审计验证
-- **目的**: 验证完整链路 — Director → Sourcer → Bulk Analysis → Verification → Feedback
-- **靶点**: `_deserialize_single_param` 在 FunctionIndex 中 + 上下文注入 + 确定性候选
-- **时机**: 任意时间
+#### 🔴 P1: LLM Library Bias（架构级）
+- **问题**: LLM 持续拒绝将库函数标记为脆弱 ("this is library code, not application code")
+- **影响**: zipp/标准库封装类项目检测率低。库代码漏洞不在函数内部，在调用方使用不当（跨边界共识违反）
+- **已实现的缓解**: Pass_through 模式 + 硬编码危险函数列表 + companion methods
+- **方向**: Prompt 工程 / 替代 LLM / 确定性覆盖先行
 
-### 3. Phase 3: 上下文管理与分区分析
-- **上下文压缩** (context.py 已有但仅用于异常恢复)
-- **分区分析** — 大型项目的分模块分析
-- **跨模块聚合** — 分区结果合并
+#### 🟡 P2: BentoML 端到端审计验证
+- **目的**: 验证 v3 完整链路 — pathfinder → slicer → Intent/Logic → Adversary → PoC
+- **靶点**: `_deserialize_single_param` pickle 反序列化链（v2 已验证，v3 未验证）
+- **预期输出**: joinpath 8+/10, read_bytes 8+/10
 
-### 4. Phase 4: POC 生成
-- `poc_generator.py` — 漏洞分类 + POC 模板
-- POC 只读验证
+#### 🟡 P3: CodeQL 集成（P1）
+- **依赖**: CodeQL CLI 安装
+- **内容**: `codeql database create` + 查询执行 + 结果解析
+- **当前**: tree-sitter 路径发现已作为默认引擎稳定运行
 
-### 5. Phase 5: 报告输出增强
+#### 🟡 P4: 已知 CVE 项目验证 + token 成本热力图（P11）
+- **靶点**: zipp CVE-2024-5569 (ReDoS)、setuptools CVE-2024-27309 (命令注入)
+- **输出**: 路径排序后 Top 10 包含真实漏洞路径
+
+#### 🔵 P5: Docker 沙箱 PoC 验证（P10）
+- **内容**: 在 Docker 容器中执行 PoC 脚本，捕获 stdout + 网络回显 + 文件变更
+- **开关**: `--sandbox-verify`（可选，不影响核心管线）
+
+#### 🔵 P6: SAST 规则扩展（6 → 50+ 条）
+- 从 Semgrep 社区翻译到 ~50 条，新增 Java/JS/TS 规则
+
+#### 🔵 P7: Phase 3 — 上下文管理与分区分析
+- `context.py` 主动启用（当前仅异常恢复路径使用）
+- 大型项目分区分析 + 跨模块聚合
+
+#### 🔵 P8: Phase 4 — POC 安全验证 + regression 检测
+- `poc_agent.py` 已实现，`pocs/` 有 3 个 PoC（sqli）
+- 缺少：POC 只读安全验证（沙箱隔离）、`regression_detector.py`
+
+#### 🔵 P9: Phase 5 — 报告输出增强
 - `report_sarif.py` — SARIF 2.1 格式生成
 - `report_incremental.py` — 增量报告合并
 
-### 6. Phase 1 遗留项
+#### 🔵 P10: Phase 1 遗留项
 - `Analyzer.run()` 重构（检测语言 → 选解析器 → 统一 IR）
 - 跨语言 taint 追踪
+
+### 待实现（依赖 CodeQL CLI）
+
+| 步骤 | 内容 | 当前状态 |
+|------|------|---------|
+| P1 | CodeQL 数据库创建 + 查询执行 | 🔴 等待 CodeQL CLI 安装（详见 P3） |
+| P2 | 7 类 QL 查询文件 | ✅ 已完成 |
+| P3-P7 | 切片/Agent/黑板/编排器 | ✅ 已完成（tree-sitter 替代） |
+| P10 | 动态沙箱验证（Docker PoC） | 🔵 待做（详见 P5） |
+| P11 | 已知 CVE 项目上验证 | 🔵 待做（详见 P4） |
 
 
 ## Step E：Batch Verification 确定性回退修复 (2026-05-29)
@@ -833,45 +839,53 @@ SAST 发现 pickle.load            ✅ 190 文件命中
 - [x] **2026-06-04: TreeSitterPathFinder** — `pathfinder/`（tree-sitter 代替 CodeQL 做 Phase A 路径发现，输出兼容 CodeQlPath）
 - [x] **2026-06-04: 主编排器更新** — `runner.py` 默认走 tree-sitter，可选 CodeQL
 - [x] **2026-06-04: 测试套件** — `test_v3_slicer.py`(22) + `test_v3_prompts.py`(10) + `test_v3_blackboard.py`(12) + `test_v3_agents.py`(16) + `test_v3_pathfinder.py`(15+)
+- [x] **2026-06-06: BridgeVerifier** — `agents/bridge_verifier.py`（属性 taint 桥分析：self.ATTR 写入→读取 跨函数 taint 链追踪）
+- [x] **2026-06-06: EvidenceChecker** — `agents/evidence_checker.py`（pattern 扫描 + LLM 深层的证据验证，在 Logic 之后）
+- [x] **2026-06-06: Dual pipeline classifier** — `classifier.py`（项目类型 app/lib 检测 + 路由切换）
+- [x] **2026-06-06: ReDoS prompt** — `prompts/redos.py`（非 vulnhuntr 来源的 ReDoS 专项检测）
+- [x] **2026-06-08: AdversaryAgent** — `agents/adversary_agent.py`（反驳型审视，找出漏洞的否定理由，失败则放行到 PoC）
+- [x] **2026-06-08: PoCAgent** — `agents/poc_agent.py`（生成可执行 PoC 脚本，写入 `pocs/` 目录）
+- [x] **2026-06-08: pickle body-level detection** — `sink_patterns.py` 扩展 pickle 数据流检测（body-level 参数中的 pickle.loads）
 
 ### v3 当前模块结构
 
 ```
 agies/engine/v3/
 ├── __init__.py                    # 模块说明
-├── runner.py                      # 主编排器（已有，CLI 入口）
-├── codeql/                        # CodeQL 集成（已有）
+├── runner.py                      # 主编排器（tree-sitter → 切片 → LLM → 验证）
+├── classifier.py                  # 项目类型分类器（app vs lib）
+├── codeql/                        # CodeQL 集成
 │   ├── models.py                  #   CodeQlPath, PathNode, VulnType
 │   ├── query.py                   #   CodeQLQueryRunner ― 建库 + 查询 + 解析
 │   └── queries/                   #   8 个 QL 查询文件
-├── slicer/                        # ★ NEW 切片排序
+├── slicer/                        # 切片排序引擎
 │   ├── models.py                  #   PathSlice, SortResult
 │   └── sorter.py                  #   score_path, select_top_k, is_anomalous
-├── prompts/                       # ★ NEW 漏洞专项 prompt
+├── pathfinder/                    # tree-sitter source→sink 路径发现
+│   ├── sink_patterns.py           #   每类漏洞的 sink 模式定义
+│   └── treesitter.py              #   TreeSitterPathFinder（反向回溯 caller）
+├── prompts/                       # 漏洞专项 prompt
 │   ├── rce.py / lfi.py / ssrf.py / sqli.py / xss.py / afo.py / idor.py
+│   ├── redos.py                   #   ReDoS prompt（非 vulnhuntr）
 │   └── readme_summary.py          #   README 总结 prompt
-├── aggregator/                    # ★ NEW 黑板聚合
+├── aggregator/                    # 黑板聚合
 │   ├── blackboard.py              #   Intent 缓存 + 知识注入 + 相位结果
-│   └── models.py                  #   IntentResult, KnowledgeEntry, AgentPhaseResult
-└── agents/                        # ★ NEW 三阶段 Agent 池
-    ├── intent_agent.py            #   4-5 函数 → 开发者意图
+│   └── models.py                  #   CachedIntent, KnowledgeEntry, AgentPhaseResult
+└── agents/                        # 四阶段 Agent 池（9 agents）
+    ├── intent_agent.py            #   4-5 函数 → 开发者意图伪代码
     ├── logic_agent.py             #   伪代码链 → 矛盾检测
     ├── merge.py                   #   Intent 输出确定性排列
     ├── path_code_loader.py        #   路径坐标 → 分组 + 黑板缓存查询
-    └── aggregator.py              #   多条路径结果合并 + 排序
+    ├── aggregator.py              #   多条路径结果合并 + 排序
+    ├── bridge_verifier.py         #   属性污点桥路径分析（self.ATTR 跨函数 taint）
+    ├── evidence_checker.py        #   确定性代码证据扫描（pattern-based + LLM）
+    ├── adversary_agent.py         #   反驳型审视 Agent（找出漏洞否定理由）
+    └── poc_agent.py               #   PoC 脚本生成（可执行 Python 脚本）
 ```
 
 ### 待实现（依赖 CodeQL CLI）
 
-| 步骤 | 内容 | 依赖 | 状态 |
-|------|------|------|------|
-| P1 | CodeQL 数据库创建 + 查询执行 | **CodeQL CLI 安装** | 🔴 等待下载 |
-| P2 | 所有 QL 查询已在代码库中 | 无 | ✅ 已完成 |
-| P3-P7 | 切片/Agent/黑板（纯代码） | 无 | ✅ 已完成 |
-| P8 | 主编排器集成（runner.py 已有骨架） | P1 | 🟡 骨架已搭 |
-| P9 | CLI 集成 `--v3` 开关 | P1 | 🟡 等待 |
-| P10 | 动态沙箱验证（Docker PoC） | 无 | 🔴 待做 |
-| P11 | 已知 CVE 项目上验证 | P1+P9 | 🔴 待做 |
+参见"下一步工作"章节的 P3/P4/P5。
 
 ### 关键设计决策（记录）
 
@@ -881,6 +895,35 @@ agies/engine/v3/
 - **黑板缓存**：同一函数在多条路径中出现时，Intent 只计算一次，后面直接读缓存
 - **泛化 sink 权重**：非标准 sink 默认权重 0.3（非 0），Explore 槽捕获
 - **数据流查询为可选项**：rce_dataflow.ql 失败不阻塞 sink 查询
+- **SUSPICIOUS 类型**（2026-06-08）：path constructor 不再预判为 LFI，让 LLM 自由分析漏洞类型
+- **提示词中不写 CVE 编号**（2026-06-08）：_CVE_KNOWLEDGE → _VULN_GUIDANCE，只留原则性说明
+
+### 2026-06-08 实战验证：SUSPICIOUS 类型 + AdversaryAgent + PoCAgent
+
+**zipp（CVE-2024-5569 回归测试）：**
+```
+Raw paths: 19 → Slices: 21 → PoCs: 2（修复前 13）
+SUSPICIOUS paths: 全部被 Logic Agent 正确 rebutted（测试代码，无外部输入 → ✅ 正确降噪）
+```
+- **2 PoCs**: 非 CVE-2024-5569（路径构建器 + open 的组合漏洞仍被归类为 LFI）
+- **剩余结构问题**: `joinpath` + `open` 组成的桥接模式 — 上游 path constructor 已正确标记 SUSPICIOUS，但下游 `open` sink 的 VulnType=LFI 仍主导分类
+- **BridgeVerifier 贡献**: 检测到 `Path(self.at)` 写入 → 读取的组合模式，但 sink 分类锁定为 LFI
+
+**MLflow（全量 ~5400 文件）：**
+```
+Raw paths: 639 → Slices: 35 → PoCs: 8
+```
+- **8 PoCs**: RCE(1)+Suspicious(3)+AFO(1)+SSRF(1)+LFI(1)+IDOR(1)
+- **SUSPICIOUS 命中**: 发现了 2 个真实 path-constructor 相关路径（`os.path.join` + callback），不会被误判为 LFI
+- **PoC 质量**: 可运行骨架（参数解析 + 触发流程 + 验证逻辑），但非完整 exp（需靶场环境）
+- **漏洞方向正确**: SUSPICIOUS 的 PoC 描述了多种可能（path traversal / logic error / RFI），不锁定单一类型
+
+**未解决问题：**
+1. **组合漏洞分类**: joinpath → open 桥接了 SUSPICIOUS + LFI，最终分类被 LFI 主导 → P0 方案：Logic Agent 输出 actual_vuln_type 后期重分类
+2. **ML 框架盲区**: PyTorch/HuggingFace/safetensors/joblib 完全无感知 → P1 方案：ML sink 可插拔模块
+3. **无数据流证据**: tree-sitter 不能回答"用户输入是否到达 sink" → P2 方案：CodeQL 查询
+
+详见 `docs/huntr_roadmap.md`。
 
 ### 需要下载 CodeQL CLI 后验证
 

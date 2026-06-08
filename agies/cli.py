@@ -23,6 +23,7 @@ def audit(
     new_pipeline: bool = typer.Option(False, "--new-pipeline", help="Use new Xint-inspired pipeline (sourcer → bulk → verification)"),
     v3: bool = typer.Option(False, "--v3", help="Use v3 CodeQL pipeline (source→sink path queries)"),
     project_type: Optional[str] = typer.Option(None, "--project-type", help="Override project type: app or lib (v3 only)"),
+    consensus: bool = typer.Option(False, "--consensus", help="Enable conditional majority voting for grey-zone findings (confidence 4-7)"),
 ):
     """Run an AI-powered code audit on the target.
 
@@ -53,7 +54,7 @@ def audit(
               verbose=verbose, output=final_output, output_format=final_output_format,
               static_analysis=static_analysis, static_only=static_only,
               verify=final_verify, new_pipeline=new_pipeline, v3=v3,
-              project_type=project_type)
+              project_type=project_type, consensus=consensus)
 
 
 @app.command()

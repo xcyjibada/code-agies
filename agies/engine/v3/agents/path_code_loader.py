@@ -90,9 +90,10 @@ class PathCodeLoader:
             func_name = node.get("function_name", "")
             file_path = node.get("file_path", "")
 
-            # Check blackboard cache
+            # Check blackboard cache (pass fn_body hash for precise lookup)
             if self._blackboard:
-                cached_intent = self._blackboard.get_intent(func_name, file_path)
+                func_body = node.get("code") or node.get("snippet", "")
+                cached_intent = self._blackboard.get_intent(func_name, file_path, func_body=func_body)
                 if cached_intent is not None:
                     cached.append(cached_intent)
                     cache_hits += 1

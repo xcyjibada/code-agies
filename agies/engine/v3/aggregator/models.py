@@ -2,8 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def compute_body_hash(code: str) -> str:
+    """Normalize function body and compute MD5 hash for cache key.
+
+    Strips comments and whitespace, then hashes the first 200 characters.
+    Using the first 200 chars keeps cache and lookup hashes consistent
+    (both operate on the same prefix).
+    """
+    raw = code[:200]
+    normalized = re.sub(r'#.*$', '', raw, flags=re.MULTILINE)
+    normalized = re.sub(r'\s+', '', normalized)
+    return hashlib.md5(normalized.encode()).hexdigest()
 
 
 @dataclass
@@ -45,6 +60,14 @@ class IntentResult:
 
     code: str = ""
     """Original source code (set when pass_through=True, for merge layer use)."""
+
+    fn_body_hash: str = ""
+    """MD5 hash of the normalized function body.
+
+    Used as the primary cache key in BlackboardAggregator so the same
+    function always produces the same cache key regardless of the
+    absolute/relative path used to reach it.
+    """
 
 
 @dataclass

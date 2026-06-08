@@ -261,6 +261,7 @@ def run_audit(
     new_pipeline: bool = False,
     v3: bool = False,
     project_type: str | None = None,
+    consensus: bool = False,
 ):
     """Run the full audit pipeline."""
     target = os.path.abspath(target)
@@ -290,6 +291,7 @@ def run_audit(
         run_v3_pipeline(
             target, model=model, verbose=verbose,
             project_type=project_type or "auto",
+            consensus=consensus,
         )
         console.print()
         console.print("[bold]v3 CodeQL pipeline complete.[/bold]")

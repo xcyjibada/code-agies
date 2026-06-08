@@ -136,6 +136,7 @@ class LogicAgent:
         vuln_type: str = "",
         readme_summary: str = "",
         code_block: str = "",
+        project_type: str = "app",
     ) -> str:
         """Build the logic analysis prompt using VulnHuntr-style prompts.
 
@@ -156,6 +157,22 @@ class LogicAgent:
         if not intent_chain.strip():
             return base_prompt
 
+        # Library-mode bias injection — force LLM out of "library code is safe" mode.
+        # Only activate for lib projects; app projects get a neutral prompt.
+        if project_type == "lib":
+            lib_mission = (
+                "CRITICAL MISSION: You are auditing a LIBRARY for security vulnerabilities.\n"
+                "Library CVEs are real and high-impact — they affect ALL downstream consumers.\n"
+                "Do NOT dismiss code as 'safe library utility code'. Instead, examine:\n"
+                "1) What happens when external/untrusted input reaches this function?\n"
+                "2) Is there a path-builder (joinpath, __truediv__) that could construct malicious paths?\n"
+                "3) Are there missing validation steps that a caller could bypass?\n"
+                "4) Does this function have side effects that could be abused?\n"
+                "REMEMBER: Saying 'this is library code, not vulnerable' is NOT an option.\n\n"
+            )
+        else:
+            lib_mission = ""
+
         return (
             "Developer Intent (pseudocode)\n"
             "---\n"
@@ -163,8 +180,7 @@ class LogicAgent:
             "Your task: Find contradictions between the developer intent above "
             "and the actual source code below. Does the implementation "
             "introduce security risks that the intent summary doesn't mention?\n"
-            "For library code: consider what happens when a caller passes "
-            "untrusted data to this API.\n\n"
+            f"{lib_mission}"
             f"{base_prompt}"
         )
 
