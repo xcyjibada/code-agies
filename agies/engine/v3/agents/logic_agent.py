@@ -212,6 +212,7 @@ class LogicAgent:
         contradictions = data.get("contradictions", []) if isinstance(data, dict) else []
         confidence = data.get("confidence", 0) if isinstance(data, dict) else 0
         analysis = data.get("analysis", "") if isinstance(data, dict) else ""
+        llm_vuln_type = data.get("vuln_type", "") if isinstance(data, dict) else ""
 
         if not isinstance(confidence, int):
             try:
@@ -220,11 +221,17 @@ class LogicAgent:
                 confidence = 0
         confidence = max(0, min(10, confidence))
 
+        # Use the LLM's reclassified vuln_type as actual_vuln_type,
+        # but only when it differs from the original sink type
+        # (the vulnhuntr prompts and SUSPICIOUS prompt both output vuln_type).
+        actual_vuln_type = llm_vuln_type if llm_vuln_type and llm_vuln_type != vuln_type else ""
+
         is_vulnerable = confidence >= 7 and len(contradictions) > 0
 
         return AgentPhaseResult(
             path_id=path_id,
             vuln_type=vuln_type,
+            actual_vuln_type=actual_vuln_type,
             score=score,
             contradictions=contradictions,
             confidence=confidence,

@@ -35,6 +35,9 @@ QUERY_REGISTRY: dict[VulnType, str] = {
     VulnType.SSRF: "ssrf.ql",
     VulnType.SQLI: "sqli.ql",
     VulnType.XSS: "xss.ql",
+    VulnType.AFO: "afo.ql",
+    VulnType.IDOR: "idor.ql",
+    VulnType.REDOS: "redos.ql",
 }
 
 DATAFLOW_QUERIES: dict[VulnType, str] = {

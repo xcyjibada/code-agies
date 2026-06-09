@@ -897,6 +897,10 @@ agies/engine/v3/
 - **数据流查询为可选项**：rce_dataflow.ql 失败不阻塞 sink 查询
 - **SUSPICIOUS 类型**（2026-06-08）：path constructor 不再预判为 LFI，让 LLM 自由分析漏洞类型
 - **提示词中不写 CVE 编号**（2026-06-08）：_CVE_KNOWLEDGE → _VULN_GUIDANCE，只留原则性说明
+- **后期重分类 actual_vuln_type**（2026-06-09）：Logic Agent 输出 `vuln_type` 覆盖静态 sink 分类，PoC Agent 优先使用 LLM 重分类后的类型
+- **虚拟 Taint 补偿**（2026-06-09）：tree-sitter 路径构建时检测 HTTP controller 装饰器，注入 `source_controllability_proof` 作为不可争辩的外部可控性证据
+- **应用沙箱包裹**（2026-06-09）：lib 模式在 code_block 顶部合成模拟 Web App 控制器，强制 LLM 进入 web 审计模式打破 library bias
+- **Token 熔断器**（2026-06-09）：`TokenCounter` 线程安全计数器 + `QuotaExceededException`，`AGIES_TOKEN_BUDGET` 环境变量配置预算（默认 100 万 token）
 
 ### 2026-06-08 实战验证：SUSPICIOUS 类型 + AdversaryAgent + PoCAgent
 
@@ -924,6 +928,33 @@ Raw paths: 639 → Slices: 35 → PoCs: 8
 3. **无数据流证据**: tree-sitter 不能回答"用户输入是否到达 sink" → P2 方案：CodeQL 查询
 
 详见 `docs/huntr_roadmap.md`。
+
+### 2026-06-09 架构加固：P0/P1/P2a/P3/P4/P5
+
+根据 `docs/op.md` 的 8 个问题清单，完成了前 6 个：
+- **P0 — actual_vuln_type**：Logic Agent 输出 `vuln_type` 重分类字段，runner 优先使用重分类类型分派 PoC（`result.actual_vuln_type or slice_.vuln_type.value`）
+- **P1 — ML sink 扩展**：向 `sink_patterns.py` 添加了 20 个 ML 框架 sink（PyTorch/torch.load、HuggingFace/from_pretrained、joblib、safetensors、ONNX、MLflow、TF/Keras、numpy.load）+ `trust_remote_code=True` 敏感模式检测
+- **P2a — DeepSeek 稳定性**：`_call_llm` JSON mode 全面强制（prompt 不含 "json" 时自动注入系统通知）+ `top_p=0.01` 已在 provider 层
+- **P3 — 虚拟 Taint 补偿**：HTTP controller 检测（`@app.get/post/...` 装饰器 + web 参数名），将 `source_controllability_proof` 注入 code_block head 作为不可争辩的外部输入证据
+- **P4 — 应用沙箱包裹**：lib mode 时在 code_block 顶端合成模拟 Web App 控制器代码注释，打破 LLM library bias
+- **P5 — Token 熔断器**：`TokenCounter` 线程安全计数器 + `QuotaExceededException` + AGIES_TOKEN_BUDGET env var（默认 1M token），token 用量输出到流水线摘要
+- **P6 — CodeQL 查询补全**：`QUERY_REGISTRY` 补注 AFO/IDOR/REDOS，新建 `redos.ql` 覆盖 re/fnmatch sink
+- **P7 — Docker 沙箱**：`PoCSandbox` 隔离容器执行 PoC（network_mode=none, mem_limit=100m，timeout 捕获 DoS），Docker SDK 缺失时优雅降级
+
+**文件变动**：
+```
+aggregator/token_counter.py          — 新增：thread-safe + quota enforcement
+aggregator/models.py                 — AgentPhaseResult.actual_vuln_type
+codeql/models.py                     — CodeQlPath.source_controllability_proof
+codeql/query.py                      — QUERY_REGISTRY 补全 AFO/IDOR/REDOS
+codeql/queries/redos.ql              — 新增：REDOS sink 查询
+slicer/models.py                     — PathSlice.source_controllability_proof
+pathfinder/sink_patterns.py          — +20 ML sink + trust_remote_code pattern
+pathfinder/treesitter.py             — _detect_http_controller() in _build_path
+agents/logic_agent.py                — run() captures vuln_type from LLM response
+runner.py                            — P0/P2a/P3/P4/P5 集成
+sandbox/__init__.py                  — 新增：Docker PoC 沙箱（PoCSandbox）
+```
 
 ### 需要下载 CodeQL CLI 后验证
 

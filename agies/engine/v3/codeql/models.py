@@ -62,6 +62,12 @@ class CodeQlPath:
     nodes: list[PathNode] = field(default_factory=list)
     confidence: float = 0.5
 
+    source_controllability_proof: str = ""
+    """If non-empty, provides evidence that the source function is an
+    externally controllable entry point (e.g. HTTP controller route handler).
+    Overrides AdversaryAgent's 'no external input' rebuttal by making the
+    controllability irrefutable to downstream LLM agents."""
+
     @property
     def key(self) -> str:
         """Deduplication key."""

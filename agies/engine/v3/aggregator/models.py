@@ -112,6 +112,10 @@ class AgentPhaseResult:
     is_vulnerable: bool = False
     """Whether this path is flagged as potentially vulnerable."""
 
+    actual_vuln_type: str = ""
+    """Vulnerability type reclassified by Logic Agent (overrides static sink
+    classification). Empty string means the original sink type stands."""
+
     poc_path: str = ""
     """Path to generated PoC script (empty if not generated)."""
 

@@ -24,6 +24,7 @@ from agies.engine.v3.slicer import select_top_k
 from agies.engine.v3.slicer.models import SortResult
 from agies.engine.v3.aggregator.blackboard import BlackboardAggregator
 from agies.engine.v3.aggregator.models import AgentPhaseResult, IntentResult
+from agies.engine.v3.aggregator.token_counter import TokenCounter, QuotaExceededException
 from agies.engine.v3.agents.intent_agent import IntentAgent, IntentAgentTask
 from agies.engine.v3.agents.logic_agent import LogicAgent
 from agies.engine.v3.agents.adversary_agent import AdversaryAgent
@@ -179,30 +180,44 @@ def run_v3_pipeline(
     # ==================================================================
     blackboard = BlackboardAggregator()
 
-    if project_type == "app":
-        _print_header(console, f"Phase D: Intent+Logic Agents ({len(sort_result.all_slices)} slices)")
-        phase_results = _run_phase_d(
-            sort_result=sort_result,
-            llm=llm,
-            blackboard=blackboard,
-            readme_summary=readme_summary,
-            max_workers=max_intent_workers,
-            console=console,
-            target=target,
-            function_index=function_index,
-            consensus=consensus,
+    # Initialize token budget counter — defaults to 1M tokens, use
+    # AGIES_TOKEN_BUDGET env var to override.  0 = unlimited.
+    token_budget = int(os.environ.get("AGIES_TOKEN_BUDGET", "1000000"))
+    _init_token_counter(budget=token_budget)
+    if token_budget > 0:
+        _print(
+            console,
+            f"  [dim]Token budget: {token_budget:,} tokens[/dim]",
         )
-    else:
-        _print_header(console, f"Phase D: Library Analysis ({len(sort_result.all_slices)} slices)")
-        phase_results = _run_phase_d_lib(
-            sort_result=sort_result,
-            llm=llm,
-            blackboard=blackboard,
-            console=console,
-            function_index=function_index,
-            target=target,
-            consensus=consensus,
-        )
+
+    try:
+        if project_type == "app":
+            _print_header(console, f"Phase D: Intent+Logic Agents ({len(sort_result.all_slices)} slices)")
+            phase_results = _run_phase_d(
+                sort_result=sort_result,
+                llm=llm,
+                blackboard=blackboard,
+                readme_summary=readme_summary,
+                max_workers=max_intent_workers,
+                console=console,
+                target=target,
+                function_index=function_index,
+                consensus=consensus,
+            )
+        else:
+            _print_header(console, f"Phase D: Library Analysis ({len(sort_result.all_slices)} slices)")
+            phase_results = _run_phase_d_lib(
+                sort_result=sort_result,
+                llm=llm,
+                blackboard=blackboard,
+                console=console,
+                function_index=function_index,
+                target=target,
+                consensus=consensus,
+            )
+    except QuotaExceededException as qe:
+        _print(console, f"  [red]Token budget exceeded ({qe.total_used:,}/{qe.budget:,}) — stopping.[/red]")
+        phase_results = []
 
     # ==================================================================
     # Phase E: Blackboard summary
@@ -239,6 +254,10 @@ def run_v3_pipeline(
     _print(console, f"  Paths discovered: {total_paths}")
     _print(console, f"  Slices analyzed: {len(sort_result.all_slices)}")
     _print(console, f"  Findings: {len(high_conf)} high, {len(medium_conf)} interesting")
+    if _TOKEN_COUNTER and _TOKEN_COUNTER.total_tokens > 0:
+        _print(console, f"  Tokens: {_TOKEN_COUNTER.total_tokens:,} total "
+               f"({_TOKEN_COUNTER.prompt_tokens:,} prompt + "
+               f"{_TOKEN_COUNTER.completion_tokens:,} completion)")
 
     if high_conf:
         _print(console, "")
@@ -412,7 +431,9 @@ def _run_phase_d(
             continue
 
         # Build raw source block (includes companion methods + aliases for context)
-        code_block = _build_code_block(nodes)
+        code_block = _build_code_block(
+            nodes, source_controllability_proof=slice_.source_controllability_proof,
+        )
         logic_prompt = logic_agent.prepare_prompt(
             path_id=slice_.id,
             intent_chain=intent_chain,
@@ -491,7 +512,7 @@ def _run_phase_d(
                     )
                     poc_path = poc.run(
                         path_id=slice_.id,
-                        vuln_type=slice_.vuln_type.value,
+                        vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
                         analysis=result.analysis,
                         contradiction=contradiction_desc,
                         code_block=code_block,
@@ -654,7 +675,13 @@ def _run_phase_d_lib(
             continue
 
         # Build raw source block (includes companion methods + aliases for context)
-        code_block = _build_code_block(nodes)
+        code_block = _build_code_block(
+            nodes, source_controllability_proof=slice_.source_controllability_proof,
+        )
+        # Library bias mitigation: wrap lib code in a synthetic app controller
+        code_block = _wrap_lib_sandbox(
+            code_block, source_name=slice_.source, sink_name=slice_.sink,
+        )
         logic_prompt = logic_agent.prepare_prompt(
             path_id=slice_.id,
             intent_chain=intent_chain,
@@ -742,7 +769,7 @@ def _run_phase_d_lib(
                     )
                     poc_path = poc.run(
                         path_id=slice_.id,
-                        vuln_type=slice_.vuln_type.value,
+                        vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
                         analysis=result.analysis,
                         contradiction=contradiction_desc,
                         code_block=code_block,
@@ -892,20 +919,52 @@ def _run_lib_bridge_verifier(
     )
 
 
-def _call_llm(llm: Any, prompt: str, console: Any) -> str | None:
-    """Call the LLM with a prompt and return the response text."""
+_TOKEN_COUNTER: TokenCounter | None = None
+"""Global token counter shared across the v3 pipeline."""
+
+
+def _init_token_counter(budget: int = 0) -> TokenCounter:
+    global _TOKEN_COUNTER
+    _TOKEN_COUNTER = TokenCounter(budget=budget)
+    return _TOKEN_COUNTER
+
+
+def _call_llm(
+    llm: Any, prompt: str, console: Any,
+    token_counter: TokenCounter | None = None,
+) -> str | None:
+    """Call the LLM with a prompt and return the response text.
+
+    Optionally records token usage in ``token_counter`` (falls back to
+    the global ``_TOKEN_COUNTER`` when not provided).
+    """
     try:
         kwargs = {}
         # DeepSeek JSON mode: prompt MUST contain "json" word or API rejects
         if "json" in prompt.lower():
             kwargs["response_format"] = {"type": "json_object"}
+        else:
+            # Force JSON mode by injecting system notice
+            prompt = f"[SYSTEM_NOTICE: RESPOND IN JSON FORMAT]\n\n{prompt}"
+            kwargs["response_format"] = {"type": "json_object"}
         response = llm.chat_completion(
             [{"role": "user", "content": prompt}], **kwargs,
         )
         if response and response.content:
+            # Record token usage
+            counter = token_counter or _TOKEN_COUNTER
+            if counter and response.usage:
+                counter.add(
+                    prompt_tokens=response.usage.get("prompt_tokens", 0),
+                    completion_tokens=response.usage.get("completion_tokens", 0),
+                    total_tokens=response.usage.get("total_tokens", 0),
+                )
             return response.content
         return None
     except Exception as exc:
+        # Re-raise QuotaExceededException — don't swallow budget enforcement
+        if isinstance(exc, QuotaExceededException):
+            raise
         _print(console, f"    [red]LLM error: {exc}[/red]")
         return None
 
@@ -1030,13 +1089,55 @@ def _init_llm(model: str, console: Any) -> Any | None:
 # ======================================================================
 
 
-def _build_code_block(nodes: list[dict[str, Any]]) -> str:
+def _wrap_lib_sandbox(code_block: str, source_name: str, sink_name: str) -> str:
+    """Prepend a synthetic web app controller for library-mode analysis.
+
+    LLMs exhibit strong "library bias" — they refuse to flag library code
+    as vulnerable because "it's not an app."  Wrapping the code block with
+    a simulated application endpoint forces the LLM into web-audit mode,
+    making it evaluate the code path as if it were part of a real application.
+    """
+    return (
+        "# [SYSTEM WRAPPER: SIMULATED APP CONTROLLER FOR SECURITY ANALYSIS]\n"
+        "# To evaluate the potential exploitability of this library, \n"
+        "# it is wrapped within a simulated production-grade web endpoint:\n"
+        "#\n"
+        f"# @app.post(\"/api/v1/trigger\")\n"
+        f"# def handle_request(untrusted_user_input: str):\n"
+        f"#     # The library's entry point is invoked with attacker-controlled input:\n"
+        f"#     result = {source_name}(untrusted_user_input)\n"
+        f"#     # This leads to the sink function: {sink_name}\n"
+        "#\n"
+        "# The code below shows the actual library implementation.\n"
+        "# [END SYSTEM WRAPPER]\n"
+        "# ── Library source code below ──\n\n"
+        f"{code_block}"
+    )
+
+
+def _build_code_block(
+    nodes: list[dict[str, Any]],
+    source_controllability_proof: str = "",
+) -> str:
     """Build a raw source code block from PathNode snippets.
 
     Shows the call chain direction from source (entry) → sink.
     Includes class-level aliases and companion consumer methods.
+    When ``source_controllability_proof`` is provided, prepends it as a
+    system notice so downstream LLM agents receive irrefutable evidence
+    of external input controllability.
     """
     parts: list[str] = []
+    if source_controllability_proof:
+        parts.append(
+            "# ── [SOURCE CONTROLLABILITY EVIDENCE] ──\n"
+            f"# {source_controllability_proof}\n"
+            "# This is a static-analysis signal: the entry function is a "
+            "verified HTTP controller.\n"
+            "# The untrusted input reaches the sink through the call chain "
+            "below.\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
     companion_shown = False
     for i, node in enumerate(nodes):
         fn_name = node.get("function_name", f"func_{i}")

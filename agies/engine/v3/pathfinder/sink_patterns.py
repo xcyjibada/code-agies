@@ -74,6 +74,35 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("shutil.move", VulnType.AFO),
     ("os.remove", VulnType.AFO),
     ("os.unlink", VulnType.AFO),
+    # -- ML / AI framework sinks --
+    # PyTorch: torch.load without weights_only → RCE
+    ("torch.load", VulnType.RCE),
+    ("torch.hub.load", VulnType.RCE),
+    ("torch.hub.download_url_to_file", VulnType.SSRF),
+    # HuggingFace: from_pretrained loads arbitrary code from hub
+    ("AutoModel.from_pretrained", VulnType.RCE),
+    ("AutoModelForSequenceClassification.from_pretrained", VulnType.RCE),
+    ("AutoModelForCausalLM.from_pretrained", VulnType.RCE),
+    ("AutoTokenizer.from_pretrained", VulnType.RCE),
+    ("transformers.pipeline", VulnType.RCE),
+    ("pipeline", VulnType.RCE),
+    # safetensors: file path can be controlled → arbitrary file write/read
+    ("safetensors.torch.load_file", VulnType.AFO),
+    # ONNX: model binary could embed malicious operations
+    ("onnxruntime.InferenceSession", VulnType.RCE),
+    # joblib / skops: model serialization deserialization
+    ("joblib.load", VulnType.RCE),
+    ("skops.load", VulnType.RCE),
+    ("skops.io.visualization.load", VulnType.RCE),
+    # MLflow: model loading from artifact stores
+    ("mlflow.pyfunc.load_model", VulnType.RCE),
+    ("mlflow.pytorch.load_model", VulnType.RCE),
+    ("mlflow.huggingface.load_model", VulnType.RCE),
+    # TensorFlow / Keras: loading models with custom layers
+    ("tf.keras.models.load_model", VulnType.RCE),
+    ("tensorflow.keras.models.load_model", VulnType.RCE),
+    # numpy: allow_pickle=True → deserialization RCE
+    ("numpy.load", VulnType.RCE),
     # -- REDOS: regex / pattern matching --
     ("glob", VulnType.REDOS),
     ("fnmatch.translate", VulnType.REDOS),
@@ -206,6 +235,28 @@ SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
     (re.compile(r"requests\.\w+\s*\("), VulnType.SSRF),
     (re.compile(r"urlopen\s*\("), VulnType.SSRF),
     (re.compile(r"httpx\.\w+\s*\("), VulnType.SSRF),
+    # ML: trust_remote_code=True enables arbitrary code execution via HF hub
+    (re.compile(r"trust_remote_code\s*=\s*True"), VulnType.RCE),
+    # ML: PyTorch deserialization (torch.load without weights_only)
+    (re.compile(r"torch\.load\s*\("), VulnType.RCE),
+    (re.compile(r"torch\.hub\.load\s*\("), VulnType.RCE),
+    # ML: joblib model deserialization
+    (re.compile(r"joblib\.load\s*\("), VulnType.RCE),
+    # ML: HuggingFace from_pretrained (any model/tokenizer/processor)
+    (re.compile(r"from_pretrained\s*\("), VulnType.RCE),
+    # ML: transformers pipeline
+    (re.compile(r"transformers\.pipeline\s*\("), VulnType.RCE),
+    # ML: ONNX runtime — loads and executes model binaries
+    (re.compile(r"onnxruntime\.InferenceSession\s*\("), VulnType.RCE),
+    # ML: safetensors file load — path traversal
+    (re.compile(r"safetensors\.\w+\.load_file\s*\("), VulnType.AFO),
+    (re.compile(r"safetensors\.\w+\.load\s*\("), VulnType.AFO),
+    # ML: numpy load with allow_pickle
+    (re.compile(r"numpy\.load\s*\("), VulnType.RCE),
+    # ML: MLflow model loading
+    (re.compile(r"mlflow\.\w+\.load_model\s*\("), VulnType.RCE),
+    # ML: TF/Keras model loading — custom layers can execute code
+    (re.compile(r"(?:tf|tensorflow|keras)\.\w*models?\.load_model\s*\("), VulnType.RCE),
 ]
 
 

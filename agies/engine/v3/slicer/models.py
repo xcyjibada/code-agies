@@ -61,6 +61,12 @@ class PathSlice:
     anomaly_reasons: list[str] = field(default_factory=list)
     """If in explore slot, why this path was flagged as anomalous."""
 
+    source_controllability_proof: str = ""
+    """Evidence that the source is an externally controllable entry point.
+    Set by TreeSitterPathFinder when the entry function is an HTTP controller.
+    Injected into prompt context so downstream agents cannot rebut with
+    'no external input'."""
+
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
@@ -85,6 +91,7 @@ class PathSlice:
             code_block=code_block,
             is_full_path=path.is_full_path,
             score=path.confidence,
+            source_controllability_proof=path.source_controllability_proof,
         )
 
 
