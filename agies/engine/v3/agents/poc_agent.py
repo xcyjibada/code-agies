@@ -65,14 +65,57 @@ def parse_poc_response(response: str) -> str:
 
 
 class PoCAgent:
-    """Generate PoC scripts for un-rebutted findings."""
+    """Generate PoC scripts for un-rebutted findings.
+
+    Writes scripts to ``{output_dir}/{project_name}/{descriptive_name}.py``
+    so each project's PoCs live in their own subfolder with human-readable
+    filenames.
+    """
 
     def __init__(self, output_dir: str = "", target: str = "") -> None:
-        self._output_dir = output_dir or os.path.join(
-            os.getcwd(), "pocs",
-        )
-        self._project_name = os.path.splitext(os.path.basename(os.path.normpath(target)))[0] if target else "unknown"
-        self._project_desc = f"{self._project_name} ({target})" if target else "unknown project"
+        self._base_dir = output_dir or os.path.join(os.getcwd(), "pocs")
+        raw = os.path.basename(os.path.normpath(target)) if target else "unknown"
+        # Use the full directory name so versioned tarballs keep their label
+        self._project_name = raw
+        self._project_desc = f"{raw} ({target})" if target else "unknown project"
+        # Output to ``pocs/{project_name}/``
+        self._output_dir = os.path.join(self._base_dir, self._project_name)
+
+    # ── helper: extract a short human-readable label from analysis text ──
+    @staticmethod
+    def _describe(analysis: str, sink_name: str, vuln_type: str) -> str:
+        """Return a short kebab-case label like ``path_traversal_convert_generic``.
+
+        Priority:
+        1. First sentence of *analysis* (up to ~6 words) + sink name
+        2. Fallback: vuln_type + sink_name
+        """
+        # Grab the first meaningful sentence
+        m = re.search(r"([A-Z][^.]{10,60}\.)", analysis)
+        desc = m.group(1).rstrip(".") if m else vuln_type.lower()
+        # Shrink to a handful of keywords
+        words = re.findall(r"[a-zA-Z][a-zA-Z0-9]+", desc)
+        keywords = [w for w in words if w.lower() not in
+                    {"the", "a", "an", "is", "are", "was", "were",
+                     "can", "will", "would", "could", "should",
+                     "this", "that", "these", "those", "it", "its",
+                     "in", "on", "at", "to", "for", "of", "by", "with",
+                     "via", "and", "or", "not", "no", "be", "has", "have",
+                     "from", "an", "attacker", "user", "provides",
+                     "parameter", "value", "file", "path"}][:4]
+        label = "_".join(keywords).lower() if keywords else vuln_type.lower()
+        # Prepend vuln type as prefix so filenames are always identifiable
+        vuln_prefix = vuln_type.lower()
+        if vuln_prefix and not label.startswith(vuln_prefix):
+            label = f"{vuln_prefix}_{label}"
+        if sink_name:
+            # Append the sink function name for disambiguation
+            short = sink_name.split(".")[-1].split("(")[0].strip()
+            if short:
+                label = f"{label}_{short}"
+        # Strip any leading/trailing underscores
+        label = label.strip("_")
+        return label
 
     def prepare_prompt(
         self,
@@ -92,22 +135,39 @@ class PoCAgent:
             code_block=code_block or "(code not loaded)",
         )
 
-    def write_script(self, path_id: str, script_content: str) -> str:
-        """Write PoC script to disk, return the file path."""
+    def write_script(
+        self,
+        path_id: str,
+        script_content: str,
+        sink_name: str = "",
+        analysis: str = "",
+        vuln_type: str = "",
+    ) -> str:
+        """Write PoC script to ``pocs/{project}/{label}.py``, return the path."""
         os.makedirs(self._output_dir, exist_ok=True)
-        safe_project = re.sub(r"[^a-zA-Z0-9_-]", "_", self._project_name)
-        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", path_id)
-        file_path = os.path.join(self._output_dir, f"{safe_project}-{safe_id}-poc.py")
 
         if not script_content.strip():
             logger.warning("PoCAgent: empty script content for %s", path_id)
             return ""
+
+        # Build descriptive filename from analysis text + sink name
+        label = self._describe(analysis or vuln_type, sink_name, vuln_type)
+
+        # Write ``pocs/safetensors-0.8.0/path_traversal_convert_generic.py``
+        file_path = os.path.join(self._output_dir, f"{label}.py")
+
+        # Deduplicate: if a file already exists with same label, append -N
+        counter = 1
+        while os.path.exists(file_path):
+            counter += 1
+            file_path = os.path.join(self._output_dir, f"{label}_{counter}.py")
 
         # Prepend header comment with project context
         header = (
             f"#!/usr/bin/env python3\n"
             f"# PoC for {self._project_desc}\n"
             f"# Path: {path_id}\n"
+            f"# Sink: {sink_name}\n"
             f"# Auto-generated — run with: python3 {os.path.basename(file_path)}\n"
             f"#\n"
         )
@@ -130,6 +190,7 @@ class PoCAgent:
         contradiction: str,
         code_block: str,
         weakness: str = "",
+        sink_name: str = "",
         llm_response: str | None = None,
         llm_call=None,
     ) -> str:
@@ -153,4 +214,9 @@ class PoCAgent:
             logger.warning("PoCAgent: no script generated for %s", path_id)
             return ""
 
-        return self.write_script(path_id, script)
+        return self.write_script(
+            path_id, script,
+            sink_name=sink_name,
+            analysis=analysis,
+            vuln_type=vuln_type,
+        )

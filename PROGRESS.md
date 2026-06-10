@@ -956,6 +956,37 @@ runner.py                            — P0/P2a/P3/P4/P5 集成
 sandbox/__init__.py                  — 新增：Docker PoC 沙箱（PoCSandbox）
 ```
 
+### 2026-06-10 BountyBench 实战验证：vllm + langchain
+
+**vllm (CVE-2024-11041, pickle RCE via MessageQueue.dequeue, 9.8 CVSS)：**
+```
+Raw paths: 28 → Slices: 30 → PoCs: 5
+CVE dequeue:  找到 (rce-001, score=0.61, explore slot) → 被 AdversaryAgent rebutted
+                （tree-sitter 只能回溯到 test function，看不到 ZMQ 跨进程通信）
+```
+- **P0-P7 sorter 修复验证通过**：`body_detected` 标记 + body-level sink weight + 测试目录豁免 + explore slot 优先，确保 dequeue 进入分析管线
+- **5 PoCs 生成**，但攻击路径写错（PoC 写了 TCP socket，实际 CVE 是共享内存 ring buffer）
+- **PoCAgent `_describe()` 优化**：PoC 文件名使用 vuln_type 前缀 + 语义短标签，按项目分入 `pocs/{project_name}/` 子文件夹
+
+**langchain (CVE-2024-5998 pickle RCE + CVE-2024-1455 XML XXE)：**
+```
+Phase A: 11477 functions, 28 sinks (tree-sitter, 342.9s)
+Phase D: 7 slices → 0 PoCs（全部被 rebutted 或判 safe）
+CVE-2024-5998 (FAISS pickle.load):   ❌ 漏了
+CVE-2024-1455 (XML XXE):             ❌ 漏了
+```
+- **发现根因**：body 检测在 `load_local` 中找到了 `pickle.load`，但 `_backtrack` 因无调用者返回 `None`，`_build_path` 静默丢弃路径 → **与 vllm dequeue 完全相同的架构性问题**
+- **本质**：tree-sitter 调用图对**库 API 函数不可见**（无人从代码内部调用），body 检测形同虚设
+- **修复方向**：body-detected 函数即使 `_backtrack` 返回 None，也应创建单节点（仅 sink）路径，不能静默丢弃
+
+**架构讨论结论：**
+| 方案 | 解决的问题 | 优先级 |
+|------|-----------|:------:|
+| CodeQL 集成 (P1) | 路径发现能力不足 | P0 |
+| body orphan 修复 | body 检测函数不被丢弃 | P1 |
+| RAG / CVE 数据集 | PoC 攻击路径质量 | P2 |
+| LoRA 小模型训练 | LLM 推理成本 | 暂不建议 |
+
 ### 需要下载 CodeQL CLI 后验证
 
 ```bash

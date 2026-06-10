@@ -167,6 +167,16 @@ class TreeSitterPathFinder:
             path = self._build_path(index, fn, vtype)
             if path is None:
                 continue
+            # Tag as body-detected and record the match for sorter scoring
+            path.body_detected = True
+            for pattern, vt in SENSITIVE_CALL_PATTERNS:
+                if vt == vtype:
+                    m = pattern.search(fn.body or "")
+                    if m:
+                        path.body_sink_call = m.group().strip("(")
+                        break
+            if not path.body_sink_call:
+                path.body_sink_call = vtype.value
             sensitive_count += 1
             found = False
             for r in results:

@@ -68,6 +68,16 @@ class CodeQlPath:
     Overrides AdversaryAgent's 'no external input' rebuttal by making the
     controllability irrefutable to downstream LLM agents."""
 
+    body_detected: bool = False
+    """True when this path was found via body regex matching (``classify_sensitive_body``)
+    rather than by function name.  Body-detected sinks have no telltale function name
+    (e.g. ``dequeue`` whose body contains ``pickle.loads``) and warrant different scoring
+    and exclusion treatment in the sorter."""
+
+    body_sink_call: str = ""
+    """The exact dangerous call matched in the function body (e.g. ``pickle.loads(``).
+    Used by the sorter to look up severity weight instead of the parent function name."""
+
     @property
     def key(self) -> str:
         """Deduplication key."""

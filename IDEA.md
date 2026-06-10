@@ -1772,3 +1772,17 @@ CVE-2024-27309 调用链:
 | Verification "no JSON found" | ~20% | <5% |
 | 工具调用轮次/Agent (hot) | 8-15 | 2-5 |
 | 误丢真实漏洞（false skip） | N/A | 0% |
+
+---
+
+### A.8 2026-06-10: Body-detected orphan functions — 架构盲区
+
+**发现：** body 检测（`classify_sensitive_body`）找到了 `load_local`→`pickle.load`，但 `_build_path` 因 `_backtrack` 返回 None 静默丢弃了路径。
+
+**根因：** tree-sitter 调用图只能发现函数间调用关系，**库 API 函数**（由用户调用而非库内部调用）不会出现在调用图中，body 检测失去意义。
+
+**影响范围：** vllm dequeue + langchain FAISS `load_local` + 所有库项目中的公开 API 函数。
+
+**修复方向：** body-detected 函数即使无调用者也应创建单节点路径（类似 vllm 修复的延续），在 `_build_path` 中 `_backtrack` 返回 None 后不应直接 `continue`。
+
+**架构意义：** tree-sitter 做库级静态分析的先天性缺陷。长期靠 CodeQL 数据流追踪解决，短期靠 body orphan 补丁兜底。

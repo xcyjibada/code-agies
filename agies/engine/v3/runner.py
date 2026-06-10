@@ -517,7 +517,9 @@ def _run_phase_d(
                         contradiction=contradiction_desc,
                         code_block=code_block,
                         weakness=adv_result.get("weakness", ""),
-                        llm_call=lambda p: _call_llm(llm, p, console),
+                        sink_name=slice_.sink,
+                        # PoC prompts output Python code in fenced blocks, not JSON
+                        llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
                     )
                 if poc_path:
                     _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
@@ -774,7 +776,8 @@ def _run_phase_d_lib(
                         contradiction=contradiction_desc,
                         code_block=code_block,
                         weakness=adv_result.get("weakness", ""),
-                        llm_call=lambda p: _call_llm(llm, p, console),
+                        sink_name=slice_.sink,
+                        llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
                     )
                 if poc_path:
                     _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
@@ -932,21 +935,31 @@ def _init_token_counter(budget: int = 0) -> TokenCounter:
 def _call_llm(
     llm: Any, prompt: str, console: Any,
     token_counter: TokenCounter | None = None,
+    force_json: bool = True,
 ) -> str | None:
     """Call the LLM with a prompt and return the response text.
 
     Optionally records token usage in ``token_counter`` (falls back to
     the global ``_TOKEN_COUNTER`` when not provided).
+
+    Parameters
+    ----------
+    force_json : bool
+        When True (default), injects ``[SYSTEM_NOTICE: RESPOND IN JSON FORMAT]``
+        and sets ``response_format={"type": "json_object"}`` for DeepSeek
+        stability.  Set to False for prompts that need raw output (e.g. PoC
+        scripts, code fences).
     """
     try:
         kwargs = {}
-        # DeepSeek JSON mode: prompt MUST contain "json" word or API rejects
-        if "json" in prompt.lower():
-            kwargs["response_format"] = {"type": "json_object"}
-        else:
-            # Force JSON mode by injecting system notice
-            prompt = f"[SYSTEM_NOTICE: RESPOND IN JSON FORMAT]\n\n{prompt}"
-            kwargs["response_format"] = {"type": "json_object"}
+        if force_json:
+            # DeepSeek JSON mode: prompt MUST contain "json" word or API rejects
+            if "json" in prompt.lower():
+                kwargs["response_format"] = {"type": "json_object"}
+            else:
+                # Force JSON mode by injecting system notice
+                prompt = f"[SYSTEM_NOTICE: RESPOND IN JSON FORMAT]\n\n{prompt}"
+                kwargs["response_format"] = {"type": "json_object"}
         response = llm.chat_completion(
             [{"role": "user", "content": prompt}], **kwargs,
         )

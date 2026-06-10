@@ -108,7 +108,13 @@ def score_path(path: CodeQlPath) -> float:
     score = 0.0
 
     # 1. Sink danger weight (40%)
-    weight = _sink_weight(path.sink)
+    #    For body-detected sinks, use the body call weight (e.g. pickle.loads
+    #    inside dequeue) instead of the parent function name.
+    weight = _sink_weight(
+        path.sink,
+        body_sink_call=getattr(path, "body_sink_call", ""),
+        body_detected=getattr(path, "body_detected", False),
+    )
     score += weight * 0.40
 
     # 2. Path length penalty — fewer hops = more reliable exploit (20%)
@@ -130,11 +136,28 @@ def score_path(path: CodeQlPath) -> float:
     if _cross_module_bonus(path):
         score += 0.05
 
+    # 6. Body-detected bonus — functions with dangerous calls in their body
+    #    (e.g. ``dequeue`` containing ``pickle.loads``) are harder to find by
+    #    name alone. Give a small boost so they compete better for exploit slots.
+    # Body-detected bonus — functions with dangerous calls in their body
+    # (e.g. ``dequeue`` containing ``pickle.loads``) are harder to detect by
+    # name alone. The +0.08 boost compensates for the length penalty that
+    # disproportionately affects deep call chains found via body regex.
+    if getattr(path, "body_detected", False):
+        score += 0.08
+
     return min(score, 1.0)
 
 
-def _sink_weight(sink_name: str) -> float:
-    """Look up sink danger weight, falling back to 0.3 for unknown sinks."""
+def _sink_weight(sink_name: str, body_sink_call: str = "", body_detected: bool = False) -> float:
+    """Look up sink danger weight.
+
+    For body-detected sinks (e.g. ``dequeue`` whose body calls ``pickle.loads``),
+    use the body call's weight instead of the parent function name's weight.
+    Falls back to 0.3 for truly unknown sinks.
+    """
+    if body_detected and body_sink_call:
+        return SINK_WEIGHTS.get(body_sink_call, SINK_WEIGHTS.get(sink_name, 0.3))
     return SINK_WEIGHTS.get(sink_name, 0.3)
 
 
@@ -263,7 +286,15 @@ def select_top_k(
 
 
 def _in_excluded_dir(path: CodeQlPath) -> bool:
-    """Check if a path lies in a test/generated/vendor directory."""
+    """Check if a path lies in a test/generated/vendor directory.
+
+    Body-detected sinks (e.g. ``dequeue`` with ``pickle.loads`` in body) are
+    exempt from test exclusion because they have no telltale sink name and the
+    entry point may be a test file even though the real exploit path goes
+    through a different (non-static-traceable) entry like a network socket.
+    """
+    if getattr(path, "body_detected", False):
+        return False
     for node_summary in [path.source_file, path.sink_file]:
         if _EXCLUDE_DIR_PATTERNS.search(node_summary):
             return True
@@ -309,13 +340,23 @@ def _select_explore(
     slots: int = 5,
     exploit_fill: list[CodeQlPath] | None = None,
 ) -> list[CodeQlPath]:
-    """Fill Explore slots — first from anomalous paths, then from Exploit fill pool."""
-    # Score by anomaly count
-    scored: list[tuple[int, CodeQlPath]] = []
+    """Fill Explore slots — anomalous paths first, then Exploit fill pool.
+
+    Body-detected high-severity sinks (e.g. ``dequeue`` whose body contains
+    ``pickle.loads``) are pre-pended to the anomaly score so they get priority
+    even when their anomaly reasons are generic.
+    """
+    scored: list[tuple[float, CodeQlPath]] = []
     for path in candidates:
         reasons = is_anomalous(path)
-        if reasons:
-            scored.append((len(reasons), path))
+        if not reasons and not getattr(path, "body_detected", False):
+            continue
+        # Base score: anomaly count
+        base = float(len(reasons))
+        # Body-detected bonus: high-severity body calls are valuable signals
+        if getattr(path, "body_detected", False):
+            base += 0.5  # boost above any non-body path with same anomaly count
+        scored.append((base, path))
 
     scored.sort(key=lambda x: -x[0])
     selected = [p for _, p in scored[:slots]]
