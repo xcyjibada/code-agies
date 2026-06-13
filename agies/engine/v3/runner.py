@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from agies.engine.v3.codeql.models import VulnType, VULN_LABELS, QueryResult
+from agies.engine.v3.codeql.models import VulnType, VULN_LABELS, QueryResult, Reachability
 from agies.engine.v3.slicer import select_top_k
 from agies.engine.v3.slicer.models import SortResult
 from agies.engine.v3.aggregator.blackboard import BlackboardAggregator
@@ -57,8 +59,8 @@ def run_v3_pipeline(
     codeql_bin: str = "",
     db_dir: str = "",
     use_codeql: bool = False,
-    max_exploit: int = 25,
-    max_explore: int = 10,
+    max_exploit: int = 30,
+    max_explore: int = 15,
     max_intent_workers: int = 5,
     exclude_test: bool = False,
     project_type: str = "auto",
@@ -140,10 +142,29 @@ def run_v3_pipeline(
         exclude_test=exclude_test,
     )
 
+    body_only_count = sum(
+        1 for p in all_paths
+        if getattr(p, "reachability", Reachability.CHAIN) in
+        (Reachability.BODY_ONLY, Reachability.EXTERNAL_API)
+    )
+    if body_only_count:
+        _print(console, f"  [dim]Body-detected orphans: {body_only_count} (no call chain)[/dim]")
     _print(console, f"  Exploit: {len(sort_result.exploit)} + Explore: {len(sort_result.explore)}")
     for s in sort_result.explore[:3]:
         reasons = f" ({', '.join(s.anomaly_reasons)})" if s.anomaly_reasons else ""
-        _print(console, f"    [dim]Explore: {s.id} {s.sink} score={s.score:.2f}{reasons}[/dim]")
+        reach_tag = f" [{s.reachability.value}]" if s.reachability != Reachability.CHAIN else ""
+        _print(console, f"    [dim]Explore: {s.id} {s.sink} score={s.score:.2f}{reach_tag}{reasons}[/dim]")
+
+    # Free Phase A memory — thousands of CodeQlPath/PathNode objects and
+    # function bodies are no longer needed once slicing is complete.
+    # Keeping them through the LLM-heavy Phase D can cause OOM.
+    # NOTE: SourceFunction is @dataclass(frozen=True), so fn.body = ""
+    # raises FrozenInstanceError.  Use slim() which rebuilds the funcs
+    # list with body="" and clears source file texts (frees ~60-80%).
+    results.clear()
+    all_paths.clear()
+    if function_index is not None:
+        function_index.slim()
 
     # ==================================================================
     # Project Type Detection
@@ -433,7 +454,20 @@ def _run_phase_d(
         # Build raw source block (includes companion methods + aliases for context)
         code_block = _build_code_block(
             nodes, source_controllability_proof=slice_.source_controllability_proof,
+            reachability=slice_.reachability,
         )
+
+        # ── Blackboard cross-path knowledge ──
+        # Collect prior knowledge for every function in this path's call chain.
+        # Earlier paths may have discovered contradictions or data-flow patterns
+        # that involve the same functions — inject that as supplementary evidence.
+        current_funcs = {
+            node.get("function_name", "")
+            for node in nodes
+            if node.get("function_name")
+        }
+        blackboard_knowledge = blackboard.get_all_prior_knowledge(list(current_funcs))
+
         logic_prompt = logic_agent.prepare_prompt(
             path_id=slice_.id,
             intent_chain=intent_chain,
@@ -441,6 +475,7 @@ def _run_phase_d(
             readme_summary=readme_summary,
             code_block=code_block,
             project_type="app",
+            blackboard_knowledge=blackboard_knowledge,
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
@@ -461,6 +496,40 @@ def _run_phase_d(
         all_results.append(result)
         blackboard.record_phase_result(result)
         _print_phase_d_result(console, result)
+
+        # ── Record per-function knowledge back to Blackboard ──
+        # When a Logic Agent discovers contradictions or high-confidence
+        # findings, those are potentially useful for OTHER paths that also
+        # touch the same functions (cross-path knowledge).
+        if result.contradictions or result.confidence >= 7:
+            for node in nodes:
+                fn_name = node.get("function_name", "")
+                if fn_name:
+                    blackboard.record_knowledge(
+                        fn_name,
+                        f"[{result.vuln_type}] "
+                        f"{result.analysis[:200] if result.analysis else '(no analysis)'}",
+                        source_path_id=slice_.id,
+                    )
+            for c in result.contradictions[:3]:
+                func_name = c.get("func", "")
+                if func_name:
+                    blackboard.record_knowledge(
+                        func_name,
+                        f"contradiction ({c.get('contradiction_type', '?')}): "
+                        f"{c.get('actual', '')[:150]}",
+                        source_path_id=slice_.id,
+                    )
+
+        # ── Inject structured Intent evidence into code_block ──
+        # The Adversary and PoC Agent need per-function evidence: what each
+        # function does, what input it receives, what it outputs, and what
+        # suspicious observations the Intent Agent flagged.  This structured
+        # data has been available in all_intent_results since line ~440 but
+        # was never threaded through to downstream agents — they only got
+        # Logic Agent's free-text `analysis`.
+        intent_evidence = _build_intent_evidence(all_intent_results)
+        code_block = code_block + "\n\n" + intent_evidence
 
         # Conditional consensus voting (grey zone, 4-7)
         if consensus:
@@ -488,23 +557,35 @@ def _run_phase_d(
                 )
 
             if adv_result["rebutted"]:
-                _print(console, f"    [red]✗ rebutted[/red]")
-                _print(console, f"      reason: {adv_result['rebuttal']}")
-                result = AgentPhaseResult(
-                    path_id=result.path_id, vuln_type=result.vuln_type,
-                    score=result.score, contradictions=result.contradictions,
-                    confidence=min(result.confidence, adv_result["confidence_downgrade"]),
-                    analysis=result.analysis
-                    + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
-                    is_vulnerable=False,
-                    rebutted=True,
-                    rebuttal=adv_result["rebuttal"],
-                )
-                all_results[-1] = result
+                # BODY_ONLY/EXTERNAL_API override: deterministic evidence exists
+                # in function body despite no project-internal call chain.
+                if slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API):
+                    _print(console, f"    [yellow]⚠ BODY_ONLY -- rebuttal overridden (body evidence, no call chain)[/yellow]")
+                    _run_poc = True
+                else:
+                    _print(console, f"    [red]✗ rebutted[/red]")
+                    _safe_r = adv_result['rebuttal'].replace('[', r'\[')
+                    _print(console, f"      reason: {_safe_r}")
+                    result = AgentPhaseResult(
+                        path_id=result.path_id, vuln_type=result.vuln_type,
+                        score=result.score, contradictions=result.contradictions,
+                        confidence=min(result.confidence, adv_result["confidence_downgrade"]),
+                        analysis=result.analysis
+                        + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
+                        is_vulnerable=False,
+                        rebutted=True,
+                        rebuttal=adv_result["rebuttal"],
+                    )
+                    all_results[-1] = result
+                    _run_poc = False
             else:
                 _print(console, f"    [green]✓ not rebutted[/green]")
-                _print(console, f"      weak point: {adv_result.get('weakness', '')}")
-                # PoC Agent: write exploit script for un-rebutted findings
+                _safe_w = adv_result.get('weakness', '').replace('[', r'\[')
+                _print(console, f"      weak point: {_safe_w}")
+                _run_poc = True
+
+            if _run_poc:
+                # PoC Agent: write exploit script
                 with _status(console, f"  PoC Agent: {slice_.id}..."):
                     poc = PoCAgent(
                         output_dir=os.path.join(os.getcwd(), "pocs"),
@@ -618,24 +699,33 @@ def _run_phase_d_lib(
     target: str = "",
     consensus: bool = False,
 ) -> list[AgentPhaseResult]:
-    """Library-mode Phase D — lightweight Intent+Logic pipeline.
+    """Library-mode Phase D — parallel Intent+Logic pipeline.
 
     Libraries rarely have intentional vulnerabilities, but may have
     composition vulnerabilities (path-builder + consumer) or misuse-prone
-    APIs. Uses the same Intent Agent → Merge → Logic Agent flow as app
-    mode, but without README context.
+    APIs.
     """
     project_path = os.path.abspath(target) if target else ""
     loader = PathCodeLoader(project_path=project_path, blackboard=blackboard)
     intent_agent = IntentAgent()
     logic_agent = LogicAgent()
     merge_layer = MergeLayer()
-    all_results: list[AgentPhaseResult] = []
 
-    for i, slice_ in enumerate(sort_result.all_slices):
-        _print(console, f"  [{i+1}/{len(sort_result.all_slices)}] {slice_.id} ({slice_.sink})")
+    _print_lock = threading.Lock()
 
-        # Build nodes from sink metadata + real path nodes
+    def _safe_print(msg: str) -> None:
+        with _print_lock:
+            if console:
+                console.print(msg)
+            else:
+                print(msg)
+
+    total = len(sort_result.all_slices)
+
+    def _process_one(slice_: PathSlice, idx: int) -> AgentPhaseResult | None:
+        """Process one slice -- returns result or None (skipped)."""
+        _safe_print(f"  [{idx+1}/{total}] {slice_.id} ({slice_.sink})")
+
         nodes: list[dict[str, Any]] = [{
             "function_name": slice_.sink,
             "file_path": slice_.sink_file.split(":")[0],
@@ -644,18 +734,11 @@ def _run_phase_d_lib(
         if slice_.nodes:
             nodes = slice_.nodes
 
-        # Prepare tasks via PathCodeLoader (checks blackboard cache)
         load_result = loader.prepare(slice_.id, nodes, readme_summary="")
-
         if not load_result.tasks and not load_result.cached:
-            _print(console, f"    [dim]No functions to analyze.[/dim]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [dim]No functions to analyze.[/dim]")
+            return None
 
-        # Intent Agent: extract developer intent from each function
         all_intent_results: list[IntentResult] = list(load_result.cached)
         for task in load_result.tasks:
             prompt = intent_agent.prepare_prompt(task)
@@ -665,25 +748,27 @@ def _run_phase_d_lib(
                 all_intent_results.extend(results)
                 loader.register_intent_results(results)
 
-        # Merge into pseudocode chain (with pass_through for dangerous functions)
         intent_chain = merge_layer.merge(all_intent_results)
-
         if not intent_chain.strip():
-            _print(console, f"    [dim]Empty intent chain, skipping Logic Agent.[/dim]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [dim]Empty intent chain, skipping Logic Agent.[/dim]")
+            return None
 
-        # Build raw source block (includes companion methods + aliases for context)
         code_block = _build_code_block(
             nodes, source_controllability_proof=slice_.source_controllability_proof,
+            reachability=slice_.reachability,
         )
-        # Library bias mitigation: wrap lib code in a synthetic app controller
         code_block = _wrap_lib_sandbox(
             code_block, source_name=slice_.source, sink_name=slice_.sink,
         )
+
+        # ── Blackboard cross-path knowledge ──
+        current_funcs = {
+            node.get("function_name", "")
+            for node in nodes
+            if node.get("function_name")
+        }
+        blackboard_knowledge = blackboard.get_all_prior_knowledge(list(current_funcs))
+
         logic_prompt = logic_agent.prepare_prompt(
             path_id=slice_.id,
             intent_chain=intent_chain,
@@ -691,15 +776,12 @@ def _run_phase_d_lib(
             readme_summary="",
             code_block=code_block,
             project_type="lib",
+            blackboard_knowledge=blackboard_knowledge,
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
-            _print(console, f"    [red]Logic Agent LLM call failed[/red]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [red]Logic Agent LLM call failed[/red]")
+            return None
 
         result = logic_agent.run(
             path_id=slice_.id,
@@ -708,79 +790,100 @@ def _run_phase_d_lib(
             intent_chain=intent_chain,
             llm_response=logic_response,
         )
-        all_results.append(result)
         blackboard.record_phase_result(result)
         _print_phase_d_result(console, result)
 
-        # Conditional consensus voting (grey zone, 4-7)
+        # ── Record per-function knowledge back to Blackboard ──
+        if result.contradictions or result.confidence >= 7:
+            for node in nodes:
+                fn_name = node.get("function_name", "")
+                if fn_name:
+                    blackboard.record_knowledge(
+                        fn_name,
+                        f"[{result.vuln_type}] "
+                        f"{result.analysis[:200] if result.analysis else '(no analysis)'}",
+                        source_path_id=slice_.id,
+                    )
+            for c in result.contradictions[:3]:
+                func_name = c.get("func", "")
+                if func_name:
+                    blackboard.record_knowledge(
+                        func_name,
+                        f"contradiction ({c.get('contradiction_type', '?')}): "
+                        f"{c.get('actual', '')[:150]}",
+                        source_path_id=slice_.id,
+                    )
+
         if consensus:
-            result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
-            if result is not all_results[-1]:
-                all_results[-1] = result
+            with _print_lock:
+                c_result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
+            if c_result is not result:
+                result = c_result
                 _print_phase_d_result(console, result)
 
-        # Bridge Verifier: handle both attr-bridge and path-bridge patterns
-        bridge_result = _run_lib_bridge_verifier(
-            llm, result, nodes, code_block, console,
-        )
+        bridge_result = _run_lib_bridge_verifier(llm, result, nodes, code_block, console)
         if bridge_result:
             result = bridge_result
-            all_results[-1] = result
-            if result.confidence >= 4 or result.is_vulnerable:
-                _print_phase_d_result(console, result)
 
-        # Adversary Agent: try to rebut before PoC generation (lib mode)
         if result.is_vulnerable or result.confidence >= 7:
             adversary = AdversaryAgent()
             contradiction_desc = (
                 result.contradictions[0].get("contradiction_type", "")
-                + ": "
-                + result.contradictions[0].get("actual", "")
+                + ": " + result.contradictions[0].get("actual", "")
                 if result.contradictions else ""
             )
-            with _status(console, f"  Adversary: {slice_.id}..."):
-                adv_result = adversary.run(
-                    vuln_type=slice_.vuln_type.value,
+            _safe_print(f"    Adversary: {slice_.id}...")
+            adv_result = adversary.run(
+                vuln_type=slice_.vuln_type.value,
+                analysis=result.analysis,
+                contradiction=contradiction_desc,
+                code_block=code_block,
+                llm_call=lambda p: _call_llm(llm, p, console),
+            )
+
+            _run_poc = False
+            if adv_result["rebutted"]:
+                if slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API):
+                    _safe_print(f"    [yellow]⚠ BODY_ONLY -- rebuttal overridden (body evidence, no call chain)[/yellow]")
+                    _run_poc = True
+                else:
+                    _safe_print(f"    [red]x rebutted[/red]")
+                    _safe_r = adv_result['rebuttal'].replace('[', r'\[')
+                    _safe_print(f"      reason: {_safe_r}")
+                    result = AgentPhaseResult(
+                        path_id=result.path_id, vuln_type=result.vuln_type,
+                        score=result.score, contradictions=result.contradictions,
+                        confidence=min(result.confidence, adv_result["confidence_downgrade"]),
+                        analysis=result.analysis + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
+                        is_vulnerable=False,
+                        rebutted=True,
+                        rebuttal=adv_result["rebuttal"],
+                    )
+                    _run_poc = False
+            else:
+                _safe_print(f"    [green]not rebutted[/green]")
+                _safe_w = adv_result.get('weakness', '').replace('[', r'\[')
+                _safe_print(f"      weak point: {_safe_w}")
+                _run_poc = True
+
+            if _run_poc:
+                _safe_print(f"    PoC Agent: {slice_.id}...")
+                poc = PoCAgent(
+                    output_dir=os.path.join(os.getcwd(), "pocs"),
+                    target=target,
+                )
+                poc_path = poc.run(
+                    path_id=slice_.id,
+                    vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
                     analysis=result.analysis,
                     contradiction=contradiction_desc,
                     code_block=code_block,
-                    llm_call=lambda p: _call_llm(llm, p, console),
+                    weakness=adv_result.get("weakness", ""),
+                    sink_name=slice_.sink,
+                    llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
                 )
-
-            if adv_result["rebutted"]:
-                _print(console, f"    [red]✗ rebutted[/red]")
-                _print(console, f"      reason: {adv_result['rebuttal']}")
-                result = AgentPhaseResult(
-                    path_id=result.path_id, vuln_type=result.vuln_type,
-                    score=result.score, contradictions=result.contradictions,
-                    confidence=min(result.confidence, adv_result["confidence_downgrade"]),
-                    analysis=result.analysis
-                    + f"\n[Adversary rebutted: {adv_result['rebuttal']}]",
-                    is_vulnerable=False,
-                    rebutted=True,
-                    rebuttal=adv_result["rebuttal"],
-                )
-                all_results[-1] = result
-            else:
-                _print(console, f"    [green]✓ not rebutted[/green]")
-                _print(console, f"      weak point: {adv_result.get('weakness', '')}")
-                with _status(console, f"  PoC Agent: {slice_.id}..."):
-                    poc = PoCAgent(
-                        output_dir=os.path.join(os.getcwd(), "pocs"),
-                        target=target,
-                    )
-                    poc_path = poc.run(
-                        path_id=slice_.id,
-                        vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
-                        analysis=result.analysis,
-                        contradiction=contradiction_desc,
-                        code_block=code_block,
-                        weakness=adv_result.get("weakness", ""),
-                        sink_name=slice_.sink,
-                        llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
-                    )
                 if poc_path:
-                    _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
+                    _safe_print(f"    [green]PoC: {poc_path}[/green]")
                     result = AgentPhaseResult(
                         path_id=result.path_id, vuln_type=result.vuln_type,
                         score=result.score, contradictions=result.contradictions,
@@ -789,20 +892,18 @@ def _run_phase_d_lib(
                         is_vulnerable=result.is_vulnerable,
                         poc_path=poc_path,
                     )
-                    all_results[-1] = result
 
-        # Evidence Checker: always run code-level pattern matching
         checker = EvidenceChecker(
             llm_call_fn=lambda p: _call_llm(llm, p, console),
             blackboard=blackboard,
         )
-        with _status(console, f"  Evidence: {slice_.id}..."):
-            evidence = checker.run(result, code_block, nodes)
+        _safe_print(f"    Evidence: {slice_.id}...")
+        evidence = checker.run(result, code_block, nodes)
 
         if evidence.evidence_found:
-            _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
+            _safe_print(f"    [green]evidence found ({len(evidence.matches)} match(es))[/green]")
             if evidence.poc:
-                _print(console, f"      PoC: {evidence.poc[:150]}...")
+                _safe_print(f"      PoC: {evidence.poc[:150]}...")
             result = AgentPhaseResult(
                 path_id=result.path_id, vuln_type=result.vuln_type,
                 score=result.score, contradictions=result.contradictions,
@@ -810,10 +911,8 @@ def _run_phase_d_lib(
                 analysis=evidence.analysis or result.analysis,
                 is_vulnerable=True,
             )
-            all_results[-1] = result
         elif evidence.matches:
-            _print(console, f"    [cyan]? pattern matched (deterministic) ({len(evidence.matches)} match(es))[/cyan]")
-            # Deterministic evidence: pattern matched regardless of LLM opinion
+            _safe_print(f"    [cyan]? pattern matched ({len(evidence.matches)} match(es))[/cyan]")
             pattern_summary = "; ".join(
                 f"{m.function_name or '?'}:{m.line_content[:60]}"
                 for m in evidence.matches[:5]
@@ -833,10 +932,29 @@ def _run_phase_d_lib(
                 analysis=deterministic_analysis,
                 is_vulnerable=True,
             )
-            all_results[-1] = result
         else:
-            _print(console, f"    [dim]No code-level evidence patterns.[/dim]")
+            _safe_print(f"    [dim]No code-level evidence patterns.[/dim]")
 
+        return result
+
+    # Parallel execution
+    all_results: list[AgentPhaseResult] = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        fut_map = {
+            executor.submit(_process_one, slice_, i): (i, slice_)
+            for i, slice_ in enumerate(sort_result.all_slices)
+        }
+        for future in as_completed(fut_map):
+            i, slice_ = fut_map[future]
+            try:
+                r = future.result()
+                if r is not None:
+                    all_results.append(r)
+            except Exception as e:
+                logger.error("Slice %s failed: %s", slice_.id, e)
+                _safe_print(f"    [red]Error: {slice_.id}: {e}[/red]")
+
+    all_results.sort(key=lambda r: int(r.path_id.rsplit("-", 1)[-1]))
     return all_results
 
 
@@ -1131,6 +1249,7 @@ def _wrap_lib_sandbox(code_block: str, source_name: str, sink_name: str) -> str:
 def _build_code_block(
     nodes: list[dict[str, Any]],
     source_controllability_proof: str = "",
+    reachability: Reachability = Reachability.CHAIN,
 ) -> str:
     """Build a raw source code block from PathNode snippets.
 
@@ -1139,8 +1258,33 @@ def _build_code_block(
     When ``source_controllability_proof`` is provided, prepends it as a
     system notice so downstream LLM agents receive irrefutable evidence
     of external input controllability.
+    When ``reachability`` is BODY_ONLY or EXTERNAL_API, prepends a notice
+    explaining the missing call chain so agents can adjust their analysis.
     """
     parts: list[str] = []
+
+    # Reachability notice for body-detected orphans
+    if reachability == Reachability.BODY_ONLY:
+        parts.append(
+            "# ── [REACHABILITY: BODY_ONLY] ──\n"
+            "# This function was flagged because its body contains dangerous\n"
+            "# API calls (e.g. pickle.load, eval, open). No caller chain was\n"
+            "# found inside this project — the function may be a library public\n"
+            "# API called from external code.\n"
+            "# Assess whether the dangerous operation in the body is reachable\n"
+            "# with attacker-controlled input.\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
+    elif reachability == Reachability.EXTERNAL_API:
+        parts.append(
+            "# ── [REACHABILITY: EXTERNAL_API] ──\n"
+            "# This function is a library public API (detected via __all__ or\n"
+            "# module-level definition). It calls dangerous operations in its\n"
+            "# body. The function is exposed to external callers who control\n"
+            "# its parameters — treat all parameters as attacker-controllable.\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
+
     if source_controllability_proof:
         parts.append(
             "# ── [SOURCE CONTROLLABILITY EVIDENCE] ──\n"
@@ -1151,6 +1295,12 @@ def _build_code_block(
             "below.\n"
             "# ── ── ── ── ── ── ── ── ── ── ──"
         )
+
+    # ── Taint flow annotation ──
+    taint_annotation = _annotate_taint_flow(nodes)
+    if taint_annotation:
+        parts.append(taint_annotation)
+
     companion_shown = False
     for i, node in enumerate(nodes):
         fn_name = node.get("function_name", f"func_{i}")
@@ -1183,6 +1333,282 @@ def _build_code_block(
     return "\n\n".join(parts)
 
 
+_AST_CACHE: dict[str, Any] = {}
+"""Cache for ``ast.parse()`` results keyed by absolute file path.
+
+Without this cache, each ``PathSlice`` that passes through ``_build_code_block``
+re-reads and re-parses the same source file.  With 5 concurrent Phase D workers
+and many slices referencing the same large file, this creates significant
+memory pressure from redundant AST trees.
+
+Cleared implicitly when ``_free_phase_a_memory()`` is called or on module exit.
+The cache is bounded by the number of unique files referenced by all slices,
+typically << the total file count in the project.
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Taint flow annotation — marks entry params as UNTRUSTED and traces
+# propagation through the call chain so that downstream agents (Adversary,
+# PoC) know exactly which arguments at the sink carry attacker-controlled
+# values rather than having to infer data flow from bare source snippets.
+# ═══════════════════════════════════════════════════════════════════════════
+
+import re as _re
+
+_PARAM_RE = _re.compile(r"def\s+\w+\s*\(([^)]*)\)")
+_CALL_RE = _re.compile(r"\b(\w+)\s*\(")
+_ARG_SPLIT_RE = _re.compile(r",\s*(?![^()]*\))")
+
+# Names that are never attacker-controlled (builtins / self / cls / constants)
+_SAFE_PARAM_NAMES = frozenset({
+    "self", "cls", "args", "kwargs", "request", "response",
+    "app", "config", "settings", "db", "session",
+})
+
+
+def _extract_params(snippet: str) -> list[str]:
+    """Extract parameter names from a ``def func(...)`` signature snippet."""
+    m = _PARAM_RE.search(snippet)
+    if not m:
+        return []
+    raw = m.group(1)
+    params = []
+    for part in raw.split(","):
+        p = part.strip().split(":")[0].split("=")[0].strip()
+        if p and p not in _SAFE_PARAM_NAMES and not p.startswith("*"):
+            params.append(p)
+    return params
+
+
+def _extract_call_args(snippet: str, callee: str) -> list[str]:
+    """Extract positional argument names from the first call to *callee* in *snippet*.
+
+    Returns e.g. ``["files_list", "self.temp_dir"]`` for a call like
+    ``some_func(files_list, self.temp_dir)``.  Only handles direct variable/
+    attribute references — complex expressions are returned as-is.
+    """
+    # Find the first call to callee: callee(...)
+    pattern = _re.compile(r"\b" + _re.escape(callee) + r"\s*\(([^)]*)\)")
+    m = pattern.search(snippet)
+    if not m:
+        return []
+    raw_args = m.group(1)
+    # Split on commas that are not inside nested parentheses
+    args = []
+    depth = 0
+    current = ""
+    for ch in raw_args:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            args.append(current.strip())
+            current = ""
+        else:
+            current += ch
+    if current.strip():
+        args.append(current.strip())
+    return args
+
+
+def _extract_init_self_attrs(file_path: str, entry_lineno: int) -> list[str]:
+    """Extract potential untrusted member variables from the entry function's class.
+
+    Scans the enclosing class for ``self.xxx =`` assignments (in any method)
+    and class-level annotated attributes.  These are potential untrusted sources
+    in library mode where the entry function is a class method with ``self``.
+
+    Used by ``_annotate_taint_flow`` to hint the LLM when static taint
+    tracking can't trace attribute → local variable propagation.
+    """
+    try:
+        with open(file_path) as f:
+            source = f.read()
+    except OSError:
+        return []
+    lines = source.splitlines()
+
+    # Scan backwards from entry function to find the enclosing class
+    class_line = None
+    for i in range(entry_lineno - 1, -1, -1):
+        if _re.match(r"^\s*class\s+\w+", lines[i]):
+            class_line = i
+            break
+    if class_line is None:
+        return []
+
+    class_indent = len(lines[class_line]) - len(lines[class_line].lstrip())
+    body_indent = class_indent + 4
+    attrs: set[str] = set()
+
+    for i in range(class_line + 1, len(lines)):
+        line = lines[i]
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+
+        cur_indent = len(line) - len(line.lstrip())
+
+        # Left the class
+        if cur_indent <= class_indent:
+            break
+
+        # Class-level attribute: xxx or xxx: Type or xxx = value or xxx: Type = value
+        # Lines at exactly body_indent that aren't def/@/decorator
+        stripped = line.strip()
+        if cur_indent == body_indent:
+            if stripped.startswith("def ") or stripped.startswith("@") or stripped.startswith("class "):
+                continue
+            # Class-level: xxx: Type or xxx = value or xxx: Type = value
+            m = _re.match(r"\s*(\w+)\s*:", line)
+            if m:
+                attrs.add(m.group(1))
+            else:
+                m = _re.match(r"\s*(\w+)\s*=", line)
+                if m:
+                    attrs.add(m.group(1))
+            continue
+
+        # Inside a method body: only collect from __init__
+        if cur_indent > body_indent:
+            # Find which method we're in by checking if we passed def __init__
+            # Simple approach: scan backwards from this line for the nearest def
+            for j in range(i, class_line - 1, -1):
+                prev_stripped = lines[j].strip()
+                if prev_stripped.startswith("def __init__(") or prev_stripped.startswith("def __init__ ("):
+                    # We're inside __init__ — collect self.xxx =
+                    for m in _re.finditer(r"self\.(\w+)\s*=", line):
+                        attrs.add(m.group(1))
+                    break
+                elif prev_stripped.startswith("def ") or prev_stripped.startswith("class "):
+                    # Some other method — don't collect
+                    break
+
+    return sorted(attrs)
+
+
+def _annotate_taint_flow(nodes: list[dict[str, Any]]) -> str:
+    """Build a data flow annotation block for the call chain.
+
+    Traces which entry function parameters (untrusted) propagate through
+    intermediate calls to the sink.  Returns a comment block suitable for
+    prepending to ``_build_code_block`` output.
+    """
+    if not nodes:
+        return ""
+
+    lines: list[str] = [
+        "# ── [DATA FLOW] ──",
+    ]
+
+    # -- Determine entry parameters (always attacker-controllable) --
+    entry_func_name = nodes[0].get("function_name", "")
+    entry_snippet = nodes[0].get("snippet", "")
+    entry_params = _extract_params(entry_snippet)
+    # If this is a library or body-only entry, params that aren't obviously
+    # safe are considered untrusted
+    if not entry_params:
+        entry_params = _extract_params(entry_snippet)
+
+    if entry_params:
+        lines.append(f"# ENTRY '{entry_func_name}' — UNTRUSTED params: {', '.join(entry_params)}")
+        lines.append("#   (all entry parameters are treated as attacker-controlled)")
+    else:
+        has_self = bool(_re.search(r"\bdef\s+\w+\s*\(\s*self\b", entry_snippet))
+        if has_self:
+            entry_lineno = nodes[0].get("line_number", 0) or 0
+            fp = nodes[0].get("file_path", "")
+            attrs = _extract_init_self_attrs(fp, entry_lineno) if fp else []
+            if attrs:
+                lines.append(f"# ENTRY '{entry_func_name}' — Class method (self)")
+                lines.append(f"#   Potential untrusted class attributes: {', '.join(attrs)}")
+            else:
+                lines.append(f"# ENTRY '{entry_func_name}' — Class method (self)")
+                lines.append("#   (no explicit class attributes detected)")
+        else:
+            lines.append(f"# ENTRY '{entry_func_name}' — no identifiable parameters")
+        lines.append("# ⚠ Static engine could not trace variable propagation (e.g. self.properties).")
+        lines.append("# ⚠ Semantically analyze the source code to determine if class attributes or")
+        lines.append("#   parameters can be controlled by an untrusted user.")
+
+    # -- Trace tainted symbols through the chain --
+    tainted_symbols = set(entry_params)
+    # Also track common return-value patterns like ``result = fn(...)``
+    RETURN_VAR_RE = _re.compile(r"(\w+)\s*=\s*\w+\(")
+
+    for i in range(1, len(nodes)):
+        prev_snippet = nodes[i - 1].get("snippet", "")
+        prev_fn = nodes[i - 1].get("function_name", "")
+        curr_fn = nodes[i].get("function_name", "")
+        curr_snippet = nodes[i].get("snippet", "")
+        curr_params = _extract_params(curr_snippet)
+        is_sink = (i == len(nodes) - 1)
+        tag = "SINK" if is_sink else f"CALL {i}"
+
+        # Find how the previous function calls the current one
+        call_args = _extract_call_args(prev_snippet, curr_fn.split(".")[-1])
+
+        # Map call arguments to this function's parameter names
+        tainted_params = []
+        for arg_val, param_name in zip(call_args, curr_params):
+            # Check if the argument value contains any tainted symbol
+            for tainted in tainted_symbols:
+                if tainted in arg_val:
+                    tainted_params.append(f"{param_name}={arg_val}")
+                    tainted_symbols.add(param_name)
+                    break
+
+        if tainted_params:
+            lines.append(f"# {tag} '{curr_fn}' — tainted: {', '.join(tainted_params)}")
+        elif curr_params:
+            # Even without explicit match, mark params as potentially tainted
+            # if the function receives any argument at all (conservative)
+            lines.append(f"# {tag} '{curr_fn}' — {len(curr_params)} param(s), taint could not be statically resolved")
+            lines.append("# ⚠ Semantically analyze the source code above to determine if these params carry untrusted data.")
+
+        # Collect return variable names that could carry taint forward
+        for rm in RETURN_VAR_RE.finditer(prev_snippet):
+            # If the RHS call references tainted args, the LHS is tainted
+            rhs_start = rm.end()
+            call_text = prev_snippet[rm.start():rm.end() + 80]
+            if any(t in call_text for t in tainted_symbols):
+                tainted_symbols.add(rm.group(1))
+
+    lines.append("# ── ── ── ── ──")
+    return "\n".join(lines)
+
+
+def _build_intent_evidence(all_intent_results: list[IntentResult]) -> str:
+    """Build a structured evidence section from Intent Agent results.
+
+    Renders each function's intent, inputs, outputs, key_logic, and
+    suspicious observations as compact annotations.  This is appended to
+    the ``code_block`` before it reaches the Adversary and PoC Agent,
+    giving them high-density evidence that the Logic Agent's free-text
+    ``analysis`` field alone does not provide.
+    """
+    lines: list[str] = [
+        "# ── [INTENT EVIDENCE] ──",
+    ]
+    for r in all_intent_results:
+        parts = [f"# {r.func_name} ({r.file_path}):"]
+        if r.intent:
+            parts.append(f"#   intent: {r.intent[:120]}")
+        if r.inputs:
+            parts.append(f"#   inputs: {r.inputs[:120]}")
+        if r.outputs:
+            parts.append(f"#   outputs: {r.outputs[:120]}")
+        if r.key_logic:
+            parts.append(f"#   key_logic: {r.key_logic[:120]}")
+        if r.suspicious:
+            items = "; ".join(s[:80] for s in r.suspicious[:3])
+            parts.append(f"#   suspicious: {items}")
+        lines.extend(parts)
+    lines.append("# ── ── ── ── ──")
+    return "\n".join(lines)
+
+
 def _find_companion_methods(file_path: str, func_name: str, line_number: int) -> str:
     """Find companion consumer methods in the same class as a path-builder.
 
@@ -1191,9 +1617,20 @@ def _find_companion_methods(file_path: str, func_name: str, line_number: int) ->
     """
     import ast
     try:
-        with open(file_path, encoding="utf-8", errors="ignore") as f:
-            source = f.read()
-        tree = ast.parse(source)
+        cached = _AST_CACHE.get(file_path)
+        if cached is not None:
+            tree = cached
+        else:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
+            tree = ast.parse(source)
+            _AST_CACHE[file_path] = tree
+
+        # Always load source text — needed by ast.get_source_segment even when
+        # the AST is retrieved from cache (source is not stored in _AST_CACHE).
+        if cached is not None:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
 
         # Find class containing func_name
         target_class = None
@@ -1246,9 +1683,18 @@ def _load_function_source(file_path: str, func_name: str) -> str:
     """
     import ast
     try:
-        with open(file_path, encoding="utf-8", errors="ignore") as f:
-            source = f.read()
-        tree = ast.parse(source)
+        cached = _AST_CACHE.get(file_path)
+        if cached is not None:
+            tree = cached
+        else:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
+            tree = ast.parse(source)
+            _AST_CACHE[file_path] = tree
+        # Load source for ast.get_source_segment (not cached)
+        if cached is not None:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name == func_name:

@@ -11,6 +11,8 @@ import logging
 import os
 import re
 
+from agies.engine.v3.agents.structured_evidence import extract_structured_evidence
+
 logger = logging.getLogger(__name__)
 
 POC_PROMPT = """You are writing a Proof-of-Concept exploit script for **{project_desc}**. The finding below has survived adversarial review — write a working, self-contained Python script.
@@ -22,11 +24,15 @@ Finding
 - Analysis: {analysis}
 - Contradiction: {contradiction}
 - Finding Strength: {weakness}
+{structured_evidence}
 
-Source Code
+Source Code (with data flow annotations)
 ```
 {code_block}
 ```
+The ``[DATA FLOW]`` section in the source shows which parameters at the entry function are attacker-controlled (UNTRUSTED) and traces how they propagate through the call chain to the sink. The ``[INTENT EVIDENCE]`` section shows each function's purpose, data flow (inputs/outputs), and suspicious observations — this is per-function evidence from the Intent Agent. The ``[STRUCTURED EVIDENCE]`` above (when present) is the Logic Agent's structured analysis.
+
+**IMPORTANT — Confidence guidance**: All annotations are HELPFUL HINTS, not ground truth. Static data flow analysis is approximate (~60-70% accuracy for Python). Use them as clues to understand the code, but base your final PoC on your OWN reading of the source code. If you determine the sink argument IS reachable from untrusted input (even if annotations miss it), generate the PoC. If it is NOT reachable, do NOT generate a PoC.
 
 Requirements for the PoC:
 1. **Self-contained** — include all imports, no external dependencies beyond requests/stdlib
@@ -117,6 +123,46 @@ class PoCAgent:
         label = label.strip("_")
         return label
 
+    @staticmethod
+    def _format_structured_evidence(analysis: str) -> str:
+        """Extract and format ``[STRUCTURED_EVIDENCE]`` for prompt injection.
+
+        Same format as AdversaryAgent._format_structured_evidence — keeps
+        the structured data presentation consistent across all downstream agents.
+        """
+        ev = extract_structured_evidence(analysis)
+        if not ev:
+            return ""
+
+        lines: list[str] = []
+
+        tp = ev.get("taint_path", [])
+        if tp and isinstance(tp, list):
+            lines.append("[STRUCTURED EVIDENCE — Data Flow Trace]")
+            for step in tp:
+                lines.append(
+                    f"  [{step.get('action', '?')}] {step.get('function', '?')} "
+                    f"→ param: {step.get('param', '?')}"
+                )
+
+        rs = ev.get("reasoning_steps", [])
+        if rs and isinstance(rs, list):
+            lines.append("[STRUCTURED EVIDENCE — Logic Agent Reasoning]")
+            for i, s in enumerate(rs, 1):
+                lines.append(f"  {i}. {s}")
+
+        verdict = ev.get("exploitability_verdict", "")
+        if verdict:
+            lines.append(f"[STRUCTURED EVIDENCE — Verdict] {verdict}")
+
+        gd = ev.get("guards_detected", [])
+        if gd and isinstance(gd, list):
+            lines.append("[STRUCTURED EVIDENCE — Guards Detected]")
+            for g in gd:
+                lines.append(f"  - {g}")
+
+        return "\n".join(lines)
+
     def prepare_prompt(
         self,
         vuln_type: str,
@@ -126,6 +172,7 @@ class PoCAgent:
         weakness: str = "",
     ) -> str:
         """Build the PoC generation prompt."""
+        structured_section = self._format_structured_evidence(analysis)
         return POC_PROMPT.format(
             vuln_type=vuln_type.upper(),
             project_desc=self._project_desc,
@@ -133,6 +180,9 @@ class PoCAgent:
             contradiction=contradiction or "(no contradiction)",
             weakness=weakness or "(strong finding)",
             code_block=code_block or "(code not loaded)",
+            structured_evidence=(
+                "\n" + structured_section if structured_section else ""
+            ),
         )
 
     def write_script(

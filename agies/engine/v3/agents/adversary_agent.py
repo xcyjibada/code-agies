@@ -17,6 +17,8 @@ import json
 import logging
 import re
 
+from agies.engine.v3.agents.structured_evidence import extract_structured_evidence
+
 logger = logging.getLogger(__name__)
 
 # Per-type guidance for the adversary — principle-level only, NO specific CVE
@@ -73,17 +75,27 @@ Finding
 - Vulnerability Type: {vuln_type}
 - Analysis: {analysis}
 - Contradiction: {contradiction}
+{structured_evidence}
 
-Source Code
+Source Code (with data flow annotations)
 ```
 {code_block}
 ```
 
+The ``[DATA FLOW]`` section in the source marks which entry parameters are UNTRUSTED (attacker-controlled) and traces propagation through the call chain. The ``[INTENT EVIDENCE]`` section shows each function's purpose, data flow (inputs/outputs), and suspicious observations from per-function analysis.
+
+**Confidence guidance (read carefully)**:
+The annotations above are HELPFUL HINTS, not ground truth. Static data flow analysis is ~60-70% accurate for Python — *args/**kwargs, dynamic dispatch, and callbacks all cause missed or incorrect traces. The ``[STRUCTURED EVIDENCE]`` section above (when present) is the Logic Agent's best-effort analysis, which may also be incomplete. Use all of this as a starting point, but ALWAYS verify against the actual source code. If you find evidence that the data flow differs from what the annotations claim, trust your own analysis and explain the discrepancy.
+
 Evaluate honestly. Consider:
 1. **Input validation** — Is there sanitization that blocks the attack, or is it absent?
 2. **Access control** — Can an attacker reach this code path, or is it gated behind auth?
-3. **Data flow** — Does untrusted data actually reach the sink?
+3. **Data flow** — Does untrusted data actually reach the sink? (Use the annotations as a starting point, but verify against the source code.)
 4. **Real-world context** — Even if the code IS vulnerable, is exploitation practical?
+
+**⚠ RED-FLAG RULES — Read these before evaluating (op.md Item ③):**
+- If the source code header contains ``[REACHABILITY: BODY_ONLY]`` or ``[REACHABILITY: EXTERNAL_API]``: the path was detected by *body presence* of a dangerous API, not by a project-internal call chain. You must be **extremely skeptical**. Unless you can derive a realistic execution scenario (e.g. the function is a library public API called from external code with attacker-controlled input), **rebut the finding**.
+- Check the ``taint_path`` in ``[STRUCTURED EVIDENCE]`` for **logical jumps**: are there steps where data passes from one variable to another without explanation? If the trace is incomplete or relies on unstated assumptions, **rebut**.
 
 IMPORTANT: Do NOT dismiss a finding simply because "this is library utility code"
 or "the sink is a path constructor." These patterns ARE used in real CVEs.
@@ -136,6 +148,47 @@ def parse_adversary_response(response: str) -> dict:
 class AdversaryAgent:
     """Try to rebut a Logic Agent finding before PoC generation."""
 
+    @staticmethod
+    def _format_structured_evidence(analysis: str) -> str:
+        """Extract and format ``[STRUCTURED_EVIDENCE]`` for prompt injection.
+
+        Returns a formatted section with taint_path, reasoning_steps,
+        exploitability_verdict, and guards_detected.  Returns an empty string
+        when no structured evidence is available in the analysis text.
+        """
+        ev = extract_structured_evidence(analysis)
+        if not ev:
+            return ""
+
+        lines: list[str] = []
+
+        tp = ev.get("taint_path", [])
+        if tp and isinstance(tp, list):
+            lines.append("\n[STRUCTURED EVIDENCE — Data Flow Trace]")
+            for step in tp:
+                lines.append(
+                    f"  [{step.get('action', '?')}] {step.get('function', '?')} "
+                    f"→ param: {step.get('param', '?')}"
+                )
+
+        rs = ev.get("reasoning_steps", [])
+        if rs and isinstance(rs, list):
+            lines.append("\n[STRUCTURED EVIDENCE — Logic Agent Reasoning]")
+            for i, s in enumerate(rs, 1):
+                lines.append(f"  {i}. {s}")
+
+        verdict = ev.get("exploitability_verdict", "")
+        if verdict:
+            lines.append(f"\n[STRUCTURED EVIDENCE — Verdict] {verdict}")
+
+        gd = ev.get("guards_detected", [])
+        if gd and isinstance(gd, list):
+            lines.append("\n[STRUCTURED EVIDENCE — Guards Detected]")
+            for g in gd:
+                lines.append(f"  - {g}")
+
+        return "\n".join(lines)
+
     def prepare_prompt(
         self,
         vuln_type: str,
@@ -146,6 +199,7 @@ class AdversaryAgent:
     ) -> str:
         """Build the adversarial review prompt with vulnerability guidance."""
         vuln_guidance = _VULN_GUIDANCE.get(vuln_type.upper(), "")
+        structured_section = self._format_structured_evidence(analysis)
         return ADVERSARY_PROMPT.format(
             vuln_type=vuln_type.upper(),
             vuln_guidance=vuln_guidance,
@@ -153,6 +207,7 @@ class AdversaryAgent:
             contradiction=contradiction or "(no contradiction)",
             code_block=code_block or "(code not loaded)",
             rebuttal_history=rebuttal_history,
+            structured_evidence=structured_section,
         )
 
     def run(

@@ -43,9 +43,24 @@ class TestClassifySink:
             assert classify_sink(name) == VulnType.SQLI, f"{name} should be SQLI"
 
     def test_xss_sinks(self):
-        """render_template_string/Markup should be classified as XSS."""
-        assert classify_sink("render_template_string") == VulnType.XSS
+        """Markup should be classified as XSS."""
         assert classify_sink("Markup") == VulnType.XSS
+
+    def test_xxe_sinks(self):
+        """XML parsing functions should be classified as XXE."""
+        for name in ["xml.etree.ElementTree.parse", "xml.etree.ElementTree.fromstring",
+                      "lxml.etree.parse", "lxml.etree.fromstring", "lxml.etree.XMLParser",
+                      "xml.dom.minidom.parse", "xml.sax.parse",
+                      "lxml.objectify.parse"]:
+            assert classify_sink(name) == VulnType.XXE, f"{name} should be XXE"
+
+    def test_ssti_sinks(self):
+        """Template-related functions should be classified as SSTI."""
+        assert classify_sink("render_template_string") == VulnType.SSTI
+        assert classify_sink("jinja2.Template") == VulnType.SSTI
+        assert classify_sink("jinja2.Environment") == VulnType.SSTI
+        assert classify_sink("Template.render") == VulnType.SSTI
+        assert classify_sink("Environment.from_string") == VulnType.SSTI
 
     def test_afo_sinks(self):
         """write_text/shutil.copy should be classified as AFO."""

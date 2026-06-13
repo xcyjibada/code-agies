@@ -28,6 +28,7 @@ from agies.engine.v3.codeql.models import (
     CodeQlPath,
     PathNode,
     QueryResult,
+    Reachability,
     VulnType,
     VULN_LABELS,
 )
@@ -73,6 +74,7 @@ class TreeSitterPathFinder:
             ".mypy_cache", ".pytest_cache",
         }
         self._index: FunctionIndex | None = None
+        self._cpg_builder: Any = None  # CpgBuilder (lazy, optional)
 
     # ------------------------------------------------------------------
     # Public API
@@ -95,6 +97,118 @@ class TreeSitterPathFinder:
             )
         return self._index
 
+    def build_cpg(self) -> None:
+        """Build the CPG for data flow evidence (lazy, optional).
+
+        Called automatically by ``run_all()``.  Can be called separately
+        to control timing or skip CPG build entirely.
+        """
+        if self._cpg_builder is not None:
+            return
+        from agies.engine.v3.graph.builder import CpgBuilder  # lazy import
+        self._cpg_builder = CpgBuilder(
+            self._project_path,
+            excluded_dirs=self._excluded_dirs,
+        )
+        self._cpg_builder.build()
+
+    def _enrich_with_cpg(
+        self,
+        path: CodeQlPath,
+        sink_fn: SourceFunction,
+    ) -> None:
+        """Add CPG data flow evidence to a CodeQlPath (in-place).
+
+        Traces WRITES_TO edges within the sink function's line range
+        from the sink call argument back to function parameters or
+        source values.  Stores a human-readable chain on
+        ``path.cpg_data_flow_evidence``.
+        """
+        if self._cpg_builder is None or not self._cpg_builder.built:
+            return
+
+        G = self._cpg_builder.graph
+        from agies.engine.v3.graph.models import (
+            WRITES_TO, ATTR_TEXT, ATTR_LINE,
+        )
+
+        # Build {var_name → [(val_text, line_number)]} within sink fn scope
+        fn_start = sink_fn.line_start
+        fn_end = sink_fn.line_end
+        assignments: dict[str, list[tuple[str, int]]] = defaultdict(list)
+
+        for u, v, d in G.edges(data=True):
+            if d.get("relationship") != WRITES_TO:
+                continue
+            u_line = G.nodes[u].get(ATTR_LINE, 0)
+            if u_line < fn_start or u_line > fn_end:
+                continue
+            var_text = G.nodes[v].get(ATTR_TEXT, "")
+            val_text = G.nodes[u].get(ATTR_TEXT, "")
+            if var_text and val_text:
+                assignments[var_text].append((val_text, u_line))
+
+        if not assignments:
+            return
+
+        # Extract sink call arguments from the function body
+        sink_name = path.body_sink_call or sink_fn.name
+        body = sink_fn.body or ""
+        arg_names: list[str] = []
+        m = re.search(rf'\b{re.escape(sink_name)}\s*\(([^)]*)\)', body)
+        if m:
+            arg_names = [a.strip() for a in m.group(1).split(",") if a.strip()]
+        if not arg_names:
+            return
+
+        # Skips names that should not be traced (Python discard convention)
+        def _is_traceable(name: str) -> bool:
+            return bool(name) and name != "_" and not name.startswith("__")
+
+        # Trace the first argument backwards through assignments
+        arg_name = arg_names[0]
+        if not _is_traceable(arg_name):
+            return
+        known_vars = {v for v in assignments if _is_traceable(v)}
+        current = arg_name
+        steps: list[str] = []
+        visited: set[str] = set()
+
+        for _ in range(12):  # max 12 hops
+            if current in visited or not _is_traceable(current):
+                break
+            visited.add(current)
+
+            if current not in assignments:
+                break
+            val_text, val_line = assignments[current][-1]
+
+            # Skip self-assignments
+            if val_text == current:
+                break
+
+            # Truncate long expressions
+            display_val = val_text[:50] + "…" if len(val_text) > 50 else val_text
+            steps.append(f"{display_val} → {current} (L{val_line})")
+
+            # Determine next variable to trace
+            if val_text in known_vars:
+                current = val_text
+            else:
+                tokens = re.split(r"[\s+\-*/%()\[\]{},.:;=<>!&|^~'\"]+", val_text)
+                next_var: str | None = None
+                for t in tokens:
+                    if t in known_vars and t != current and t != arg_name:
+                        next_var = t
+                        break
+                if next_var is not None:
+                    current = next_var
+                else:
+                    break
+
+        if steps:
+            path.cpg_data_flow_evidence = "CPG: " + " → ".join(steps)
+
     def run_all(self) -> list[QueryResult]:
         """Run all sink queries against the project.
 
@@ -107,6 +221,9 @@ class TreeSitterPathFinder:
         if not index.funcs:
             logger.warning("TreeSitterPathFinder: no functions found in %s", self._project_path)
             return []
+
+        # Build CPG for data flow evidence enrichment
+        self.build_cpg()
 
         # Discover sinks grouped by VulnType
         sinks_by_type: dict[VulnType, list[SourceFunction]] = defaultdict(list)
@@ -137,6 +254,7 @@ class TreeSitterPathFinder:
             for sink_fn in sinks[:20]:  # cap per type to avoid explosion
                 path = self._build_path(index, sink_fn, vtype)
                 if path is not None:
+                    self._enrich_with_cpg(path, sink_fn)
                     paths.append(path)
 
             results.append(QueryResult(
@@ -155,26 +273,88 @@ class TreeSitterPathFinder:
         )
 
         # Second pass: sensitive body detection
+        # Cap per-vuln-type to 20 (same as named-sink cap on line 138) to
+        # prevent OOM on large codebases where broad patterns like \bopen\(,
+        # \bexecute\b, or re\.match match thousands of functions.
+        # ── Tree-sitter based import alias resolution (op.md) ──
+        # Resolve "from lxml import etree" → etree.parse → lxml.etree.parse
+        # so sink patterns (fully qualified) match aliased calls.
+        # Uses a per-file cache: parse each unique file once with tree-sitter.
+        _ts_parsed: dict[str, tuple[Any, bytes]] = {}
+        _ts_import_maps: dict[str, dict[str, str]] = {}
+
+        def _body_for_detection(fn: SourceFunction) -> str:
+            """Return function body with import aliases expanded."""
+            body = fn.body or ""
+            if not body or not fn.file_path:
+                return body
+            if fn.file_path not in _ts_import_maps:
+                try:
+                    from agies.engine.v2.sourcer.extractor import _get_parser
+                    _, parser = _get_parser("python")
+                    with open(fn.file_path, "rb") as f:
+                        source_bytes = f.read()
+                    tree = parser.parse(source_bytes)
+                    root_node = tree.root_node
+                    _ts_parsed[fn.file_path] = (root_node, source_bytes)
+                    _ts_import_maps[fn.file_path] = _parse_local_imports(
+                        root_node, source_bytes,
+                    )
+                except Exception:
+                    _ts_import_maps[fn.file_path] = {}
+            aliases = _ts_import_maps.get(fn.file_path, {})
+            if not aliases:
+                return body
+
+            # Expand aliases in body: replace alias. → qualified. using regex
+            expanded = body
+            for alias, qualified in sorted(aliases.items(), key=lambda x: -len(x[0])):
+                expanded = re.sub(
+                    rf'\b{re.escape(alias)}\.',
+                    f'{qualified}.',
+                    expanded,
+                )
+            return expanded
+
         sensitive_count = 0
+        _body_per_type: dict[VulnType, int] = defaultdict(int)
+        _max_body_per_type = 20
         for fn in index.funcs:
             if classify_sink(fn.name) is not None:
                 continue
             if not fn.body:
                 continue
-            vtype = classify_sensitive_body(fn.body)
+            vtype = classify_sensitive_body(_body_for_detection(fn))
             if vtype is None:
                 continue
-            path = self._build_path(index, fn, vtype)
+            if _body_per_type[vtype] >= _max_body_per_type:
+                continue
+            _body_per_type[vtype] += 1
+            path = self._build_path(index, fn, vtype, body_detected=True)
             if path is None:
                 continue
-            # Tag as body-detected and record the match for sorter scoring
-            path.body_detected = True
-            for pattern, vt in SENSITIVE_CALL_PATTERNS:
-                if vt == vtype:
-                    m = pattern.search(fn.body or "")
-                    if m:
-                        path.body_sink_call = m.group().strip("(")
-                        break
+            self._enrich_with_cpg(path, fn)
+
+            # Tag as body-detected and record the match for sorter scoring.
+            # _build_body_only_path already sets these fields for orphans,
+            # but for paths with callers the post-hoc tagging is still needed.
+            if not path.body_detected:
+                path.body_detected = True
+            if not path.body_sink_call:
+                # Use expanded body (with import alias resolution) so fully-qualified
+                # sink patterns like lxml\.etree\.parse match aliased calls like
+                # etree.parse after from lxml import etree.
+                expanded = _body_for_detection(fn)
+                for pattern, vt in SENSITIVE_CALL_PATTERNS:
+                    if vt == vtype:
+                        m = pattern.search(expanded)
+                        if m:
+                            raw = m.group().strip("(")
+                            # Extract just the function call name for SINK_WEIGHTS lookup.
+                            # e.g. "BeautifulSoup(fp, \"xml\")" → "BeautifulSoup"
+                            call_name = raw.split("(")[0].split()[0].strip(".")
+                            path.body_sink_call = call_name or raw
+                            break
             if not path.body_sink_call:
                 path.body_sink_call = vtype.value
             sensitive_count += 1
@@ -208,6 +388,10 @@ class TreeSitterPathFinder:
                 len(bridges),
             )
             for path in bridges:
+                # Enrich bridge paths with CPG data flow evidence
+                sink_fns = index.lookup(path.sink)
+                if sink_fns:
+                    self._enrich_with_cpg(path, sink_fns[0])
                 vt = path.vuln_type
                 found = False
                 for r in results:
@@ -265,17 +449,29 @@ class TreeSitterPathFinder:
         index: FunctionIndex,
         sink_fn: SourceFunction,
         vuln_type: VulnType,
+        body_detected: bool = False,
     ) -> CodeQlPath | None:
         """Build a CodeQlPath for one sink function.
 
         Traces backwards through ``index.call_graph`` to find callers.
         Creates a path from the deepest reachable caller to the sink.
 
-        Returns ``None`` if no path can be built (isolated function).
+        When ``body_detected=True`` and no callers are found, creates a
+        single-node path with ``reachability=BODY_ONLY`` (or
+        ``EXTERNAL_API`` if the function is a confirmed public API) instead
+        of discarding the finding.
+
+        Returns ``None`` if no path can be built (isolated function and
+        not body-detected).  Body-detected orphans always return a path.
         """
         # Walk backwards to find the call chain
         chain = self._backtrack(index, sink_fn.name)
         if not chain:
+            # Body orphan: function has no callers inside the project.
+            # For body-detected functions, create a single-node path instead
+            # of discarding — the dangerous call is visible in the body.
+            if body_detected:
+                return self._build_body_only_path(index, sink_fn, vuln_type)
             return None
 
         # The chain is ordered [deepest_caller, ..., intermediate, sink]
@@ -362,6 +558,156 @@ class TreeSitterPathFinder:
         return best_chain
 
     # ------------------------------------------------------------------
+    # Body orphan handling & public API detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_public_api(fn: SourceFunction, index: FunctionIndex) -> bool:
+        """Check whether a function is a public API of the library.
+
+        A function is considered a public API when:
+        1. Its name doesn't start with ``_`` (not conventionally private)
+        2. It's defined at module top level (not nested in another function)
+           — approximated by checking if ``fn.line_start <= 10`` (near file top)
+           or if there's no indentation in its signature line.
+        3. Its parent module doesn't define ``__all__`` (meaning ``from module
+           import *`` would expose this function), OR the function name appears
+           in ``__all__``.
+
+        This is intentionally conservative — false negatives (missing some
+        public APIs) are safer than false positives (marking internal helpers
+        as public).
+        """
+        name = fn.name
+        # Private by convention
+        if name.startswith("_"):
+            return False
+
+        # Not a public API if it's inside a class (class method needs
+        # separate detection — handled by the caller if needed)
+        file_path = fn.file_path
+        if not file_path or not os.path.isfile(file_path):
+            return False
+
+        try:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
+                source = f.read()
+        except OSError:
+            return False
+
+        # Check for __all__ in the file
+        all_match = re.search(r"__all__\s*=\s*\[([^\]]*)\]", source, re.DOTALL)
+        if all_match:
+            # __all__ exists — function must be listed
+            all_content = all_match.group(1)
+            return f"'{name}'" in all_content or f'"{name}"' in all_content
+
+        # No __all__ — function at module level is a public API if
+        # it's defined outside any class and not conventionally private
+        # Check: the function definition line starts at column 0
+        for line in source.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(f"def {name}(") or stripped.startswith(f"async def {name}("):
+                # Column 0 = module-level definition
+                if line == stripped:
+                    return True
+                break
+            if stripped.startswith("class "):
+                # Entered a class — module-level public functions
+                # are defined before any class definition
+                pass
+
+        return False
+
+    def _build_body_only_path(
+        self,
+        index: FunctionIndex,
+        sink_fn: SourceFunction,
+        vuln_type: VulnType,
+    ) -> CodeQlPath:
+        """Create a single-node path for a body-detected orphan function.
+
+        Determines whether the function is a public API and sets
+        reachability accordingly (``EXTERNAL_API`` or ``BODY_ONLY``).
+        """
+        # Start with a 0.2 base confidence — no call chain
+        base_confidence = 0.2
+
+        # Detect public API
+        is_api = self._detect_public_api(sink_fn, index)
+        reachability = Reachability.EXTERNAL_API if is_api else Reachability.BODY_ONLY
+
+        # Build annotation for the virtual entry point
+        proof = ""
+        annotation = ""
+        if is_api:
+            source = "[EXTERNAL_CALLER]"
+            annotation = "Public API — callable from external code"
+            proof = (
+                "Detected as library public API (module-level function "
+                "or listed in __all__). The function is exposed to external "
+                "callers who control its parameters."
+            )
+            base_confidence = 0.35
+        else:
+            source = "[BODY_DETECTED]"
+            annotation = (
+                "Found via body regex — contains dangerous API call "
+                "(e.g. pickle.load, eval, open). No call chain found "
+                "within this project."
+            )
+
+        # Build nodes: virtual entry + the sink function itself
+        nodes: list[PathNode] = []
+        if is_api:
+            nodes.append(PathNode(
+                function_name=annotation,
+                file_path=sink_fn.file_path,
+                line_number=sink_fn.line_start,
+                snippet="",
+            ))
+        nodes.append(PathNode(
+            function_name=sink_fn.name,
+            file_path=sink_fn.file_path,
+            line_number=sink_fn.line_start,
+            snippet=sink_fn.body or "",
+        ))
+
+        # Record the body-level sink call for sorter scoring
+        body_call = ""
+        for pattern, vt in SENSITIVE_CALL_PATTERNS:
+            if vt == vuln_type:
+                m = pattern.search(sink_fn.body or "")
+                if m:
+                    body_call = m.group().strip("(")
+                    # Extract just callable name for SINK_WEIGHTS lookup
+                    body_call = body_call.split("(")[0].split()[0].strip(".")
+                    break
+
+        path = CodeQlPath(
+            vuln_type=vuln_type,
+            source=source,
+            source_file=sink_fn.file_path,
+            source_line=sink_fn.line_start,
+            sink=sink_fn.name,
+            sink_file=sink_fn.file_path,
+            sink_line=sink_fn.line_start,
+            message=(
+                f"{vuln_type.value.upper()}: {sink_fn.name} at "
+                f"{sink_fn.file_path}:{sink_fn.line_start} "
+                f"[{annotation}]"
+            ),
+            is_full_path=False,
+            confidence=base_confidence,
+            nodes=nodes,
+            body_detected=True,
+            body_sink_call=body_call,
+            reachability=reachability,
+            source_controllability_proof=proof,
+        )
+        return path
+
+    # ------------------------------------------------------------------
     # Attribute taint bridge detection (Phase A, third pass)
     # ------------------------------------------------------------------
 
@@ -389,6 +735,7 @@ class TreeSitterPathFinder:
 
     def _find_attr_taint_bridges(
         self, index: FunctionIndex,
+        max_per_type: int = 20,
     ) -> list[CodeQlPath]:
         """Third pass: detect attribute taint bridges.
 
@@ -396,6 +743,10 @@ class TreeSitterPathFinder:
         forward them through ``self.__class__()``) and matches them to
         functions in the same file that read ``self.ATTR`` and pass it
         to a known sink.
+
+        *max_per_type* caps the number of bridge paths per vulnerability
+        type (default 20), consistent with the caps used for named-sink
+        and body-detection passes to prevent OOM on large codebases.
 
         Returns ``list[CodeQlPath]`` for the discovered bridge paths.
         """
@@ -484,6 +835,7 @@ class TreeSitterPathFinder:
                                 break
 
             # --- Step 3: link forwarders/stores to reads ---
+            _bridge_count: dict[VulnType, int] = defaultdict(int)
             for attr in set(forwarders) | set(stores) & set(reads):
                 # Prefer forwarders as backtrack source (cleaner call chains)
                 source_fns = forwarders.get(attr, stores.get(attr, []))
@@ -557,7 +909,20 @@ class TreeSitterPathFinder:
                             confidence=0.4,
                             nodes=nodes,
                         )
-                        bridges.append(path)
+                        _bridge_count[vtype] += 1
+                        if _bridge_count[vtype] <= max_per_type:
+                            bridges.append(path)
+
+        # Log types that hit the per-type cap (indicates large project where
+        # bridge pass could cause OOM without the cap).
+        capped = [(vt.name, n) for vt, n in _bridge_count.items() if n > max_per_type]
+        if capped:
+            logger.info(
+                "Attr bridge caps hit — %s (total %d per type, kept %d)",
+                ", ".join(f"{vt}={n}" for vt, n in capped),
+                sum(n for _, n in capped),
+                max_per_type,
+            )
 
         return bridges
 
@@ -587,6 +952,115 @@ class TreeSitterPathFinder:
     def index(self) -> FunctionIndex | None:
         """The built function index (None before build_index() is called)."""
         return self._index
+
+
+# ---------------------------------------------------------------------------
+# Tree-sitter Local Import Resolver (op.md)
+#
+# Resolves aliased calls to fully qualified names so sink patterns like
+# ``lxml\.etree\.parse`` match real code like ``etree.parse(...)`` after
+# ``from lxml import etree``.
+#
+# Only resolves when the file actually imports the alias — zero false
+# positives for unaliased calls that happen to share a prefix name.
+# ---------------------------------------------------------------------------
+
+
+def _parse_local_imports(
+    root_node: Any,
+    source_bytes: bytes,
+) -> dict[str, str]:
+    """Scan a file's tree-sitter AST for import statements and build an
+    ``{alias: fully_qualified_name}`` mapping.
+
+    Cases handled::
+
+        from lxml import etree                     -> "etree": "lxml.etree"
+        from lxml import etree as et               -> "et": "lxml.etree"
+        from lxml.etree import parse               -> "parse": "lxml.etree.parse"
+        from lxml.etree import parse as lxml_parse -> "lxml_parse": "lxml.etree.parse"
+        import lxml.etree                           -> "lxml.etree": "lxml.etree"
+        import lxml.etree as ET                    -> "ET": "lxml.etree"
+    """
+
+    def _text(n: Any) -> str:
+        return source_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
+
+    import_map: dict[str, str] = {}
+
+    def _walk(node: Any) -> None:
+        if node.type == "import_statement":
+            for child in node.children:
+                if child.type == "aliased_import":
+                    name_node = child.child_by_field_name("name")
+                    alias_node = child.child_by_field_name("alias")
+                    if name_node and alias_node:
+                        import_map[_text(alias_node)] = _text(name_node)
+                elif child.type == "dotted_name":
+                    import_map[_text(child)] = _text(child)
+
+        elif node.type == "import_from_statement":
+            # module = after "from", e.g. "lxml" or "lxml.etree"
+            module = ""
+            for child in node.children:
+                if child.type == "dotted_name":
+                    module = _text(child)
+                    break
+            if not module:
+                return
+
+            for child in node.children:
+                if child.type == "aliased_import":
+                    name_node = child.child_by_field_name("name")
+                    alias_node = child.child_by_field_name("alias")
+                    if name_node and alias_node:
+                        import_map[_text(alias_node)] = f"{module}.{_text(name_node)}"
+                elif child.type == "dotted_name" and _text(child) != module:
+                    # from X import Y (no alias)
+                    import_map[_text(child)] = f"{module}.{_text(child)}"
+
+        # Don't recurse into function/class bodies — imports at file level only
+        if node.type not in ("import_statement", "import_from_statement"):
+            for child in node.children:
+                _walk(child)
+
+    _walk(root_node)
+    return import_map
+
+
+def _get_call_path(node: Any, source_bytes: bytes) -> str:
+    """Extract the raw call path string from a tree-sitter call's function node.
+
+    Handles both simple identifiers (``parse(...)``) and attribute chains
+    (``etree.parse(...)``, ``lib.lxml.etree.parse(...)``).
+    """
+
+    def _text(n: Any) -> str:
+        return source_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
+
+    if node.type == "identifier":
+        return _text(node)
+    if node.type == "attribute":
+        obj_node = node.child_by_field_name("object")
+        attr_node = node.child_by_field_name("attribute")
+        if obj_node and attr_node:
+            return f"{_get_call_path(obj_node, source_bytes)}.{_text(attr_node)}"
+    return _text(node)
+
+
+def _resolve_fqn(call_path: str, import_map: dict[str, str]) -> str:
+    """Resolve an aliased call path to its fully qualified name.
+
+    Example: ``"etree.parse"`` with ``{"etree": "lxml.etree"}``
+    returns ``"lxml.etree.parse"``.  Unknown prefixes pass through unchanged.
+    """
+    parts = call_path.split(".")
+    if not parts:
+        return call_path
+    prefix = parts[0]
+    if prefix in import_map:
+        return ".".join([import_map[prefix]] + parts[1:])
+    return call_path
 
 
 def chain_node_line(index: FunctionIndex, func_name: str) -> int:

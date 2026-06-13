@@ -138,11 +138,16 @@ def parse_intent_response(
             fn_map[name] = source
 
     # Heuristic pass: force pass_through for functions with dangerous patterns
+    # or validation/defense logic that should not be compressed to pseudocode.
     _DANGEROUS_PATTERNS = [
         "posixpath.join", "ntpath.join", "os.path.join",
         "PurePosixPath", "PureWindowsPath", "pathlib.PurePosixPath",
         "subprocess.", "popen", "os.system",
         "__import__", "compile",
+        # ── Validation/defense patterns (may hide bypassable micro-defects) ──
+        ".replace(",
+        "re.match", "re.search", "re.compile", "re.fullmatch",
+        "re.sub", "re.findall",
     ]
 
     for r in results:

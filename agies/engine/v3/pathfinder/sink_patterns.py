@@ -65,8 +65,27 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("executemany", VulnType.SQLI),
     ("executescript", VulnType.SQLI),
     # -- XSS: output rendering --
-    ("render_template_string", VulnType.XSS),
     ("Markup", VulnType.XSS),
+    # -- XXE: XML parsing with insecure defaults --
+    ("xml.etree.ElementTree.parse", VulnType.XXE),
+    ("xml.etree.ElementTree.fromstring", VulnType.XXE),
+    ("lxml.etree.parse", VulnType.XXE),
+    ("lxml.etree.fromstring", VulnType.XXE),
+    ("lxml.etree.XMLParser", VulnType.XXE),
+    ("xml.dom.minidom.parse", VulnType.XXE),
+    ("xml.dom.minidom.parseString", VulnType.XXE),
+    ("xml.sax.parse", VulnType.XXE),
+    ("xml.sax.parseString", VulnType.XXE),
+    ("lxml.objectify.parse", VulnType.XXE),
+    ("lxml.objectify.fromstring", VulnType.XXE),
+    # -- SSTI: template injection (Jinja2 / Mako / Django) --
+    ("render_template_string", VulnType.SSTI),
+    ("jinja2.Template", VulnType.SSTI),
+    ("jinja2.Environment", VulnType.SSTI),
+    ("Template", VulnType.SSTI),  # string.Template FP possible — LLM filters it
+    ("Template.render", VulnType.SSTI),
+    ("Environment.from_string", VulnType.SSTI),
+    ("mako.template.Template", VulnType.SSTI),
     # -- AFO: file write --
     ("pathlib.Path.write_text", VulnType.AFO),
     ("pathlib.Path.write_bytes", VulnType.AFO),
@@ -189,6 +208,28 @@ KNOWN_SINK_NAMES: set[str] = {name for name, _ in EXACT_SINKS}
 # function but involve sensitive operations on untrusted data.
 
 SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
+    # -- XXE / XML Entity Expansion (CWE-611) --
+    # XXE occurs when XML parsers with insecure defaults process untrusted
+    # XML input, allowing DTD entity expansion, file exfiltration, and SSRF.
+    # High confidence: XML parsing of untrusted data with default settings
+    # is almost always exploitable.
+    (re.compile(r"xml\.etree\.ElementTree\.(?:parse|fromstring)"), VulnType.XXE),
+    (re.compile(r"lxml\.etree\.(?:parse|fromstring|XMLParser)"), VulnType.XXE),
+    (re.compile(r"xml\.dom\.minidom\.(?:parse|parseString)"), VulnType.XXE),
+    (re.compile(r"xml\.sax\.(?:parse|parseString)"), VulnType.XXE),
+    (re.compile(r"BeautifulSoup\(.*['\"]xml['\"]"), VulnType.XXE),
+    (re.compile(r"lxml\.objectify\.(?:fromstring|parse)"), VulnType.XXE),
+    # Common import aliases: from xml.etree import ElementTree; ElementTree.fromstring(...)
+    (re.compile(r"ElementTree\.(?:parse|fromstring)"), VulnType.XXE),
+    (re.compile(r"etree\.(?:parse|fromstring|XMLParser)"), VulnType.XXE),
+    # -- SSTI: Server-Side Template Injection (CWE-1336) --
+    # User input flowing into template engines without sanitization can
+    # lead to RCE via Jinja2 sandbox escapes, Mako arbitrary code execution,
+    # or Django template variable leakage.
+    (re.compile(r"render_template_string\s*\("), VulnType.SSTI),
+    (re.compile(r"\bTemplate\s*\("), VulnType.SSTI),
+    (re.compile(r"Environment\s*\(.*from_string"), VulnType.SSTI),
+    (re.compile(r"\.render\s*\(.*\{"), VulnType.SSTI),
     # Path manipulation — suspicious constructors, not necessarily LFI.
     # These build paths but don't do I/O. The actual vulnerability type
     # (DoS, path traversal, race condition) depends on how the constructed

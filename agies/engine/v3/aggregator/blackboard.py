@@ -18,6 +18,7 @@ See ``docs/v3/plan.md`` Phase E for full design.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import defaultdict
 from typing import Any
@@ -52,6 +53,7 @@ class BlackboardAggregator:
     """
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         # Intent cache: (func_name, file_path) → CachedIntent
         self._intent_cache: dict[tuple[str, str], CachedIntent] = {}
 
@@ -75,18 +77,17 @@ class BlackboardAggregator:
 
     def cache_intent(self, result: IntentResult) -> None:
         """Cache an Intent Agent result for future reuse."""
-        import os
-        basename = os.path.basename(result.file_path)
-        # Use hash-based key when available, fall back to name-based
-        if result.fn_body_hash:
-            key = (result.fn_body_hash, basename)
-        else:
-            key = (result.func_name, basename)
-        if key in self._intent_cache:
-            logger.debug("Intent cache: overwriting %s::%s", *key)
-
-        cached = CachedIntent(result=result, hit_count=0)
-        self._intent_cache[key] = cached
+        with self._lock:
+            import os
+            basename = os.path.basename(result.file_path)
+            if result.fn_body_hash:
+                key = (result.fn_body_hash, basename)
+            else:
+                key = (result.func_name, basename)
+            if key in self._intent_cache:
+                logger.debug("Intent cache: overwriting %s::%s", *key)
+            cached = CachedIntent(result=result, hit_count=0)
+            self._intent_cache[key] = cached
 
     def get_intent(
         self,
@@ -94,37 +95,27 @@ class BlackboardAggregator:
         file_path: str,
         func_body: str = "",
     ) -> IntentResult | None:
-        """Retrieve a cached Intent result, incrementing the hit counter.
-
-        Primary lookup uses ``fn_body_hash`` (from *func_body* text).
-        Falls back to ``(func_name, file_name)`` when *func_body* is empty
-        (backward-compatible for callers without source code).
-
-        Returns ``None`` if not cached.
-        """
-        import os
-        basename = os.path.basename(file_path)
-
-        # Primary: hash-based lookup
-        if func_body:
-            body_hash = compute_body_hash(func_body)
-            key = (body_hash, basename)
-            cached = self._intent_cache.get(key)
+        """Retrieve a cached Intent result, incrementing the hit counter."""
+        with self._lock:
+            import os
+            basename = os.path.basename(file_path)
+            if func_body:
+                body_hash = compute_body_hash(func_body)
+                key = (body_hash, basename)
+                cached = self._intent_cache.get(key)
+                if cached is not None:
+                    cached.hit_count += 1
+                    return cached.result
+            name_key = (func_name, basename)
+            cached = self._intent_cache.get(name_key)
             if cached is not None:
+                logger.debug(
+                    "Intent cache: name-based hit for %s / %s (hash-based key %s not found)",
+                    func_name, file_path, func_body[:40] if func_body else "(no body)",
+                )
                 cached.hit_count += 1
                 return cached.result
-
-        # Fallback: name-based lookup (for callers without body code)
-        name_key = (func_name, basename)
-        cached = self._intent_cache.get(name_key)
-        if cached is not None:
-            logger.debug(
-                "Intent cache: name-based hit for %s / %s (hash-based key %s not found)",
-                func_name, file_path, func_body[:40] if func_body else "(no body)",
-            )
-            cached.hit_count += 1
-            return cached.result
-        return None
+            return None
 
     def intent_cache_stats(self) -> dict[str, int]:
         """Return cache size and total hit count (for metrics)."""
@@ -145,12 +136,13 @@ class BlackboardAggregator:
         source_path_id: str = "",
     ) -> None:
         """Record a piece of discovered logic."""
-        entry = KnowledgeEntry(
-            key=key,
-            value=value,
-            source_path_id=source_path_id,
-        )
-        self._knowledge[key].append(entry)
+        with self._lock:
+            entry = KnowledgeEntry(
+                key=key,
+                value=value,
+                source_path_id=source_path_id,
+            )
+            self._knowledge[key].append(entry)
 
     def get_prior_knowledge(self, function_name: str) -> str:
         """Generate a ``[PRIOR_KNOWLEDGE]`` block for a function.
@@ -194,7 +186,8 @@ class BlackboardAggregator:
 
     def record_phase_result(self, result: AgentPhaseResult) -> None:
         """Store a completed Phase D result."""
-        self._phase_results[result.path_id] = result
+        with self._lock:
+            self._phase_results[result.path_id] = result
 
     def get_phase_results(self) -> list[AgentPhaseResult]:
         """Get all Phase D results."""

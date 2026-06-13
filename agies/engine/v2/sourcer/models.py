@@ -145,6 +145,35 @@ class FunctionIndex:
                 callee_set.add(callee)
         return callee_set
 
+    def slim(self) -> None:
+        """Strip function bodies and source texts to reduce memory.
+
+        After Phase B (slicing) completes, the full function bodies and
+        source files are no longer needed — only the call graph and
+        minimal metadata remain for downstream verification.
+
+        ``SourceFunction`` is ``@dataclass(frozen=True)`` so we cannot
+        clear ``body`` in-place; instead we rebuild the funcs list with
+        ``body=""``.  On large projects this frees ~60-80% of the index
+        memory (tens to hundreds of MB).
+
+        Call graph data is preserved — verification agents still need it.
+        """
+        self.sources.clear()
+        self.funcs = [
+            SourceFunction(
+                name=fn.name,
+                fullname=fn.fullname,
+                file_path=fn.file_path,
+                line_start=fn.line_start,
+                line_end=fn.line_end,
+                signature=fn.signature,
+                body="",
+            )
+            for fn in self.funcs
+        ]
+        self.build_lut()
+
     def build_call_graph_from_calls(
         self, calls: dict[str, set[str]]
     ) -> None:

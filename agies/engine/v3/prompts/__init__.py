@@ -15,6 +15,8 @@ from agies.engine.v3.prompts.xss import build_xss_prompt
 from agies.engine.v3.prompts.afo import build_afo_prompt
 from agies.engine.v3.prompts.idor import build_idor_prompt
 from agies.engine.v3.prompts.redos import build_redos_prompt
+from agies.engine.v3.prompts.xxe import build_xxe_prompt
+from agies.engine.v3.prompts.ssti import build_ssti_prompt
 from agies.engine.v3.prompts.suspicious import build_suspicious_prompt
 from agies.engine.v3.prompts.readme_summary import build_readme_prompt
 
@@ -27,6 +29,8 @@ PROMPT_BUILDERS = {
     "afo": build_afo_prompt,
     "idor": build_idor_prompt,
     "redos": build_redos_prompt,
+    "xxe": build_xxe_prompt,
+    "ssti": build_ssti_prompt,
     "suspicious": build_suspicious_prompt,
 }
 
@@ -38,7 +42,8 @@ def get_prompt(vuln_type: str, **kwargs) -> str:
     ----------
     vuln_type : str
         One of ``"rce"``, ``"lfi"``, ``"ssrf"``, ``"sqli"``,
-        ``"xss"``, ``"afo"``, ``"idor"``, ``"suspicious"``.
+        ``"xss"``, ``"afo"``, ``"idor"``, ``"xxe"``, ``"ssti"``,
+        ``"suspicious"``.
     **kwargs
         Passed through to the builder function (e.g. ``code_block``,
         ``readme_summary``, ``bypasses``).

@@ -47,6 +47,18 @@ class TestGetPrompt:
         prompt = get_prompt("unknown_type", code_block="code here")
         assert "code here" in prompt
 
+    def test_xxe_prompt_format(self):
+        """XXE prompt should contain key markers."""
+        prompt = get_prompt("xxe", code_block="test", readme_summary="test")
+        assert "XML External Entity" in prompt
+        assert "xml.etree.ElementTree" in prompt
+
+    def test_ssti_prompt_format(self):
+        """SSTI prompt should contain key markers."""
+        prompt = get_prompt("ssti", code_block="test", readme_summary="test")
+        assert "Server-Side Template Injection" in prompt
+        assert "render_template_string" in prompt
+
     def test_all_builders_are_callable(self):
         """All entries in PROMPT_BUILDERS should be callable."""
         for name, builder in PROMPT_BUILDERS.items():

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from agies.engine.v3.codeql.models import VulnType, CodeQlPath
+from agies.engine.v3.codeql.models import VulnType, CodeQlPath, Reachability
 
 
 @dataclass
@@ -67,6 +67,9 @@ class PathSlice:
     Injected into prompt context so downstream agents cannot rebut with
     'no external input'."""
 
+    reachability: Reachability = Reachability.CHAIN
+    """How this path was established — affects scoring and slot allocation."""
+
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
@@ -92,6 +95,7 @@ class PathSlice:
             is_full_path=path.is_full_path,
             score=path.confidence,
             source_controllability_proof=path.source_controllability_proof,
+            reachability=path.reachability,
         )
 
 

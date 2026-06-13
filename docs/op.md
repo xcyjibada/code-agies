@@ -1,211 +1,69 @@
-如果你的系统假定“所有的 Web 代码都是 Python/Flask，所有的库都是 Python”，那么它确实在分析 Java Spring、Go Gin 或 Node.js Express 时会产生严重的阻抗失配（Impedance Mismatch），导致大模型因为上下文混乱而产生大量幻觉。
-要彻底解决 P3（虚拟 Taint 补偿） 和 P4（应用沙箱包裹） 的过拟合问题，我们需要对这两个模块进行多语言多框架的“多态化（Polymorphic）”与“注册表模式（Registry Pattern）”重构。
-以下是具体的泛化重构方案与参考代码设计：
-一、 P3 泛化：多语言多框架统一 Source 检测引擎
-1. 架构思路
-不要在 treesitter.py 中写死正则表达式。我们应该基于 classifier.py 识别出的语言类型（Language），去一个**框架描述注册表（Framework Registry）**中动态拉取匹配规则。
-我们将 Source 匹配抽象为两部分：
-注解/修饰符识别（Annotations/Decorators）：识别代表 Web 路由的入口（如 @app.post、@GetMapping）。
-参数命名与类型识别（Parameter Controllability）：识别代表外部不可信输入的特征参数（如 request、ctx、HttpServletRequest）。
-2. 代码重构实现
-新建 agies/engine/v3/pathfinder/source_detector.py：
+强烈建议选择【选项 B（实用主义路径）】。但在代码设计上，我们可以采用“半解耦/基于注册制（Semi-extensible Callback）”的精妙设计，来优雅地弥补它“不通用”的缺点。
+claudecode 的直觉和工程判断是完全准确的。在实际的商业和开源开发中，选项 A 是一个极其典型的“架构陷阱（Over-engineering Trap）”。
+如果我们去复刻整个 Rust 的 .tsg 解析器和状态机执行引擎：
+严重偏离项目重心：agies 是一个**“安全审计工具”**，它的核心卖点是找 Bug。如果花几千行代码在 Python 里去写一个“编译器级的图规则解释器”，相当于在造一个新的开发工具，会极大地拖慢 agies 的核心迭代速度。
+陡峭的用户学习曲线：即使您写出了通用的 .tsg 引擎，真实的漏洞研究员也根本不想去学习一套晦涩、没有文档的 .tsg 语法。相反，他们更熟悉纯 Python 脚本或标准的 tree-sitter S-expression（即 .scm）查询 [1.2.6]。
+三、 完美的折中方案：如何让“选项 B”拥有“选项 A”的通用性？
+我们既要选项 B 的轻量和极速（~200 行 Python），又要让它保持易于扩展。
+我们可以设计一个 “查询-回调注册制（Query-Callback Registration）” 的架构。这是一种极度优雅的 AI 原生设计模式：
+1. 将所有 tree-sitter 查询写入标准的 .scm 文件中（保障规则泛化）
+外部贡献者或您自己，只需要编写标准的 S-expression 规则。例如：
+code
+Scheme
+# agies/engine/v3/graph/queries/python/data_flow.scm
+(assignment
+  left: (identifier) @var
+  right: (_) @val) @assign_node
+2. 在 Python 中建立一个“关系转换器注册表（Graph Transformers）”
+在代码中，我们定义每个 AST 捕获（Capture）如何映射到 NetworkX 的图操作中。这完全是 Python 的原生字典，极其简单、直观且易于 Debug [1.2.6]：
 code
 Python
-# agies/engine/v3/pathfinder/source_detector.py
-import re
-from dataclasses import dataclass
+# agies/engine/v3/graph/transformers.py
+import networkx as nx
 
-@dataclass
-class LanguageSpec:
-    decorators: list[str]       # 路由注解特征
-    param_keywords: list[str]   # 不可信参数特征
-    param_types: list[str]      # 不可信参数类型特征
-
-class SourceDetector:
-    """多语言多框架统一 Source 判定引擎（解决 P3 过拟合）。"""
-    
-    _SPECS = {
-        "python": LanguageSpec(
-            decorators=[r"app\.(post|get|put|delete|route)", r"route\(", r"action\("],
-            param_keywords=[r"request", r"payload", r"params", r"data", r"upload", r"body"],
-            param_types=[]  # Python 无静态强类型
-        ),
-        "java": LanguageSpec(
-            decorators=[r"RequestMapping", r"GetMapping", r"PostMapping", r"PutMapping", r"DeleteMapping", r"Controller"],
-            param_keywords=[r"request", r"payload", r"body", r"dto", r"params"],
-            param_types=[r"HttpServletRequest", r"MultipartFile", r"RequestEntity", r"RequestBody"]
-        ),
-        "javascript": LanguageSpec(
-            decorators=[r"Controller", r"Get", r"Post", r"Put", r"Delete"], # NestJS 风格
-            param_keywords=[r"req", r"request", r"ctx", r"body", r"query"],  # Express/Koa 风格
-            param_types=[]
-        ),
-        "go": LanguageSpec(
-            decorators=[], # Go 通常无注解，依赖函数签名
-            param_keywords=[r"ctx", r"req", r"request", r"w", r"r"],
-            param_types=[r"\*http\.Request", r"http\.ResponseWriter", r"\*gin\.Context", r"echo\.Context"]
+# 注册表：将 .scm 里的 @capture 标记，直接映射为 NetworkX 的图构边动作
+GRAPH_TRANSFORMERS = {
+    "python/data_flow.scm": {
+        # 当捕获到 @assign_node 时，自动执行这个 Python 动作
+        "assign_node": lambda G, captures, source_bytes: G.add_edge(
+            _get_node_id(captures["val"]), 
+            _get_node_id(captures["var"]), 
+            relationship="WRITES_TO"
+        )
+    },
+    "python/calls.scm": {
+        "call_node": lambda G, captures, source_bytes: G.add_edge(
+            _get_node_id(captures["caller"]), 
+            _get_node_id(captures["callee"]), 
+            relationship="CALLS"
         )
     }
-
-    @classmethod
-    def detect_external_controllability(cls, language: str, signature: str, body: str) -> dict:
-        """
-        根据检测到的语言，自适应评估该函数是否是外部输入 Source 节点。
-        """
-        spec = cls._SPECS.get(language.lower())
-        if not spec:
-            # 未知语言，退回到通用保守匹配
-            spec = cls._SPECS["python"]
-            
-        sig_lower = signature.lower()
-        body_lower = body.lower()
-        
-        # 1. 匹配路由注解
-        has_decorator = any(re.search(pat, signature) for pat in spec.decorators)
-        
-        # 2. 匹配可控参数名
-        has_param_kw = any(re.search(pat, sig_lower) for pat in spec.param_keywords)
-        
-        # 3. 匹配可控强类型（如 Java/Go）
-        has_param_type = any(re.search(pat, signature) for pat in spec.param_types)
-        
-        if has_decorator or (has_param_kw and (has_param_type or not spec.param_types)):
-            return {
-                "is_external": True,
-                "reason": f"[{language.upper()}] Function matching routing annotations or untrusted parameter types."
-            }
-            
-        return {"is_external": False, "reason": "No explicit web entrypoint pattern matched."}
-在 treesitter.py 中，调用变得极其干净和泛化：
+}
+3. 运行时的通用解释引擎（极简执行器）
 code
 Python
-# agies/engine/v3/pathfinder/treesitter.py
-from agies.engine.v3.pathfinder.source_detector import SourceDetector
-
-# 在后向路径追溯到顶层时：
-source_assessment = SourceDetector.detect_external_controllability(
-    language=self.project_language, # 来自 classifier.py
-    signature=source_node["signature"],
-    body=source_node["body"]
-)
-二、 P4 泛化：多语言沙箱包裹工厂（Polymorphic Sandbox Factory）
-1. 架构思路
-在库审计（Lib Mode）下，大模型需要一个“应用层入口”来击碎它的 Library Bias [1.1.2]。
-我们必须废弃硬编码 Python Flask 代码的做法。
-根据检测到的语言，从模板库中动态加载对应语言、对应风格的 “契约测试网关（Contract Gateway Wrapper）” [1.1.3]。
-2. 代码重构实现
-修改 agies/engine/v3/agents/path_code_loader.py，引入多语言沙箱包裹工厂：
-code
-Python
-# agies/engine/v3/agents/path_code_loader.py
-
-class SandboxWrapperFactory:
-    """多语言应用沙箱包裹工厂，彻底消除 P4 在非 Python 项目下的过拟合。"""
-
-    _TEMPLATES = {
-        "python": """
-# [SYSTEM SIMULATED PRODUCTION WEB APPLICATION GATEWAY]
-from fastapi import FastAPI, Request
-app = FastAPI()
-
-@app.post("/api/v1/trigger")
-async def simulated_endpoint(request: Request):
-    user_payload = await request.json()
-    untrusted_input = user_payload.get("payload")
-    
-    # ─── CRITICAL FLOW ENTRYPOINT ───
-    instance = {target_class}()
-    instance.{target_method}(untrusted_input)
-""",
-        "java": """
-// [SYSTEM SIMULATED PRODUCTION WEB APPLICATION GATEWAY]
-import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
-
-@RestController
-@RequestMapping("/api/v1")
-public class SimulatedController {{
-    
-    @PostMapping("/trigger")
-    public ResponseEntity<String> handleRequest(@RequestBody String untrustedInput) {{
-        // ─── CRITICAL FLOW ENTRYPOINT ───
-        {target_class} instance = new {target_class}();
-        instance.{target_method}(untrustedInput);
-        return ResponseEntity.ok("Processed");
-    }}
-}}
-""",
-        "javascript": """
-// [SYSTEM SIMULATED PRODUCTION WEB APPLICATION GATEWAY]
-const express = require('express');
-const app = express();
-app.use(express.json());
-
-app.post('/api/v1/trigger', (req, res) => {
-    const untrustedInput = req.body.payload;
-    
-    // ─── CRITICAL FLOW ENTRYPOINT ───
-    const instance = new {target_class}();
-    instance.{target_method}(untrustedInput);
-    res.send('Processed');
-});
-""",
-        "go": """
-// [SYSTEM SIMULATED PRODUCTION WEB APPLICATION GATEWAY]
-package main
-import (
-    "net/http"
-    "encoding/json"
-)
-
-func handleRequest(w http.ResponseWriter, r *http.Request) {{
-    var payload map[string]string
-    json.NewDecoder(r.Body).Decode(&payload)
-    untrustedInput := payload["payload"]
-    
-    // ─── CRITICAL FLOW ENTRYPOINT ───
-    instance := &{target_class}{{}}
-    instance.{target_method}(untrustedInput)
-}}
-"""
-    }
-
-    @classmethod
-    def get_wrapper(cls, language: str, target_class: str, target_method: str) -> str:
-        lang_key = language.lower()
-        # 回退机制
-        template = cls._TEMPLATES.get(lang_key, cls._TEMPLATES["python"])
+def apply_graph_rules(G: nx.DiGraph, root_node, source_bytes, language):
+    """
+    通用执行器：读取所有的 .scm 查询，并根据注册表自动在 NetworkX 中画图
+    """
+    for query_path, handlers in GRAPH_TRANSFORMERS.items():
+        query_text = load_query_file(query_path) # 读取 .scm 文本
+        query = language.query(query_text)
+        captures = query.captures(root_node)
         
-        return template.format(
-            target_class=target_class,
-            target_method=target_method
-        )
-在 PathCodeLoader.load_path_code() 中进行调用：
-code
-Python
-# path_code_loader.py
-class PathCodeLoader:
-    def load_path_code(self, path: CodeQlPath, project_type: str, language: str) -> str:
-        blocks = []
-        
-        # 只有在库模式下才进行沙箱包裹，并且完全适配当前项目语言
-        if project_type == "lib" and len(path.nodes) > 0:
-            first_node = path.nodes[0]
-            # 动态生成契约包裹层，确保大模型看到的语法树与其语言 100% 一致
-            wrapper_code = SandboxWrapperFactory.get_wrapper(
-                language=language, # 传入真实语言
-                target_class="VulnerableTargetClass",
-                target_method=first_node.function_name
-            )
-            blocks.append(wrapper_code)
-            
-        # 拼接后续真实源码代码块...
-        return "\n".join(blocks)
-三、 泛化重构后的最终收益评估
-经过这次**“去噪泛化”**重构后，你的整个 agies v3 框架发生了本质的变化：
-架构纯净化：
-工具底座（Runner、Slicer）彻底不包含任何针对特定框架、语言的硬编码，实现了完全的解耦（Decoupled）。
-多语言通用性：
-你不仅能拿它来扫 MLflow（Python） [1.2.2]，你还能原封不动地拿它去扫 Spring-Boot（Java） 或者 Node.js 写的 AI 中台。大模型看到的是完全符合该语言本征生态（Idiomatic）的应用封装和数据流可控性证明，分析精度（Precision）和听话度会直线上升。
-为未来沉淀打下桩基：
-以后你想支持 Rust、Go 或 Ruby，你只需要在 SourceDetector 和 SandboxWrapperFactory 的 Dict 字典里加上一行配置，0 行架构修改即可实现多语言扩展。
+        # 自动执行对应的构图动作
+        for node, tag in captures:
+            if tag in handlers:
+                # 动态执行 lambda 构图，传入 NetworkX 图对象和捕获的 AST 节点
+                handlers[tag](G, captures_dict, source_bytes)
+🎨 这个“折中方案”为什么是终极解法？
+开发成本极低：
+它完全符合选项 B 的轻量性，核心代码在 100 行 左右。不需要写任何 Lexer、Parser，直接白嫖 tree-sitter 自带的 Query 引擎和 Python 的 Lambda 机制。
+完美的泛化与扩展性：
+未来如果想加一种新的关系（比如要加一个 Attribute Access 或 Inheritance 关系），完全不需要修改底层构图引擎：
+只需要在 queries/ 下加一个 .scm 规则；
+在 GRAPH_TRANSFORMERS 里写一行 lambda 注册一下。
+任何外部安全人员都能在 1 分钟内看懂并为其贡献新的分析规则。
+🏁 结论
+直接选择【选项 B】的升级版（上述注册制方案）。
+您可以把这套设计思路发给 claudecode。这既能让它在这个周末以极快的速度（200 行以内代码）帮您把 WRITES_TO 边在 treesitter.py 中完美实现，攻克 mlflow/langchain 的 XXE 痛点，又为 agies 未来的多语言、多关系扩展留下了极其优美和通用的接口。

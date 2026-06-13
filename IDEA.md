@@ -1786,3 +1786,62 @@ CVE-2024-27309 调用链:
 **修复方向：** body-detected 函数即使无调用者也应创建单节点路径（类似 vllm 修复的延续），在 `_build_path` 中 `_backtrack` 返回 None 后不应直接 `continue`。
 
 **架构意义：** tree-sitter 做库级静态分析的先天性缺陷。长期靠 CodeQL 数据流追踪解决，短期靠 body orphan 补丁兜底。
+
+### A.9 2026-06-11: 「无调用者」架构隐含假设反转（来自 op.md 分析）
+
+**核心发现：** Pass 2（body 检测）和 PathBuilder 存在结构性设计矛盾——Pass 2 专门寻找那些名字无害但体内有危险操作的函数，这类函数在库项目中绝大多数是**公开 API**，自然没有项目内调用者；但 PathBuilder 的回溯逻辑要求「有调用者才保留路径」。两个模块各自合理，组合起来互相抵消。
+
+**隐含假设反转：**
+
+```
+旧假设：没有 caller = 不可达 → 丢弃
+新假设：没有 caller = 公开 API = 攻击面 → 保留并标记为 BODY_ONLY/EXTERNAL_API
+```
+
+对于库代码审计来说，「没有项目内调用者」非但不是不重要，恰恰是**被外部代码调用的公开 API 的特征**。当前架构在 `_backtrack` 中将两者等价，导致 body 检测形同虚设。
+
+**op.md 的四层优先级建议（已采纳）：**
+
+1. **保留结果** — body-detected 函数不再静默丢弃，创建 `BODY_ONLY` 路径（当前是真正的漏报）
+2. **Finding 分层** — 引入 `reachability` 字段区分有调用链（`CHAIN`）、body 检测无调用链（`BODY_ONLY`）、公开 API 推断（`EXTERNAL_API`），防止 LLM 混淆置信度
+3. **公开 API 推断** — `exported_api_detector()` 检测 `__all__`、public class/method 等特征，生成虚拟 `[EXTERNAL_CALLER]` 节点，给 LLM 语义上下文
+4. **CodeQL 集成** — 这是 tree-sitter 静态分析的先天性局限，长期需要数据流追踪
+
+**影响文件：**
+- `treesitter.py` — `_build_path` 丢弃逻辑，新增 `exported_api_detector`
+- `codeql/models.py` — `CodeQlPath` 加 `reachability` 字段
+- `slicer/models.py` — `PathSlice` 加 `reachability` 字段
+- `sorter.py` — 评分适配新置信度等级
+- runner.py / prompts — LLM prompt 中对 `BODY_ONLY`/`EXTERNAL_API` 路径的显式说明
+
+### A.10 2026-06-13: BountyBench 8 靶回归 — 架构边界实证
+
+**完全回归 8 个已知 CVE 靶子后，v3 的架构边界变得清晰：**
+
+| # | 盲区类型 | 代表靶子 | 原因 | 修复前提 |
+|---|---------|---------|------|---------|
+| 1 | 跨函数数据流 | setuptools CVE-2024-27309 | tree-sitter 单函数可见，`process_line→_download_url→urlopen` 链不可追踪 | inter-procedural 数据流图 |
+| 2 | 逻辑漏洞 | aiohttp CVE-2024-30251 | 无 sink 函数签名，`while True` 出口缺失 | 行为建模 / 循环不变量分析 |
+| 3 | 模板层 | jinja2 CVE-2024-22195 | xmlattr filter 的语义在 AST 层不可见 | 模板 AST 级上下文感知 |
+| 4 | 运行时配置 | werkzeug CVE-2024-34069 | CSRF/PIN bypass 不在代码中表达 | 配置安全评估（独立审计） |
+
+**8/8 与标准答案完全一致。** P0 靶子全部检出，P1 全部确认架构边界盲区。
+完整报告: `pocs/bountybench/REGRESSION_REPORT.md`
+
+**与同类工具对比（BountyBench 8 靶）：**
+
+| 工具 | 检出 | 不能检 | 检出率 |
+|------|------|--------|-------|
+| v3 (当前) | zipp, vllm, langchain×2 | setuptools, aiohttp, jinja2, werkzeug | **4/8** |
+| CodeQL | +setuptools（跨函数数据流） | aiohttp, jinja2, werkzeug | **5/8** |
+| 理论极限（+逻辑+模板+配置） | +aiohttp, jinja2, werkzeug | IDOR/业务逻辑 | **7/8** |
+
+**关键差距 — setuptools 跨函数链：**
+- CodeQL 能追踪 `process_line(url) → _download_url(url) → self.opener.open(url)`，因为数据流图是 inter-procedural 的
+- v3 的 tree-sitter 反向调用链只看到 `urlopen` ← `_download_url`，不知道 `url` 从 `process_line` 传过来
+- 修复需要引入真正的数据流追踪，不是 patch tree-sitter 能解决的
+
+**IDOR/业务逻辑是真正的蓝海：**
+- 占 Bounty 奖金约 25-35%，**所有现有工具都做不了**
+- 因为「用户 A 不该访问资源 B」不写在代码里，写在业务需求里
+- 正确策略：v3 继续做 70% sink 检测，上面叠权限语义层攻 IDOR

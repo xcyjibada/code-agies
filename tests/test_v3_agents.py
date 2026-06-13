@@ -196,6 +196,33 @@ class TestLogicAgent:
         assert not result.is_vulnerable
         assert result.confidence <= 3
 
+    def test_run_with_structured_evidence(self):
+        """Structured evidence fields in response should be appended to analysis."""
+        agent = LogicAgent()
+        response = """```json
+{
+  "contradictions": [{"func": "f", "claimed": "safe", "actual": "unsafe",
+    "contradiction_type": "logic_gap", "bypass_poc": "", "exploit_potential": "RCE"}],
+  "confidence": 8,
+  "analysis": "Entry param reaches pickle.loads.",
+  "taint_path": [{"function": "add", "param": "texts", "action": "entry"}],
+  "reasoning_steps": ["texts is HTTP param", "passed to pickle.loads"],
+  "exploitability_verdict": "EXPLOITABLE",
+  "guards_detected": []
+}
+```"""
+        result = agent.run(
+            path_id="rce-003",
+            score=0.9,
+            vuln_type="rce",
+            intent_chain="[0] f: description",
+            llm_response=response,
+        )
+        assert result.is_vulnerable
+        assert "[STRUCTURED_EVIDENCE]" in result.analysis
+        assert "EXPLOITABLE" in result.analysis
+        assert "pickle.loads" in result.analysis
+
 
 # ---------------------------------------------------------------------------
 # Merge layer tests

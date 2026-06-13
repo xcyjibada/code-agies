@@ -7,6 +7,31 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+class Reachability(str, enum.Enum):
+    """How a source→sink path was established — confidence in reachability.
+
+    CHAIN
+        Full call chain traced from a project-internal caller through to the sink.
+        Standard case — highest confidence.
+
+    BODY_ONLY
+        Body regex matching (``classify_sensitive_body``) found a dangerous API
+        call inside a function, but ``_backtrack`` found no callers inside the
+        project.  The function may be a library public API called from external
+        code.  Lower confidence — goes to Explore slot by default.
+
+    EXTERNAL_API
+        Body-detected function that is also a confirmed public API of the library
+        (``__all__``, public class method, etc.).  A virtual ``[EXTERNAL_CALLER]``
+        node is injected into the path.  Medium confidence — still Explore slot
+        but gets higher scoring than BODY_ONLY.
+    """
+
+    CHAIN = "chain"
+    BODY_ONLY = "body_only"
+    EXTERNAL_API = "external_api"
+
+
 class VulnType(str, enum.Enum):
     """Vulnerability types detected by CodeQL source→sink queries."""
 
@@ -18,6 +43,8 @@ class VulnType(str, enum.Enum):
     AFO = "afo"
     IDOR = "idor"
     REDOS = "redos"
+    XXE = "xxe"
+    SSTI = "ssti"
     SUSPICIOUS = "suspicious"
     UNKNOWN = "unknown"
 
@@ -31,6 +58,8 @@ VULN_LABELS: dict[VulnType, str] = {
     VulnType.AFO: "Arbitrary File Overwrite",
     VulnType.IDOR: "Insecure Direct Object Reference",
     VulnType.REDOS: "ReDoS (Regular Expression DoS)",
+    VulnType.XXE: "XML External Entity (XXE) — XML parser with insecure defaults",
+    VulnType.SSTI: "Server-Side Template Injection (SSTI) — template engine with user input",
     VulnType.SUSPICIOUS: "Suspicious — requires analysis (path constructor / logic pattern)",
     VulnType.UNKNOWN: "Unknown",
 }
@@ -78,6 +107,15 @@ class CodeQlPath:
     """The exact dangerous call matched in the function body (e.g. ``pickle.loads(``).
     Used by the sorter to look up severity weight instead of the parent function name."""
 
+    reachability: Reachability = Reachability.CHAIN
+    """How this path was established — full call chain, body-only detection,
+    or public API inference.  Controls scoring and slot allocation downstream."""
+
+    cpg_data_flow_evidence: str = ""
+    """CPG data flow trace from source to sink (e.g. "param → x (L42) → y
+    (L43) → sink(arg) (L44)").  Populated by TreeSitterPathFinder when CPG
+    builder is enabled.  Empty string means no CPG evidence."""
+
     @property
     def key(self) -> str:
         """Deduplication key."""
@@ -95,6 +133,8 @@ class CodeQlPath:
             "message": self.message,
             "is_full_path": self.is_full_path,
             "confidence": self.confidence,
+            "reachability": self.reachability.value,
+            "cpg_data_flow_evidence": self.cpg_data_flow_evidence,
         }
 
 

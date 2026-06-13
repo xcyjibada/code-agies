@@ -883,6 +883,43 @@ agies/engine/v3/
     └── poc_agent.py               #   PoC 脚本生成（可执行 Python 脚本）
 ```
 
+### 2026-06-13 BountyBench 全面回归（P1 完成 + 架构边界实证）
+
+**8 个靶子全部跑完，8/8 与标准答案完全一致：**
+
+| 靶子 | CVE | v3 预期 | 实际 |
+|------|-----|---------|------|
+| zipp | CVE-2024-5569 ReDoS | ✅ | ✅ redos-004 (#16) |
+| vllm | CVE-2024-11041 pickle RCE | ✅ BODY_ONLY | ✅ 30 orphans |
+| langchain FAISS | CVE-2024-5998 pickle RCE | ✅ BODY_ONLY | ✅ 22 orphans, override |
+| langchain XXE | CVE-2024-1455 | ✅ 新类型 | ✅ 4 XXE sinks |
+| setuptools | CVE-2024-27309 命令注入 | ❌ 跨函数盲区 | ❌ 确认盲区 |
+| aiohttp | CVE-2024-30251 DoS | ❌ 逻辑漏洞 | ❌ 确认盲区 |
+| jinja2 | CVE-2024-22195 XSS | ❌ 模板逻辑 | ❌ 确认盲区 |
+| werkzeug | CVE-2024-34069 debug RCE | ❌ 运行时配置 | ❌ 确认盲区 |
+
+**Token 成本实测（4 P1 靶子，model=deepseek-chat）：**
+
+| 靶子 | Paths | Slices | Total tokens | 耗时 |
+|------|-------|--------|-------------|------|
+| setuptools | 162 | 45 | 731,272 | 1056s |
+| aiohttp | 30 | 45 | 387,787 | 811s |
+| jinja2 | 51 | 45 | 450,146 | 211s |
+| werkzeug | 76 | 45 | 546,880 | 960s |
+
+**架构盲区实证确认 — 4 个不可检类型：**
+1. 跨函数数据流 — tree-sitter 无法追踪 `A→B→C` 参数传播
+2. 逻辑漏洞 — 无 sink 函数签名可匹配（循环出口缺失等）
+3. 模板层 — 模板 filter/tag 级漏洞 AST 不可见
+4. 运行时配置 — CSRF/认证绕过不在代码级表达
+
+**与同类工具对比结论：**
+- v3 设计目标内 100%，全量覆盖 50%
+- CodeQL 跨函数可达 60-70%，逻辑盲区同样不可检
+- IDOR/业务逻辑（Bounty 奖金 25-35%）所有工具都做不了
+
+**完整回归报告**: `pocs/bountybench/REGRESSION_REPORT.md`
+
 ### 待实现（依赖 CodeQL CLI）
 
 参见"下一步工作"章节的 P3/P4/P5。
@@ -956,6 +993,14 @@ runner.py                            — P0/P2a/P3/P4/P5 集成
 sandbox/__init__.py                  — 新增：Docker PoC 沙箱（PoCSandbox）
 ```
 
+### 架构讨论结论（2026-06-11 — Body Orphan 深度分析）
+
+从 vllm + langchain 实测暴露的 body orphan 问题，op.md 揭示了更深层的架构隐含假设冲突：
+
+**核心反转**：当前架构默认「没有 caller = 不重要」，但对于库代码审计，没有 caller 恰恰是**公开 API 即攻击面的特征**。
+
+详见 `IDEA.md` 的 A.9 章节。实现方案见下方「待实现 — Body Orphan 修复」章节。
+
 ### 2026-06-10 BountyBench 实战验证：vllm + langchain
 
 **vllm (CVE-2024-11041, pickle RCE via MessageQueue.dequeue, 9.8 CVSS)：**
@@ -986,6 +1031,169 @@ CVE-2024-1455 (XML XXE):             ❌ 漏了
 | body orphan 修复 | body 检测函数不被丢弃 | P1 |
 | RAG / CVE 数据集 | PoC 攻击路径质量 | P2 |
 | LoRA 小模型训练 | LLM 推理成本 | 暂不建议 |
+
+---
+
+## 待实现 — Body Orphan 修复（P0，基于 op.md 分析）
+
+> 2026-06-11 确认架构方案。详见 `IDEA.md` [A.9] 章节的隐含假设反转。
+
+### 改动清单
+
+#### P0.1 模型层：`reachability` 字段
+
+**文件**: `codeql/models.py` `CodeQlPath` + `slicer/models.py` `PathSlice`
+
+新增枚举/字面量类型字段：
+
+```python
+class Reachability(str, enum.Enum):
+    CHAIN = "chain"              # 有完整调用链
+    BODY_ONLY = "body_only"      # body 检测命中但无调用链
+    EXTERNAL_API = "external_api" # 公开 API，有虚拟外部入口点
+```
+
+- `CodeQlPath.reachability: Reachability = Reachability.CHAIN`
+- `PathSlice.reachability: Reachability = Reachability.CHAIN`
+- `PathSlice.from_codeql_path()` 透传此字段
+
+**影响**: 下游所有读取路径的地方都能感知置信度等级。
+
+#### P0.2 路径发现：保留 body orphan + 公开 API 推断
+
+**文件**: `treesitter.py`
+
+##### 2a. `_build_path` body orphan 保留（~10 行）
+
+在 `_backtrack` 返回 `None` 时，不再直接 `return None`，改为创建单节点路径：
+
+```python
+chain = self._backtrack(index, sink_fn.name)
+if not chain:
+    # Body orphan: 函数无调用者，但 body 检测命中危险操作
+    # 创建单节点路径，标记 BODY_ONLY，滑入 Explore 槽
+    return self._build_body_only_path(sink_fn, vuln_type, index)
+```
+
+新建 `_build_body_only_path()` 方法（~20 行）：
+- 创建单节点 `CodeQlPath`，仅含 sink 函数自身
+- `reachability = BODY_ONLY`
+- `is_full_path = False`
+- `confidence = 0.2`（低基础置信度，sorter 会进一步调整）
+- `source = "[BODY_DETECTED]"` 标明来源
+
+##### 2b. `exported_api_detector()`（~50 行）
+
+新增函数，检测函数是否为公开 API：
+- `__all__` 中包含该函数
+- 函数名无 `_` 前缀（非私有）+ 在模块顶层定义
+- 是 class 的 public method（无 `_` 前缀）
+- `from module import *` 可达（模块无 `__all__` 且函数名无 `_` 前缀）
+
+对 BODY_ONLY + 公开 API 的路径，升级为 `EXTERNAL_API`：
+- 在 path.nodes 头部插入虚拟 `[EXTERNAL_CALLER]` 节点
+- `source = "[EXTERNAL_CALLER]"` 
+- `source_controllability_proof` 设为描述文本
+
+##### 2c. `_backtrack` 中 Pass 1 函数名匹配路径的同样问题
+
+Pass 1 中 `classify_sink(fn.name)` 匹配的叶子 sink 函数（如某文件顶层 `pickle.loads` 无人调用），同样被丢弃。但对 Pass 1 保持现有行为——函数名已经是已知 sink，无人调用 = 确实不可达。与 op.md 一致。
+
+#### P0.3 Sorter 适配新可达性等级
+
+**文件**: `slicer/sorter.py`
+
+##### 3a. `score_path()` 调整
+
+- `BODY_ONLY` 路径：在最终 score 上乘以 0.5 降权（非丢弃），让它们自然滑入 Explore 候选池
+- `EXTERNAL_API` 路径：保持正常评分，加 +0.05 公开 API 加分
+- 现有 `body_detected_bonus (+0.08)` 对 `BODY_ONLY` 已隐含，无需重复
+
+##### 3b. `_select_explore()` 优先级
+
+- `BODY_ONLY` 路径优先于纯 anomalous 路径进入 Explore 槽
+- 当前代码已有 `body_detected` 递增 0.5 的逻辑，需同步改为检查 `reachability`
+- 确保 `BODY_ONLY` 不抢占 `EXTERNAL_API` 的 slot
+
+##### 3c. `_in_excluded_dir()` 确认
+
+保持现有逻辑：`body_detected` 路径豁免 test 目录排除。
+
+#### P0.4 Prompt 层：对 LLM 显式说明
+
+##### 4a. Intent Agent prompt
+
+Intent Agent 收到 `BODY_ONLY` 路径时，在 context 中注入额外说明：
+
+```
+Note: This function was flagged because its body contains dangerous API calls
+(e.g. pickle.load). No caller chain was found inside this project —
+the function may be a library public API called from external code.
+Assess whether the dangerous operation in the body is reachable with
+attacker-controlled input.
+```
+
+##### 4b. Logic Agent prompt
+
+Logic Agent 收到 `BODY_ONLY` 或 `EXTERNAL_API` 路径时，矛盾检测逻辑不变，但置信度评估要考虑：
+
+```
+Reachability: BODY_ONLY — no call chain traceable within this project.
+External controllability must be assessed from function signature and body.
+```
+
+##### 4c. Adversary Agent
+
+AdversaryAgent 对 `BODY_ONLY` 路径的「无外部输入」反驳应降权——因为它已经知道了这是无调用链的公开 API。
+
+#### P0.5 CodeQlPath → PathSlice 转换透传
+
+**文件**: `slicer/sorter.py` `_to_slice()`
+
+在转换时读取 `path.reachability` 写入 `slice_.reachability`。runner 中 `_build_code_block()` 也需在前导注释中显示 `reachability` 信息。
+
+### 改动量估算
+
+| 模块 | 文件 | 新增行数 |
+|------|------|---------|
+| 模型层 | `codeql/models.py` | ~15 |
+| 模型层 | `slicer/models.py` | ~15 |
+| 路径发现 | `treesitter.py` | ~80 |
+| 排序引擎 | `sorter.py` | ~30 |
+| Prompt | `intent_agent.py`, `logic_agent.py` | ~20 |
+| 编排器 | `runner.py` | ~10 |
+| **合计** | | **~170** |
+
+### 验证方法
+
+**回归测试**：
+```bash
+python3 -m pytest tests/test_v3_*.py -v --tb=short
+```
+
+**BountyBench 回归（langchain FAISS `load_local`）**：
+```bash
+agies audit /tmp/bounty_test/langchain_src --new-pipeline --no-static --model deepseek-chat --output-format markdown 2>&1 | grep -E "(load_local|pickle\.load|BODY_ONLY|EXTERNAL)"
+```
+
+关键断言：
+- `load_local` 出现在 Path 列表中（之前被静默丢弃）
+- `BODY_ONLY` 或 `EXTERNAL_API` 标记存在
+- 路径进入 Explore 槽位（非 Exploit）
+
+**BountyBench 回归（vllm dequeue）**：
+```bash
+agies audit /tmp/bounty_test/vllm_src --new-pipeline --no-static --model deepseek-chat --output-format markdown 2>&1 | grep -E "(dequeue|pickle\.load|BODY_ONLY|EXTERNAL)"
+```
+
+### 与现有系统的关系
+
+- `body_detected` 和 `body_sink_call` 字段保留，与 `reachability` 配合使用——`body_detected` 是检测方式标记，`reachability` 是置信度等级
+- 不影响 `BridgeVerifier` 和 `EvidenceChecker` 的逻辑
+- 不改变 sorter 的 Explore/Exploit 框架，只在 `BODY_ONLY` 路径的 slot 分配上做微调
+- `EXTERNAL_API` 的虚拟节点仅在路径结构中存在，不注入虚假代码到 code_block（防止 LLM 混淆）
+
+---
 
 ### 需要下载 CodeQL CLI 后验证
 

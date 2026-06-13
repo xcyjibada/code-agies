@@ -38,6 +38,7 @@ EXCLUDED_DIRS = frozenset({
     ".env", "dist", "build", ".tox", ".eggs", "egg-info",
     ".idea", ".vscode", ".mypy_cache", ".pytest_cache", ".ruff_cache",
     ".terraform", ".next", ".nuxt",
+    "test", "tests",  # test files = noise for vulnerability discovery
 })
 
 # File extensions we can parse

@@ -18,7 +18,7 @@ import logging
 import re
 from typing import Any
 
-from agies.engine.v3.codeql.models import CodeQlPath, VulnType
+from agies.engine.v3.codeql.models import CodeQlPath, VulnType, Reachability
 from agies.engine.v3.slicer.models import PathSlice, SortResult
 
 logger = logging.getLogger(__name__)
@@ -53,11 +53,27 @@ SINK_WEIGHTS: dict[str, float] = {
     # SQLI — database queries
     "execute": 0.8, "executemany": 0.8, "executescript": 0.8,
     "cursor.execute": 0.8, "connection.execute": 0.7,
-    # XSS — template rendering
-    "render_template_string": 0.6, "format": 0.4,
-    "Markup": 0.5,
+    # XSS — output rendering
+    "Markup": 0.5, "format": 0.4,
     # AFO — file write
     "pathlib.Path.write_text": 0.6, "pathlib.Path.write_bytes": 0.6,
+    # XXE — XML parsing with insecure defaults (CWE-611)
+    "lxml.etree.parse": 0.7, "lxml.etree.fromstring": 0.7,
+    "lxml.etree.XMLParser": 0.7,
+    "xml.etree.ElementTree.parse": 0.7, "xml.etree.ElementTree.fromstring": 0.7,
+    "lxml.objectify.parse": 0.7, "lxml.objectify.fromstring": 0.7,
+    "xml.dom.minidom.parse": 0.7, "xml.dom.minidom.parseString": 0.7,
+    "xml.sax.parse": 0.7, "xml.sax.parseString": 0.7,
+    # Common import aliases for XXE (body-detected via \bTemplate\b / BeautifulSoup regex)
+    "BeautifulSoup": 0.7,
+    "ElementTree.fromstring": 0.7, "ElementTree.parse": 0.7,
+    "etree.parse": 0.7, "etree.fromstring": 0.7, "etree.XMLParser": 0.7,
+    # SSTI — Server-Side Template Injection (CWE-1336)
+    "render_template_string": 0.8,
+    "jinja2.Template": 0.8, "jinja2.Environment": 0.8,
+    "Template": 0.8, "Template.render": 0.8,
+    "Environment.from_string": 0.8,
+    "mako.template.Template": 0.8,
     # IDOR — direct object reference
     "get_object_or_404": 0.5, "queryset.filter": 0.4,
     # REDOS — regex operations
@@ -136,17 +152,28 @@ def score_path(path: CodeQlPath) -> float:
     if _cross_module_bonus(path):
         score += 0.05
 
-    # 6. Body-detected bonus — functions with dangerous calls in their body
+    # 6. Reachability adjustment
+    #    EXTERNAL_API: public API inference — small bonus for context.
+    #    NOTE: BODY_ONLY 惩罚 (score *= 0.8) 已于 2026-06-12 移除。
+    #    原因：BODY_ONLY 路径已经天然缺失调用链分数（无完整路径加成、
+    #    无跨模块加成），额外惩罚使其结构性低于所有 CHAIN 路径，
+    #    导致高风险 sink（如 pickle.loads 体内检测）被排除出 top 45。
+    #    实验验证：移除后 FAISS load_local → pickle.loads 路径才能进分析。
+    reach = getattr(path, "reachability", Reachability.CHAIN)
+    if reach == Reachability.EXTERNAL_API:
+        score += 0.05  # public API context = slightly more actionable
+
+    # 7. Body-detected bonus — functions with dangerous calls in their body
     #    (e.g. ``dequeue`` containing ``pickle.loads``) are harder to find by
     #    name alone. Give a small boost so they compete better for exploit slots.
     # Body-detected bonus — functions with dangerous calls in their body
     # (e.g. ``dequeue`` containing ``pickle.loads``) are harder to detect by
-    # name alone. The +0.08 boost compensates for the length penalty that
+    # name alone. The +0.15 boost compensates for the length penalty that
     # disproportionately affects deep call chains found via body regex.
     if getattr(path, "body_detected", False):
-        score += 0.08
+        score += 0.15
 
-    return min(score, 1.0)
+    return min(max(score, 0.0), 1.0)
 
 
 def _sink_weight(sink_name: str, body_sink_call: str = "", body_detected: bool = False) -> float:
@@ -293,6 +320,9 @@ def _in_excluded_dir(path: CodeQlPath) -> bool:
     entry point may be a test file even though the real exploit path goes
     through a different (non-static-traceable) entry like a network socket.
     """
+    reach = getattr(path, "reachability", Reachability.CHAIN)
+    if reach in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API):
+        return False
     if getattr(path, "body_detected", False):
         return False
     for node_summary in [path.source_file, path.sink_file]:
@@ -326,6 +356,7 @@ def _to_slice(
         assigned_slot=slot,
         anomaly_reasons=reasons,
         nodes=[n.__dict__ for n in path.nodes] if path.nodes else [],
+        reachability=getattr(path, "reachability", Reachability.CHAIN),
         # code_block is empty here — filled lazily by PathCodeLoader
     )
 
@@ -349,13 +380,20 @@ def _select_explore(
     scored: list[tuple[float, CodeQlPath]] = []
     for path in candidates:
         reasons = is_anomalous(path)
-        if not reasons and not getattr(path, "body_detected", False):
+        reach = getattr(path, "reachability", Reachability.CHAIN)
+        if not reasons and reach == Reachability.CHAIN:
             continue
         # Base score: anomaly count
         base = float(len(reasons))
-        # Body-detected bonus: high-severity body calls are valuable signals
-        if getattr(path, "body_detected", False):
+        # Reachability-aware bonus:
+        #   BODY_ONLY: high-value body call, lower confidence
+        #   EXTERNAL_API: public API, moderate confidence
+        if reach == Reachability.BODY_ONLY:
             base += 0.5  # boost above any non-body path with same anomaly count
+        elif reach == Reachability.EXTERNAL_API:
+            base += 0.8  # public API: more actionable than bare BODY_ONLY
+        elif getattr(path, "body_detected", False):
+            base += 0.5  # fallback: old attribute-based detection
         scored.append((base, path))
 
     scored.sort(key=lambda x: -x[0])
@@ -481,7 +519,8 @@ def summarize_path(slice_: PathSlice) -> str:
     """One-line summary of a path slice."""
     tag = "[EXPLOIT]" if slice_.assigned_slot == "exploit" else "[EXPLORE]"
     reasons = f" ({', '.join(slice_.anomaly_reasons)})" if slice_.anomaly_reasons else ""
+    reach_tag = f" [{slice_.reachability.value}]" if slice_.reachability != Reachability.CHAIN else ""
     return (
-        f"{tag} {slice_.id}: {slice_.source} → {slice_.sink} "
+        f"{tag}{reach_tag} {slice_.id}: {slice_.source} → {slice_.sink} "
         f"score={slice_.score:.2f}{reasons}"
     )

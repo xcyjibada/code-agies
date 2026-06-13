@@ -201,6 +201,10 @@ class AnthropicProvider(LLMProvider):
         anthropic_tools = self._convert_tools(tools)
 
         max_tokens = kwargs.pop("max_tokens", 8192)
+        # Anthropic does not support response_format — it is a DeepSeek/
+        # OpenAI-specific kwarg injected by _call_llm for JSON mode
+        # stability. Silently discard it here.
+        kwargs.pop("response_format", None)
 
         response = self._client.messages.create(
             model=self.model,

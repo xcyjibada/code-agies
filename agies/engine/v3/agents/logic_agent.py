@@ -15,6 +15,9 @@ import re
 from typing import Any
 
 from agies.engine.v3.aggregator.models import AgentPhaseResult
+from agies.engine.v3.agents.structured_evidence import (
+    format_structured_evidence_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +140,7 @@ class LogicAgent:
         readme_summary: str = "",
         code_block: str = "",
         project_type: str = "app",
+        blackboard_knowledge: str = "",
     ) -> str:
         """Build the logic analysis prompt using VulnHuntr-style prompts.
 
@@ -145,6 +149,13 @@ class LogicAgent:
         against "what the code actually does".  Without this frame the prompt
         is just a traditional single-shot vulnerability scan, which suffers
         from library bias and non-determinism.
+
+        Parameters
+        ----------
+        blackboard_knowledge : str
+            Prior knowledge from other analyzed paths that reference the same
+            functions.  Injected after the intent chain so the LLM has cross-path
+            context before reading the base prompt.
         """
         from agies.engine.v3.prompts import get_prompt
 
@@ -157,6 +168,20 @@ class LogicAgent:
         if not intent_chain.strip():
             return base_prompt
 
+        # ── Blackboard cross-path knowledge ──
+        if blackboard_knowledge and blackboard_knowledge.strip():
+            bb_section = (
+                "\n\n"
+                "[PRIOR KNOWLEDGE FROM OTHER PATHS]\n"
+                "The following observations were recorded by earlier analysis paths "
+                "that share functions with this call chain. These are supplementary "
+                "signals — use them as additional evidence, not ground truth.\n"
+                f"{blackboard_knowledge.strip()}\n"
+                "[/PRIOR KNOWLEDGE]\n"
+            )
+        else:
+            bb_section = ""
+
         # Library-mode bias injection — force LLM out of "library code is safe" mode.
         # Only activate for lib projects; app projects get a neutral prompt.
         if project_type == "lib":
@@ -168,10 +193,71 @@ class LogicAgent:
                 "2) Is there a path-builder (joinpath, __truediv__) that could construct malicious paths?\n"
                 "3) Are there missing validation steps that a caller could bypass?\n"
                 "4) Does this function have side effects that could be abused?\n"
-                "REMEMBER: Saying 'this is library code, not vulnerable' is NOT an option.\n\n"
+                "REMEMBER: Saying 'this library code, not vulnerable' is NOT an option.\n\n"
             )
         else:
             lib_mission = ""
+
+        # ── Dual-brain CoT reasoning (op.md Item ④) ──
+        dual_brain_cot = (
+            "\n\n"
+            "Your reasoning_steps output MUST follow a three-perspective structure:\n"
+            '\n'
+            '1. "[DEVELOPER_SPEC]" — What security contract did the developer intend?\n'
+            '   What defenses are ostensibly in place and what were they supposed to do?\n'
+            '\n'
+            '2. "[HACKER_REALITY]" — Looking at the actual code (not the pseudocode),\n'
+            '   what does it *really* do? Is there a gap between the intent and the\n'
+            '   mathematical/data-flow logic? Focus on what the runtime will actually\n'
+            '   execute, not what the developer meant.\n'
+            '\n'
+            '3. "[CONTRADICTION]" — What specific, fatal contradiction exists between\n'
+            '   the developer spec and the hacker reality? This is the vulnerability.\n'
+            '   If none exists, state "no contradiction found".\n'
+            '\n'
+            "This forced perspective-splitting prevents you from deferring to "
+            "developer comments or function names — you must read the actual source."
+        )
+
+        # ── Structured Evidence output instructions ──
+        # These are appended after the base prompt so the LLM knows to
+        # include machine-readable data flow evidence alongside its
+        # free-text analysis.  Downstream agents (Adversary, PoC) parse
+        # these fields programmatically.
+        structured_ev_instructions = (
+            "\n\n"
+            "IMPORTANT — Your JSON output MUST include ALL of these additional fields:\n"
+            '\n'
+            '1. "taint_path": Array of objects tracing how untrusted/attacker-controlled\n'
+            '   data flows from the entry function through each intermediate function\n'
+            '   to the sink. Each object has:\n'
+            '     - "function": function name at this step\n'
+            '     - "param": the parameter/variable that carries tainted data\n'
+            '     - "action": "entry" | "propagate" | "sink"\n'
+            '\n'
+            '2. "reasoning_steps": Array of strings — your step-by-step reasoning.\n'
+            f'{dual_brain_cot.strip()}\n'
+            '\n'
+            '3. "exploitability_verdict": One of:\n'
+            '     - "EXPLOITABLE" — untrusted data reaches the sink with no effective guard\n'
+            '     - "NOT_EXPLOITABLE" — a guard or sanitization definitively blocks it\n'
+            '     - "UNCERTAIN" — cannot determine conclusively\n'
+            '\n'
+            '4. "guards_detected": Array of strings describing any security controls,\n'
+            '   sanitization, or validation between the entry and sink. Empty array if none.\n'
+            '\n'
+            'Example taint_path:\n'
+            '[\n'
+            '  {"function": "add_texts", "param": "texts", "action": "entry"},\n'
+            '  {"function": "add_embeddings", "param": "texts", "action": "propagate"},\n'
+            '  {"function": "_embed", "param": "text", "action": "propagate"},\n'
+            '  {"function": "pickle.loads", "param": "text.encoded", "action": "sink"}\n'
+            ']\n'
+            '\n'
+            "These fields are critical — they enable downstream agents "
+            "(adversary reviewer, PoC generator) to accurately understand "
+            "your analysis without re-reading the source code."
+        )
 
         return (
             "Developer Intent (pseudocode)\n"
@@ -180,8 +266,10 @@ class LogicAgent:
             "Your task: Find contradictions between the developer intent above "
             "and the actual source code below. Does the implementation "
             "introduce security risks that the intent summary doesn't mention?\n"
+            f"{bb_section}"
             f"{lib_mission}"
             f"{base_prompt}"
+            f"{structured_ev_instructions}"
         )
 
     def run(
@@ -212,6 +300,27 @@ class LogicAgent:
         contradictions = data.get("contradictions", []) if isinstance(data, dict) else []
         confidence = data.get("confidence", 0) if isinstance(data, dict) else 0
         analysis = data.get("analysis", "") if isinstance(data, dict) else ""
+
+        # ── Build [STRUCTURED_EVIDENCE] block from LLM fields ──
+        # Appended to the analysis string so downstream agents (Adversary,
+        # PoC) can extract it programmatically.  The analysis field remains
+        # backward-compatible: consumers that don't understand the embedded
+        # JSON block simply ignore it as part of the markdown text.
+        if isinstance(data, dict):
+            taint_path = data.get("taint_path", [])
+            reasoning_steps = data.get("reasoning_steps", [])
+            exploitability_verdict = data.get("exploitability_verdict", "")
+            guards_detected = data.get("guards_detected", [])
+
+            evidence_block = format_structured_evidence_block(
+                taint_path=taint_path if isinstance(taint_path, list) else None,
+                reasoning_steps=reasoning_steps if isinstance(reasoning_steps, list) else None,
+                exploitability_verdict=str(exploitability_verdict) if exploitability_verdict else "",
+                guards_detected=guards_detected if isinstance(guards_detected, list) else None,
+            )
+            if evidence_block:
+                analysis = (analysis + "\n\n" + evidence_block) if analysis else evidence_block
+
         llm_vuln_type = data.get("vuln_type", "") if isinstance(data, dict) else ""
 
         if not isinstance(confidence, int):
