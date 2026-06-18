@@ -46,6 +46,7 @@ class VulnType(str, enum.Enum):
     XXE = "xxe"
     SSTI = "ssti"
     SUSPICIOUS = "suspicious"
+    LANGGRAPH = "langgraph"  # LangGraph-specific architecture-level vulnerabilities (gRPC no-auth, admin truncate, msgpack ext_hook RCE, etc.)
     UNKNOWN = "unknown"
 
 
@@ -61,6 +62,7 @@ VULN_LABELS: dict[VulnType, str] = {
     VulnType.XXE: "XML External Entity (XXE) — XML parser with insecure defaults",
     VulnType.SSTI: "Server-Side Template Injection (SSTI) — template engine with user input",
     VulnType.SUSPICIOUS: "Suspicious — requires analysis (path constructor / logic pattern)",
+    VulnType.LANGGRAPH: "LangGraph Architecture — gRPC/gRPC no-auth, admin truncate, msgpack ext_hook RCE, template injection",
     VulnType.UNKNOWN: "Unknown",
 }
 

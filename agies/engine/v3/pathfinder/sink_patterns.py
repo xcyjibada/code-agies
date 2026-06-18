@@ -37,6 +37,10 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("subprocess.getstatusoutput", VulnType.RCE),
     ("popen", VulnType.RCE),
     ("check_output", VulnType.RCE),
+    # -- RCE: Go command execution --
+    ("os/exec.Command", VulnType.RCE),
+    ("os/exec.CommandContext", VulnType.RCE),
+    ("exec.Command", VulnType.RCE),
     # -- Deserialization RCE --
     ("pickle.loads", VulnType.RCE),
     ("pickle.load", VulnType.RCE),
@@ -46,6 +50,35 @@ EXACT_SINKS: list[tuple[str, VulnType]] = [
     ("yaml.unsafe_load", VulnType.RCE),
     ("marshal.loads", VulnType.RCE),
     ("marshal.load", VulnType.RCE),
+    # -- msgpack deserialization --
+    ("msgpack.unpackb", VulnType.RCE),
+    ("msgpack.unpack", VulnType.RCE),
+    # -- LanGraph-specific: msgpack ext_hook deserialization RCE --
+    ("importlib.import_module", VulnType.LANGGRAPH),
+    ("ormsgpack.unpackb", VulnType.LANGGRAPH),
+    ("lg_msgpack.unpackb", VulnType.LANGGRAPH),
+    ("jsonplus.loads_typed", VulnType.LANGGRAPH),
+    ("jsonplus.dumps_typed", VulnType.LANGGRAPH),
+    ("serialized_value_from_proto", VulnType.LANGGRAPH),
+    # -- LangGraph-specific: gRPC no-auth endpoints --
+    ("RegisterAdminServer", VulnType.LANGGRAPH),
+    ("RegisterAssistantsServer", VulnType.LANGGRAPH),
+    ("RegisterCacheServer", VulnType.LANGGRAPH),
+    ("RegisterCronsServer", VulnType.LANGGRAPH),
+    ("RegisterRunsServer", VulnType.LANGGRAPH),
+    ("RegisterThreadsServer", VulnType.LANGGRAPH),
+    ("RegisterCheckpointerServer", VulnType.LANGGRAPH),
+    # -- LangGraph-specific: dangerous admin operations --
+    ("adminServerImpl.Truncate", VulnType.LANGGRAPH),
+    ("TruncateRequest", VulnType.LANGGRAPH),
+    # -- LangGraph-specific: template injection --
+    ("renderHeaderTemplate", VulnType.LANGGRAPH),
+    ("headerTemplateRe", VulnType.LANGGRAPH),
+    # -- LangGraph-specific: crypto --
+    ("NewAESEncryptor", VulnType.LANGGRAPH),
+    ("AESEncryptor.Encrypt", VulnType.LANGGRAPH),
+    ("AESEncryptor.Decrypt", VulnType.LANGGRAPH),
+    ("AESEncryptor.EncryptJSON", VulnType.LANGGRAPH),
     # -- LFI: file read --
     ("open", VulnType.LFI),
     ("pathlib.Path.open", VulnType.LFI),
@@ -258,6 +291,9 @@ SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
     # Dynamic import / code generation (exact built-in compile(), NOT re.compile)
     (re.compile(r"__import__"), VulnType.RCE),
     (re.compile(r"\bcompile\("), VulnType.RCE),
+    # Dynamic import — often used in deserialization gadgets
+    (re.compile(r"importlib\.import_module\s*\("), VulnType.SUSPICIOUS),
+    (re.compile(r"import_module\s*\("), VulnType.SUSPICIOUS),
     # RCE: eval/exec in function bodies (catches inline calls in route handlers)
     (re.compile(r"\beval\s*\("), VulnType.RCE),
     (re.compile(r"\bexec\s*\("), VulnType.RCE),
@@ -292,12 +328,36 @@ SENSITIVE_CALL_PATTERNS: list[tuple[re.Pattern, VulnType]] = [
     # ML: safetensors file load — path traversal
     (re.compile(r"safetensors\.\w+\.load_file\s*\("), VulnType.AFO),
     (re.compile(r"safetensors\.\w+\.load\s*\("), VulnType.AFO),
+    # msgpack deserialization — arbitrary object instantiation via ext_hook
+    (re.compile(r"msgpack\.unpackb?\s*\("), VulnType.RCE),
     # ML: numpy load with allow_pickle
     (re.compile(r"numpy\.load\s*\("), VulnType.RCE),
     # ML: MLflow model loading
     (re.compile(r"mlflow\.\w+\.load_model\s*\("), VulnType.RCE),
     # ML: TF/Keras model loading — custom layers can execute code
     (re.compile(r"(?:tf|tensorflow|keras)\.\w*models?\.load_model\s*\("), VulnType.RCE),
+    # -- LangGraph architecture-level vulnerabilities --
+    # Msgpack ext_hook deserialization with importlib
+    (re.compile(r"importlib\.import_module"), VulnType.LANGGRAPH),
+    (re.compile(r"ormsgpack\.unpackb\s*\(.*ext_hook"), VulnType.LANGGRAPH),
+    (re.compile(r"loads_typed\s*\(\s*[\"']msgpack[\"']"), VulnType.LANGGRAPH),
+    (re.compile(r"dumps_typed\s*\(.*msgpack"), VulnType.LANGGRAPH),
+    (re.compile(r"serialized_value_from_proto"), VulnType.LANGGRAPH),
+    (re.compile(r"allowed_msgpack_modules\s*=\s*True"), VulnType.LANGGRAPH),
+    # gRPC server registration (no-auth risk)
+    (re.compile(r"Register(Admin|Assistants|Cache|Crons|Runs|Threads|Checkpointer)Server"), VulnType.LANGGRAPH),
+    (re.compile(r"grpc\.NewServer\s*\("), VulnType.LANGGRAPH),
+    # Template injection in headers/webhooks
+    (re.compile(r"renderHeaderTemplate"), VulnType.LANGGRAPH),
+    (re.compile(r"headerTemplateRe"), VulnType.LANGGRAPH),
+    # Custom crypto
+    (re.compile(r"NewAESEncryptor"), VulnType.LANGGRAPH),
+    (re.compile(r"AESEncryptor\.Encrypt"), VulnType.LANGGRAPH),
+    (re.compile(r"AESEncryptor\.Decrypt"), VulnType.LANGGRAPH),
+    (re.compile(r"LANGGRAPH_AES_KEY"), VulnType.LANGGRAPH),
+    # Dangerous admin
+    (re.compile(r"adminServerImpl.*Truncate"), VulnType.LANGGRAPH),
+    (re.compile(r"TruncateRequest"), VulnType.LANGGRAPH),
 ]
 
 

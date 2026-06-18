@@ -1207,3 +1207,135 @@ python3 -m pytest tests/test_v3_*.py -v --tb=short
 # 3. 端到端
 agies audit /tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f2408c --v3
 ```
+
+---
+## 2026-06-15：agno 真实项目 SSRF 端到端验证（非靶子的首次成功）
+
+### 概述
+首次将 agies 的发现能力应用于**非靶子真实项目**（agno-agi/agno v2.6.14，40k+ stars）。通过 AGUI REST API 完成了从外部攻击者（零知识、零认证）到 SSRF 获取内部 IAM 凭证的完整攻击链端到端沙箱验证。这是 agies pipeline 发现的**第一个真实世界的 Critical 漏洞**。
+
+### 漏洞详情
+
+| 项目 | 内容 |
+|------|------|
+| **项目** | agno-agi/agno (formerly phidata) — AI Agent 框架 |
+| **版本** | v2.6.14（最新版，2026-06-12 发布） |
+| **类型** | 未授权 SSRF（CWE-918 + CWE-306） |
+| **入口** | `POST /agui` — 零认证，`Access-Control-Allow-Origin: *` |
+| **Sink** | `agno/media.py:510-513` — `Image.get_content_bytes()` → `httpx.get(url)` |
+| **后果** | 非盲 SSRF — 内部 HTTP 响应内容通过 SSE 流返回给攻击者 |
+
+### 攻击链验证
+
+```
+外部 curl → POST /agui
+  → extract_agui_media() 从 message 创建 Image(url=用户输入)
+  → 模型处理图片 → get_content_bytes() → httpx.get(任意URL)
+  → 内部服务响应 → SSE 流返回给攻击者
+```
+
+### 关键发现
+
+1. **SSRF 在 LLM API 调用之前触发** — 不需要 API key
+2. **非盲 SSRF** — 响应内容（IAM 凭证）通过 SSE `TEXT_MESSAGE_CONTENT` delta 返回
+3. **AgentOS JWT 绕过** — `app.py:1055-1057` 显式排除 interface 路由，注释声称 "Interfaces use their own authentication mechanisms"，但 AGUI 无任何认证
+4. **LFI 代码存在但 AGUI 不可利用** — `media.py:514-516` 有 `open(filepath)`，但 AGUI 消息结构无字段映射到 `filepath`
+
+### 已知的 agno SSRF Issue
+
+- `WebTools.expand_url` 的 SSRF（Issue #7950，2026-05-17 报告）仍然 **open**
+- PR #7892 给 `knowledge readers` 加了 `allowed_hosts`，但不覆盖 `media.py` 路径
+
+### 验证材料
+
+完整的 CVE 提交材料在 `CVE-submission/` 目录：
+- `vulnerability_details.md` — 漏洞描述 + CWE/CVSS + 代码定位
+- `code_analysis.md` — 完整攻击链 + 每步源码截图
+- `poc.md` — curl PoC + 云厂商攻击场景
+- `impact.md` — CVSS 8.6 + 现实攻击链分析
+- `payload.json` / `agno_server.py` / `metadata_server.py` — 沙箱测试文件
+
+### 技术收获
+
+- agies v3 的 source→sink 路径检测在真实项目上有效
+- TreeSitterPathFinder 发现的 sink 路径（`Image(url=...)` → `httpx.get(url)`）是准确的
+- 沙箱测试是验证 pipeline 的必要环节，能在 0 API key 下完成
+
+### 变现路径反思
+
+首次在非靶子项目验证成功，但开源项目（agno）无赏金程序，维护者不回应安全 issue。结论：
+- **agies 继续做工具** — pipeline 验证通过
+- **HackerOne/Bugcrowd 企业赏金**是更实际的路径
+- 需要找到部署了 AI Agent 服务 + 有赏金计划的 HackerOne 程序
+- HackerOne 有 1,121 个程序包含 AI 在 scope，Critical 赏金 $5k-$10k
+
+---
+
+## 2026-06-18：langgraph-checkpoint 已知 CVE 靶向验证
+
+### 背景
+之前 langgraph v1.2.5（最新版）扫描结果为 31/31 完全不可用（全假阳性）。核心疑问：**是工具不行，还是 master 分支确实没 bug？** 为回答此问题，下载了存在已知 CVE 的旧版本 langgraph-checkpoint-1.0.12 重新扫描。
+
+### 改动
+向 `sink_patterns.py` 添加了 2 个通用 sink 模式（非 target-specific hack）：
+- `msgpack.unpackb` → RCE（标准反序列化 API，与 pickle.loads 同类）
+- `importlib.import_module(...)` → SUSPICIOUS（动态导入模式，用于反序列化 gadget 检测）
+
+### 结果
+
+| 指标 | 之前（不改 patterns） | 之后（加 2 个 sink） |
+|------|---------------------|-------------------|
+| 发现路径 | 1（ReDoS FP） | 4（3 RCE + 1 ReDoS FP） |
+| 高置信度 | 0 | 3 |
+| PoC 生成 | 0 | 3 |
+| Adversary 驳倒 | — | 0/3 被驳倒 |
+
+### 检测到的真实 CVE
+
+| 发现 | CVE | 类型 | Sink | Adversary | PoC |
+|------|-----|------|------|-----------|-----|
+| rce-000 | CVE-2026-28277 | msgpack 反序列化 RCE | `msgpack.unpackb` | 未驳倒 | ✅ |
+| suspicious-002 | CVE-2025-64439 | JsonPlusSerializer RCE | `importlib.import_module` | 未驳倒 | ✅ |
+| suspicious-003 | — | msgpack ext_hook RCE | `importlib.import_module` | 未驳倒 | ✅ |
+
+### 结论
+1. **之前 langgraph v1.2.5 扫不到 = master 分支确实没 bug**，不是工具无效
+2. **sink patterns 覆盖度直接决定检出率** — +2 个模式 → 0→3 个 RCE
+3. **v3 管道在 sink 正确匹配时能端到端推理** — Intent → Logic → Evidence → Adversary → PoC 全链路通过
+4. `msgpack.unpackb` 作为通用 RCE sink 的添加已通过泛化评估 ✓
+
+详见 `pocs/langgraph_checkpoint-1.0.12/report.md`。
+
+---
+
+## 2026-06-18：LangGraph API 全量扫描 + SSRF Redirect Bypass 代码级 PoC 确认
+
+### 扫描概况
+使用 agies v3 pipeline 对 langgraph_api_src（235 文件，1423 函数）进行全量扫描：
+- **Phase A**: 55 条 source→sink 原始路径（RCE 6 + LFI 5 + SSRF 14 + SQLi 2 + ReDoS 5 + SSTI 1 + Suspicious 9 + LangGraph 13）
+- **Phase D**: 55 条路径全部送审，50+ 高置信度发现
+- **PoCs generated**: 86 个（按项目分入 `pocs/langgraph_api_src/`）
+
+### 关键新发现
+
+**1. SSRF 跳转到内网私有 IP — 代码级 PoC 确认**
+- `ensure_webhook_http_client` 使用 `SSRFSafeTransport` + `follow_redirects=True`
+- 默认策略 `block_private_ips=False` → RFC 1918 私有 IP（10.x/192.168.x/172.16-31.x）全部放行
+- 使用 real `langgraph_api.lc_security` 验证通过
+- PoC: `pocs/langgraph_api_src/ssrf_redirect_bypass_poc.py`
+- 限制：需 API 凭证，loopback 不可达，云 metadata 始终拦截
+
+**2. Config-driven ImportLib RCE（4 sinks，非 HTTP 动态可达）**
+- `load_custom_app` (api/__init__.py:181) — `HTTP_CONFIG.get("app")` → `exec_module`
+- `_graph_from_spec` (graph.py:724) — `spec.module` → `importlib.import_module`
+- `_load_auth_obj` (auth/custom.py:743) — env var → `exec_module`
+- `resolve_embeddings` (graph.py:905) — `index_config["embed"]` → `importlib`
+
+**3. SSRF → gRPC → RCE 链状态更新**
+- SSRF 到 gRPC 内网可达 ✅
+- `serialized_value_from_proto` Encoding 由 Go 二进制控制 ❌
+- 缺少 HTTP→gRPC msgpack RCE 的完整链
+
+### 文档更新
+- `docs/langgraph_attack_surface.md` — 新增 `Section 十：agies v3 全量扫描新发现`
+

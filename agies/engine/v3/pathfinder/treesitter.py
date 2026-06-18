@@ -65,6 +65,7 @@ class TreeSitterPathFinder:
         *,
         max_depth: int = _MAX_BACKTRACK_DEPTH,
         excluded_dirs: set[str] | None = None,
+        extra_sinks: dict[str, VulnType] | None = None,
     ) -> None:
         self._project_path = os.path.abspath(project_path)
         self._max_depth = max_depth
@@ -75,6 +76,21 @@ class TreeSitterPathFinder:
         }
         self._index: FunctionIndex | None = None
         self._cpg_builder: Any = None  # CpgBuilder (lazy, optional)
+        self._extra_sinks: dict[str, VulnType] = extra_sinks or {}
+        """Phase 0 LLM-discovered sinks — checked when classify_sink() returns None."""
+
+    # ------------------------------------------------------------------
+    # Extra sinks from Phase 0
+    # ------------------------------------------------------------------
+
+    def set_extra_sinks(self, sinks: dict[str, VulnType]) -> None:
+        """Inject Phase 0 LLM-discovered sinks.
+
+        These are checked in ``run_all()`` after the static ``classify_sink()``
+        returns ``None``, allowing dynamic sink discovery to augment the
+        hand-maintained pattern list.
+        """
+        self._extra_sinks = dict(sinks)
 
     # ------------------------------------------------------------------
     # Public API
@@ -229,6 +245,8 @@ class TreeSitterPathFinder:
         sinks_by_type: dict[VulnType, list[SourceFunction]] = defaultdict(list)
         for fn in index.funcs:
             vtype = classify_sink(fn.name)
+            if vtype is None and self._extra_sinks:
+                vtype = self._extra_sinks.get(fn.name)
             if vtype is not None:
                 sinks_by_type[vtype].append(fn)
 
@@ -321,6 +339,8 @@ class TreeSitterPathFinder:
         _max_body_per_type = 20
         for fn in index.funcs:
             if classify_sink(fn.name) is not None:
+                continue
+            if self._extra_sinks and fn.name in self._extra_sinks:
                 continue
             if not fn.body:
                 continue
@@ -419,6 +439,7 @@ class TreeSitterPathFinder:
         sinks = [
             fn for fn in index.funcs
             if classify_sink(fn.name) == vuln_type
+            or (self._extra_sinks and self._extra_sinks.get(fn.name) == vuln_type)
         ]
 
         if not sinks:

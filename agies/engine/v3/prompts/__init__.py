@@ -18,6 +18,7 @@ from agies.engine.v3.prompts.redos import build_redos_prompt
 from agies.engine.v3.prompts.xxe import build_xxe_prompt
 from agies.engine.v3.prompts.ssti import build_ssti_prompt
 from agies.engine.v3.prompts.suspicious import build_suspicious_prompt
+from agies.engine.v3.prompts.langgraph import build_langgraph_prompt
 from agies.engine.v3.prompts.readme_summary import build_readme_prompt
 
 PROMPT_BUILDERS = {
@@ -32,6 +33,7 @@ PROMPT_BUILDERS = {
     "xxe": build_xxe_prompt,
     "ssti": build_ssti_prompt,
     "suspicious": build_suspicious_prompt,
+    "langgraph": build_langgraph_prompt,
 }
 
 

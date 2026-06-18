@@ -34,6 +34,7 @@ from agies.engine.v3.agents.poc_agent import PoCAgent
 from agies.engine.v3.agents.merge import MergeLayer
 from agies.engine.v3.agents.path_code_loader import PathCodeLoader
 from agies.engine.v3.agents.evidence_checker import EvidenceChecker
+from agies.engine.v3.prompts.stdlib_guides import get_stdlib_guide
 from agies.engine.v3.agents.bridge_verifier import (
     BridgeVerifier, BridgeAnnotation, scan_path_bridge_evidence,
 )
@@ -61,10 +62,11 @@ def run_v3_pipeline(
     use_codeql: bool = False,
     max_exploit: int = 30,
     max_explore: int = 15,
-    max_intent_workers: int = 5,
+    max_intent_workers: int = 8,
     exclude_test: bool = False,
     project_type: str = "auto",
     consensus: bool = False,
+    all_paths: bool = False,
 ) -> None:
     """Run the complete v3 pipeline against *target*.
 
@@ -93,6 +95,9 @@ def run_v3_pipeline(
     project_type : str
         ``"auto"`` (default) — auto-detect, ``"app"`` — web application,
         ``"lib"`` — library / framework.
+    all_paths : bool
+        When True, skip Phase B path filtering and send ALL discovered
+        paths to Phase D analysis (intended for high-value targets).
     """
     console = Console() if _HAS_RICH else None
     target = os.path.abspath(target)
@@ -116,9 +121,9 @@ def run_v3_pipeline(
     results: list[QueryResult] = []
     function_index = None
     if use_codeql:
-        results = _run_codeql_discovery(console, target, codeql_bin, db_dir, verbose)
+        results = _run_codeql_discovery(console, target, codeql_bin, db_dir, verbose, llm=llm)
     else:
-        results, function_index = _run_treesitter_discovery(console, target, verbose)
+        results, function_index = _run_treesitter_discovery(console, target, verbose, llm=llm)
 
     if not results:
         _print(console, "  [yellow]No path discovery results.[/yellow]")
@@ -134,16 +139,59 @@ def run_v3_pipeline(
         _print(console, "  [dim]No dangerous sinks found. Nothing to analyze.[/dim]")
         return
 
-    all_paths = [p for r in results for p in r.paths]
-    sort_result = select_top_k(
-        all_paths,
-        max_exploit=max_exploit,
-        max_explore=max_explore,
-        exclude_test=exclude_test,
-    )
+    all_paths_list = [p for r in results for p in r.paths]
+
+    if all_paths:
+        _print(console, f"  [yellow]--all-paths: sending all {len(all_paths_list)} paths to analysis[/yellow]")
+        # Build PathSlices for ALL paths — bypass select_top_k() filtering
+        from agies.engine.v3.slicer.models import PathSlice
+        from agies.engine.v3.slicer.sorter import score_path
+        from agies.engine.v3.slicer.sorter import is_anomalous as _check_anomaly
+        exploit_slices: list[PathSlice] = []
+        explore_slices: list[PathSlice] = []
+        for i, p in enumerate(all_paths_list):
+            sc = score_path(p)
+            slot = "exploit"
+            reasons = _check_anomaly(p)
+            if reasons:
+                slot = "explore"
+            nodes = [n.__dict__ for n in p.nodes] if p.nodes else []
+            ps = PathSlice(
+                id=f"{p.vuln_type.value}-{i:03d}",
+                vuln_type=p.vuln_type,
+                source=p.source,
+                source_file=f"{p.source_file}:{p.source_line}",
+                sink=p.sink,
+                sink_file=f"{p.sink_file}:{p.sink_line}",
+                score=sc,
+                is_full_path=p.is_full_path,
+                has_validation=False,  # skip validation bonus in bulk mode
+                assigned_slot=slot,
+                anomaly_reasons=reasons,
+                nodes=nodes,
+                reachability=getattr(p, "reachability", Reachability.CHAIN),
+            )
+            if slot == "exploit":
+                exploit_slices.append(ps)
+            else:
+                explore_slices.append(ps)
+
+        sort_result = SortResult(
+            exploit=exploit_slices,
+            explore=explore_slices,
+            total_input=len(all_paths_list),
+            total_output=len(all_paths_list),
+        )
+    else:
+        sort_result = select_top_k(
+            all_paths_list,
+            max_exploit=max_exploit,
+            max_explore=max_explore,
+            exclude_test=exclude_test,
+        )
 
     body_only_count = sum(
-        1 for p in all_paths
+        1 for p in all_paths_list
         if getattr(p, "reachability", Reachability.CHAIN) in
         (Reachability.BODY_ONLY, Reachability.EXTERNAL_API)
     )
@@ -162,7 +210,7 @@ def run_v3_pipeline(
     # raises FrozenInstanceError.  Use slim() which rebuilds the funcs
     # list with body="" and clears source file texts (frees ~60-80%).
     results.clear()
-    all_paths.clear()
+    all_paths_list.clear()
     if function_index is not None:
         function_index.slim()
 
@@ -203,7 +251,7 @@ def run_v3_pipeline(
 
     # Initialize token budget counter — defaults to 1M tokens, use
     # AGIES_TOKEN_BUDGET env var to override.  0 = unlimited.
-    token_budget = int(os.environ.get("AGIES_TOKEN_BUDGET", "1000000"))
+    token_budget = int(os.environ.get("AGIES_TOKEN_BUDGET", "0"))
     _init_token_counter(budget=token_budget)
     if token_budget > 0:
         _print(
@@ -294,6 +342,7 @@ def run_v3_pipeline(
 
 def _run_treesitter_discovery(
     console: Any, target: str, verbose: bool,
+    llm: Any = None,
 ) -> tuple[list[QueryResult], Any]:
     from agies.engine.v3.pathfinder import TreeSitterPathFinder
     _print(console, "  [cyan]Backend: tree-sitter[/cyan]")
@@ -303,6 +352,20 @@ def _run_treesitter_discovery(
         finder.build_index()
 
     _print(console, f"  Functions: {len(finder.index.funcs) if finder.index else 0}")
+
+    # Phase 0: LLM Sink Discovery (optional — augments sink_patterns.py)
+    if llm is not None and finder.index is not None:
+        try:
+            from agies.engine.v3.pathfinder.sink_discovery import discover_sinks
+            with _status(console, "Phase 0: LLM sink discovery..."):
+                extra_sinks = discover_sinks(llm, finder.index)
+            if extra_sinks:
+                finder.set_extra_sinks(extra_sinks)
+                _print(console, f"  Phase 0: {len(extra_sinks)} LLM-discovered sink(s)")
+                for name, vt in sorted(extra_sinks.items()):
+                    _print(console, f"    {name} -> {vt.value}")
+        except Exception as exc:
+            _print(console, f"  [yellow]Phase 0 skipped: {exc}[/yellow]")
 
     with _status(console, "Discovering sink paths..."):
         results = finder.run_all()
@@ -316,6 +379,7 @@ def _run_treesitter_discovery(
 
 def _run_codeql_discovery(
     console: Any, target: str, codeql_bin: str, db_dir: str, verbose: bool,
+    llm: Any = None,
 ) -> list[QueryResult]:
     from agies.engine.v3.codeql.query import CodeQLQueryRunner
     _print(console, "  [cyan]Backend: CodeQL[/cyan]")
@@ -324,7 +388,7 @@ def _run_codeql_discovery(
         codeql_bin = CodeQLQueryRunner._find_codeql()
     if not codeql_bin:
         _print(console, "  [yellow]CodeQL not found, falling back to tree-sitter.[/yellow]")
-        results, _ = _run_treesitter_discovery(console, target, verbose)
+        results, _ = _run_treesitter_discovery(console, target, verbose, llm=llm)
         return results
 
     runner = CodeQLQueryRunner(
@@ -339,7 +403,7 @@ def _run_codeql_discovery(
         except Exception as exc:
             _print(console, f"  [red]CodeQL error: {exc}[/red]")
             _print(console, "  [yellow]Falling back to tree-sitter.[/yellow]")
-            results, _ = _run_treesitter_discovery(console, target, verbose)
+            results, _ = _run_treesitter_discovery(console, target, verbose, llm=llm)
             return results
 
     _print(console, runner.summary_text(results))
@@ -396,16 +460,30 @@ def _run_phase_d(
     lists), creates a fallback pseudo-node from the sink metadata.
     Routes 4-6 confidence findings to verification with call graph context
     for potential upgrade.
+
+    Parallel execution via ThreadPoolExecutor — each slice in its own thread,
+    results sorted by path_id at the end.
     """
     project_path = os.path.abspath(target) if target else ""
     loader = PathCodeLoader(project_path=project_path, blackboard=blackboard)
     intent_agent = IntentAgent()
     logic_agent = LogicAgent()
     merge_layer = MergeLayer()
-    all_results: list[AgentPhaseResult] = []
 
-    for i, slice_ in enumerate(sort_result.all_slices):
-        _print(console, f"  [{i+1}/{len(sort_result.all_slices)}] {slice_.id} ({slice_.sink})")
+    _print_lock = threading.Lock()
+
+    def _safe_print(msg: str) -> None:
+        with _print_lock:
+            if console:
+                console.print(msg)
+            else:
+                print(msg)
+
+    total = len(sort_result.all_slices)
+
+    def _process_one(slice_: PathSlice, idx: int) -> AgentPhaseResult | None:
+        """Process one slice -- returns result or None (skipped)."""
+        _safe_print(f"  [{idx+1}/{total}] {slice_.id} ({slice_.sink})")
 
         # Build nodes: use real path nodes if available, otherwise create
         # a pseudo-node from the sink metadata so Intent Agent has code.
@@ -421,12 +499,8 @@ def _run_phase_d(
         load_result = loader.prepare(slice_.id, nodes, readme_summary=readme_summary)
 
         if not load_result.tasks and not load_result.cached:
-            _print(console, f"    [dim]No functions to analyze.[/dim]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [dim]No functions to analyze.[/dim]")
+            return None
 
         # Execute Intent Agent tasks (sequentially for deterministic order)
         all_intent_results: list[IntentResult] = list(load_result.cached)
@@ -438,24 +512,27 @@ def _run_phase_d(
                 all_intent_results.extend(results)
                 loader.register_intent_results(results)
             else:
-                _print(console, f"    [red]LLM call failed for batch {task.batch_id}[/red]")
+                _safe_print(f"    [red]LLM call failed for batch {task.batch_id}[/red]")
 
         # Merge into pseudocode chain (with pass_through for dangerous functions)
         intent_chain = merge_layer.merge(all_intent_results)
 
         if not intent_chain.strip():
-            _print(console, f"    [dim]Empty intent chain, skipping Logic Agent.[/dim]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [dim]Empty intent chain, skipping Logic Agent.[/dim]")
+            return None
 
         # Build raw source block (includes companion methods + aliases for context)
         code_block = _build_code_block(
             nodes, source_controllability_proof=slice_.source_controllability_proof,
             reachability=slice_.reachability,
         )
+
+        # ── Inject stdlib behavioral guide by vulnerability type ──
+        # Language-level pitfalls (os.path.join absolute path truncation,
+        # lxml XXE defaults, etc.) that the LLM may not recall precisely.
+        stdlib_guide = get_stdlib_guide(slice_.vuln_type.value)
+        if stdlib_guide:
+            code_block = code_block + "\n\n" + stdlib_guide
 
         # ── Blackboard cross-path knowledge ──
         # Collect prior knowledge for every function in this path's call chain.
@@ -479,12 +556,8 @@ def _run_phase_d(
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
-            _print(console, f"    [red]Logic Agent LLM call failed[/red]")
-            all_results.append(AgentPhaseResult(
-                path_id=slice_.id, vuln_type=slice_.vuln_type.value,
-                score=slice_.score, is_vulnerable=False,
-            ))
-            continue
+            _safe_print(f"    [red]Logic Agent LLM call failed[/red]")
+            return None
 
         result = logic_agent.run(
             path_id=slice_.id,
@@ -493,9 +566,9 @@ def _run_phase_d(
             intent_chain=intent_chain,
             llm_response=logic_response,
         )
-        all_results.append(result)
         blackboard.record_phase_result(result)
-        _print_phase_d_result(console, result)
+        with _print_lock:
+            _print_phase_d_result(console, result)
 
         # ── Record per-function knowledge back to Blackboard ──
         # When a Logic Agent discovers contradictions or high-confidence
@@ -533,13 +606,15 @@ def _run_phase_d(
 
         # Conditional consensus voting (grey zone, 4-7)
         if consensus:
-            result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
-            if result is not all_results[-1]:
-                all_results[-1] = result
-                _print_phase_d_result(console, result)
+            with _print_lock:
+                c_result = _run_consensus_vote(llm, logic_agent, result, logic_prompt, console)
+            if c_result is not result:
+                result = c_result
+                with _print_lock:
+                    _print_phase_d_result(console, result)
 
         # Adversary Agent: try to rebut before PoC generation
-        if result.is_vulnerable or result.confidence >= 7:
+        if result.is_vulnerable:
             adversary = AdversaryAgent()
             contradiction_desc = (
                 result.contradictions[0].get("contradiction_type", "")
@@ -547,25 +622,27 @@ def _run_phase_d(
                 + result.contradictions[0].get("actual", "")
                 if result.contradictions else ""
             )
-            with _status(console, f"  Adversary: {slice_.id}..."):
-                adv_result = adversary.run(
-                    vuln_type=slice_.vuln_type.value,
-                    analysis=result.analysis,
-                    contradiction=contradiction_desc,
-                    code_block=code_block,
-                    llm_call=lambda p: _call_llm(llm, p, console),
-                )
+            _safe_print(f"    Adversary: {slice_.id}...")
+            adv_result = adversary.run(
+                vuln_type=slice_.vuln_type.value,
+                analysis=result.analysis,
+                contradiction=contradiction_desc,
+                code_block=code_block,
+                llm_call=lambda p: _call_llm(llm, p, console),
+            )
 
             if adv_result["rebutted"]:
-                # BODY_ONLY/EXTERNAL_API override: deterministic evidence exists
-                # in function body despite no project-internal call chain.
-                if slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API):
-                    _print(console, f"    [yellow]⚠ BODY_ONLY -- rebuttal overridden (body evidence, no call chain)[/yellow]")
+                # BODY_ONLY/EXTERNAL_API override: only override when there's
+                # static source controllability evidence (HTTP controller detected),
+                # so the adversary's "no caller" reasoning is effectively moot.
+                if (slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API)
+                        and getattr(slice_, "source_controllability_proof", None)):
+                    _safe_print(f"    [yellow]⚠ BODY_ONLY override (source controllability proof)[/yellow]")
                     _run_poc = True
                 else:
-                    _print(console, f"    [red]✗ rebutted[/red]")
+                    _safe_print(f"    [red]✗ rebutted[/red]")
                     _safe_r = adv_result['rebuttal'].replace('[', r'\[')
-                    _print(console, f"      reason: {_safe_r}")
+                    _safe_print(f"      reason: {_safe_r}")
                     result = AgentPhaseResult(
                         path_id=result.path_id, vuln_type=result.vuln_type,
                         score=result.score, contradictions=result.contradictions,
@@ -576,34 +653,32 @@ def _run_phase_d(
                         rebutted=True,
                         rebuttal=adv_result["rebuttal"],
                     )
-                    all_results[-1] = result
                     _run_poc = False
             else:
-                _print(console, f"    [green]✓ not rebutted[/green]")
+                _safe_print(f"    [green]✓ not rebutted[/green]")
                 _safe_w = adv_result.get('weakness', '').replace('[', r'\[')
-                _print(console, f"      weak point: {_safe_w}")
+                _safe_print(f"      weak point: {_safe_w}")
                 _run_poc = True
 
             if _run_poc:
-                # PoC Agent: write exploit script
-                with _status(console, f"  PoC Agent: {slice_.id}..."):
-                    poc = PoCAgent(
-                        output_dir=os.path.join(os.getcwd(), "pocs"),
-                        target=target,
-                    )
-                    poc_path = poc.run(
-                        path_id=slice_.id,
-                        vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
-                        analysis=result.analysis,
-                        contradiction=contradiction_desc,
-                        code_block=code_block,
-                        weakness=adv_result.get("weakness", ""),
-                        sink_name=slice_.sink,
-                        # PoC prompts output Python code in fenced blocks, not JSON
-                        llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
-                    )
+                _safe_print(f"    PoC Agent: {slice_.id}...")
+                poc = PoCAgent(
+                    output_dir=os.path.join(os.getcwd(), "pocs"),
+                    target=target,
+                )
+                poc_path = poc.run(
+                    path_id=slice_.id,
+                    vuln_type=result.actual_vuln_type or slice_.vuln_type.value,
+                    analysis=result.analysis,
+                    contradiction=contradiction_desc,
+                    code_block=code_block,
+                    weakness=adv_result.get("weakness", ""),
+                    sink_name=slice_.sink,
+                    # PoC prompts output Python code in fenced blocks, not JSON
+                    llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
+                )
                 if poc_path:
-                    _print(console, f"    [green]📄 PoC: {poc_path}[/green]")
+                    _safe_print(f"    [green]📄 PoC: {poc_path}[/green]")
                     result = AgentPhaseResult(
                         path_id=result.path_id, vuln_type=result.vuln_type,
                         score=result.score, contradictions=result.contradictions,
@@ -612,21 +687,20 @@ def _run_phase_d(
                         is_vulnerable=result.is_vulnerable,
                         poc_path=poc_path,
                     )
-                    all_results[-1] = result
 
         # Evidence Checker: always run code-level pattern matching
         checker = EvidenceChecker(
             llm_call_fn=lambda p: _call_llm(llm, p, console),
             blackboard=blackboard,
         )
-        with _status(console, f"  Evidence: {slice_.id}..."):
-            evidence = checker.run(result, code_block, slice_.nodes)
+        _safe_print(f"    Evidence: {slice_.id}...")
+        evidence = checker.run(result, code_block, slice_.nodes)
 
         if evidence.evidence_found:
-            _print(console, f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
+            _safe_print(f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
             if evidence.poc:
-                _print(console, f"      PoC: {evidence.poc[:150]}...")
-            # Boost confidence from code-level evidence
+                _safe_print(f"      PoC: {evidence.poc[:150]}...")
+            # Boost confidence but don't override LLM's vulnerability judgment
             result = AgentPhaseResult(
                 path_id=result.path_id,
                 vuln_type=result.vuln_type,
@@ -634,36 +708,36 @@ def _run_phase_d(
                 contradictions=result.contradictions,
                 confidence=max(result.confidence, 5),
                 analysis=evidence.analysis or result.analysis,
-                is_vulnerable=True,
+                is_vulnerable=result.is_vulnerable,
             )
-            all_results[-1] = result
 
-            # Verification (only for evidence-confirmed findings)
-            sink_name = slice_.sink
-            sink_file = slice_.sink_file.split(":")[0]
-            call_context = _build_call_context(sink_name, sink_file, function_index)
-            with _status(console, f"  Verifying {slice_.id}..."):
+            # Verification (only for evidence-confirmed findings,
+            # but only if LLM already considers it vulnerable)
+            if result.is_vulnerable:
+                sink_name = slice_.sink
+                sink_file = slice_.sink_file.split(":")[0]
+                call_context = _build_call_context(sink_name, sink_file, function_index)
+                _safe_print(f"    Verifying {slice_.id}...")
                 verify_prompt = logic_agent.create_verify_prompt(
                     result, code_block=code_block, call_context=call_context,
                 )
                 verify_response = _call_llm(llm, verify_prompt, console)
 
-            if verify_response:
-                verified = logic_agent.verify(
-                    result, code_block=code_block, llm_response=verify_response,
-                )
-                all_results[-1] = verified
-                if result.confidence >= 7:
-                    if not verified.is_vulnerable:
-                        _print(console, f"    [yellow]↓ verification downgraded (7→{verified.confidence})[/yellow]")
-                else:
-                    if verified.is_vulnerable or verified.confidence >= 7:
-                        _print(console, f"    [green]↑ verification upgraded (→{verified.confidence})[/green]")
+                if verify_response:
+                    verified = logic_agent.verify(
+                        result, code_block=code_block, llm_response=verify_response,
+                    )
+                    result = verified
+                    if verified.is_vulnerable:
+                        _safe_print(f"    [green]✓ verification confirmed[/green]")
                     else:
-                        _print(console, f"    [dim]verification: {verified.confidence}/10 — keeping as interesting[/dim]")
+                        _safe_print(f"    [yellow]↓ verification downgraded (→{verified.confidence})[/yellow]")
+            else:
+                _safe_print(f"    [dim](skipped verification — LLM judged safe)[/dim]")
         elif evidence.matches:
-            _print(console, f"    [yellow]? pattern match, LLM skeptical ({len(evidence.matches)} match(es))[/yellow]")
-            # Deterministic evidence: pattern matched regardless of LLM opinion
+            _safe_print(f"    [yellow]? pattern match, LLM skeptical ({len(evidence.matches)} match(es))[/yellow]")
+            # Deterministic evidence: pattern matched, but LLM is skeptical.
+            # Boost confidence for reporting, don't override vulnerability judgment.
             pattern_summary = "; ".join(
                 f"{m.function_name or '?'}:{m.line_content[:60]}"
                 for m in evidence.matches[:5]
@@ -681,12 +755,31 @@ def _run_phase_d(
                     "matches": f"{len(evidence.matches)} pattern(s)",
                     "patterns": pattern_summary,
                 }],
-                confidence=max(result.confidence, 7),
+                confidence=max(result.confidence, 5),
                 analysis=deterministic_analysis,
-                is_vulnerable=True,
+                is_vulnerable=result.is_vulnerable,
             )
-            all_results[-1] = result
 
+        return result
+
+    # Parallel execution via ThreadPoolExecutor
+    all_results: list[AgentPhaseResult] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        fut_map = {
+            executor.submit(_process_one, slice_, i): (i, slice_)
+            for i, slice_ in enumerate(sort_result.all_slices)
+        }
+        for future in as_completed(fut_map):
+            i, slice_ = fut_map[future]
+            try:
+                r = future.result()
+                if r is not None:
+                    all_results.append(r)
+            except Exception as e:
+                logger.error("Slice %s failed: %s", slice_.id, e)
+                _safe_print(f"    [red]Error: {slice_.id}: {e}[/red]")
+
+    all_results.sort(key=lambda r: int(r.path_id.rsplit("-", 1)[-1]))
     return all_results
 
 
@@ -761,6 +854,11 @@ def _run_phase_d_lib(
             code_block, source_name=slice_.source, sink_name=slice_.sink,
         )
 
+        # ── Inject stdlib behavioral guide by vulnerability type ──
+        stdlib_guide = get_stdlib_guide(slice_.vuln_type.value)
+        if stdlib_guide:
+            code_block = code_block + "\n\n" + stdlib_guide
+
         # ── Blackboard cross-path knowledge ──
         current_funcs = {
             node.get("function_name", "")
@@ -825,7 +923,7 @@ def _run_phase_d_lib(
         if bridge_result:
             result = bridge_result
 
-        if result.is_vulnerable or result.confidence >= 7:
+        if result.is_vulnerable:
             adversary = AdversaryAgent()
             contradiction_desc = (
                 result.contradictions[0].get("contradiction_type", "")
@@ -843,8 +941,9 @@ def _run_phase_d_lib(
 
             _run_poc = False
             if adv_result["rebutted"]:
-                if slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API):
-                    _safe_print(f"    [yellow]⚠ BODY_ONLY -- rebuttal overridden (body evidence, no call chain)[/yellow]")
+                if (slice_.reachability in (Reachability.BODY_ONLY, Reachability.EXTERNAL_API)
+                        and getattr(slice_, "source_controllability_proof", None)):
+                    _safe_print(f"    [yellow]⚠ BODY_ONLY override (source controllability proof)[/yellow]")
                     _run_poc = True
                 else:
                     _safe_print(f"    [red]x rebutted[/red]")
@@ -909,7 +1008,7 @@ def _run_phase_d_lib(
                 score=result.score, contradictions=result.contradictions,
                 confidence=max(result.confidence, 5),
                 analysis=evidence.analysis or result.analysis,
-                is_vulnerable=True,
+                is_vulnerable=result.is_vulnerable,
             )
         elif evidence.matches:
             _safe_print(f"    [cyan]? pattern matched ({len(evidence.matches)} match(es))[/cyan]")
@@ -928,9 +1027,9 @@ def _run_phase_d_lib(
                     "matches": f"{len(evidence.matches)} pattern(s)",
                     "patterns": pattern_summary,
                 }],
-                confidence=max(result.confidence, 7),
+                confidence=max(result.confidence, 5),
                 analysis=deterministic_analysis,
-                is_vulnerable=True,
+                is_vulnerable=result.is_vulnerable,
             )
         else:
             _safe_print(f"    [dim]No code-level evidence patterns.[/dim]")

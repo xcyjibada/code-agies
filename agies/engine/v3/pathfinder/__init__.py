@@ -16,11 +16,13 @@ from agies.engine.v3.pathfinder.sink_patterns import (
     classify_sensitive_body,
     KNOWN_SINK_NAMES,
 )
+from agies.engine.v3.pathfinder.sink_discovery import discover_sinks
 from agies.engine.v3.pathfinder.treesitter import TreeSitterPathFinder
 
 __all__ = [
     "TreeSitterPathFinder",
     "classify_sink",
     "classify_sensitive_body",
+    "discover_sinks",
     "KNOWN_SINK_NAMES",
 ]
