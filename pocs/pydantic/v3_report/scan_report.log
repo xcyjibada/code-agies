@@ -1,0 +1,462 @@
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 1866
+    Remote Code Execution: 7 sink(s)
+    Local File Inclusion: 5 sink(s)
+    SQL Injection: 5 sink(s)
+    ReDoS (Regular Expression DoS): 20 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 4 sink(s)
+
+Phase B: Slice Sorting (41 raw paths)
+  Body-detected orphans: 8 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: redos-000 to_camel score=0.56 (non_std_sink, unusual_naming)
+    Explore: redos-001 is_classvar_annotation score=0.56 (non_std_sink, 
+unusual_naming)
+    Explore: redos-002 from_name_error score=0.52 (non_std_sink, unusual_naming)
+  Project type: lib
+
+Phase C: README Understanding
+  (skipped — library mode)
+
+Phase D: Library Analysis (45 slices)
+  [1/45] lfi-000 (parse_toml)
+  [2/45] rce-001 (get_type_hints)
+  [3/45] redos-002 (ascii_domain_regex)
+  [4/45] sqli-003 (execute)
+  [5/45] suspicious-004 (_import_string_logic)
+    ✓ 0/10 — safe
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-000...
+    x rebutted
+      reason: The finding claims LFI via path traversal in path-builder 
+functions, but the provided source code does not contain any path-builder 
+functions (e.g., os.path.join, pathlib). The sink function `parse_toml` opens a 
+file path (`config_file`) that is not shown to be attacker-controlled. The entry
+point `__init__` in pydantic/json_schema.py does not accept any user-controlled 
+parameters that flow to `parse_toml`. The data flow annotations indicate static 
+analysis could not trace variable propagation, and the call chain from 
+`__init__` to `parse_toml` is not demonstrated. The code is from pydantic 
+library internals, not a user-facing endpoint. The simulated wrapper is 
+artificial and not part of the actual library. No untrusted input reaches the 
+sink.
+    Evidence: lfi-000...
+    ? 10/10 — interesting
+    Evidence: redos-002...
+    ✓ 0/10 — safe
+    Evidence: rce-001...
+    ? pattern matched (4 match(es))
+  [6/45] sqli-005 (call)
+    ? pattern matched (1 match(es))
+  [7/45] sqli-006 (call)
+    ? pattern matched (9 match(es))
+  [8/45] redos-007 (int_domain_regex)
+    ✓ 0/10 — safe
+    Evidence: sqli-003...
+    ? pattern matched (3 match(es))
+  [9/45] redos-008 (_check_protected_namespaces)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: suspicious-004...
+    ? 10/10 — interesting
+    Evidence: redos-007...
+    ✓ 0/10 — safe
+    Evidence: sqli-005...
+    x rebutted
+      reason: The finding claims that `_import_string_logic` is reachable via 
+`find_validators` with attacker-controlled input, but the data flow trace is 
+flawed. The entry point `find_validators` expects a type (class), not a 
+user-controlled string. The call chain from `find_validators` to 
+`_import_string_logic` involves `make_dataclass_validator`, `dataclass`, 
+`__setattr__`, `validate`, `update_wrapper_attributes`, `wrapper`, and 
+`import_string`. However, `import_string` is only called from `wrapper` with 
+hardcoded paths from `MOVED_IN_V2`, `DEPRECATED_MOVED_IN_V2`, and 
+`REDIRECT_TO_V1` dictionaries, not from user input. The `wrapper` function is 
+part of a migration module and is not invoked during normal validation of 
+user-supplied data. Therefore, an attacker cannot control the `dotted_path` 
+argument to `_import_string_logic`. The vulnerability is not exploitable.
+    Evidence: suspicious-004...
+    No code-level evidence patterns.
+  [10/45] redos-009 (_validate)
+    ? pattern matched (1 match(es))
+  [11/45] rce-010 (load_str_bytes)
+    ? pattern matched (1 match(es))
+  [12/45] rce-011 (in_ipython)
+    ✓ 0/10 — safe
+    Evidence: sqli-006...
+    ? pattern matched (1 match(es))
+  [13/45] redos-012 (normalize_name)
+    ? 10/10 — interesting
+    Evidence: redos-008...
+    ? pattern matched (1 match(es))
+  [14/45] rce-013 (have_git)
+    ? 10/10 — interesting
+    Evidence: redos-009...
+    No code-level evidence patterns.
+  [15/45] rce-014 (git_revision)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-010...
+    ✓ 0/10 — safe
+    Evidence: rce-013...
+    ✓ 0/10 — safe
+    Evidence: rce-011...
+    ? pattern matched (8 match(es))
+  [16/45] rce-015 (load_str_bytes)
+    x rebutted
+      reason: The finding claims that `load_file` sets `allow_pickle` based on 
+file extension, but the actual code shows `load_file` does not set 
+`allow_pickle`; it passes the parameter from `parse_file`. In the simulated 
+endpoint, `parse_file` is called with only the path, so `allow_pickle` defaults 
+to `False`. The code in `load_str_bytes` raises a `RuntimeError` if 
+`allow_pickle` is `False` and the protocol is pickle. Therefore, with default 
+settings, the attack is blocked. The finding incorrectly states that 
+`allow_pickle` can be bypassed by providing a .pkl file, but the guard is 
+effective. The vulnerability only exists if the caller explicitly sets 
+`allow_pickle=True`, which is not the case in the simulated endpoint.
+    Evidence: rce-010...
+    ? 10/10 — interesting
+    Evidence: redos-012...
+    ? pattern matched (7 match(es))
+  [17/45] sqli-016 (execute)
+    ? pattern matched (3 match(es))
+  [18/45] sqli-017 (create_model)
+    ? 10/10 — interesting
+    Evidence: rce-014...
+    ? pattern matched (7 match(es))
+  [19/45] redos-018 (get_defs_ref)
+    ? pattern matched (7 match(es))
+  [20/45] suspicious-019 (import_string)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-015...
+    not rebutted
+      weak point: The finding is hard to disprove because the code path from 
+parse_file to pickle.loads is clear, and the allow_pickle parameter can be set 
+to True by an attacker if they control the parameter or if the application sets 
+it. The guards (default False and RuntimeError) are bypassable if allow_pickle 
+is True. The developer intent summary does not address this risk.
+    PoC Agent: rce-015...
+    ✓ 0/10 — safe
+    Evidence: sqli-016...
+    ? pattern matched (3 match(es))
+  [21/45] redos-020 (_build_pretty_email_regex)
+    ? 10/10 — interesting
+    Evidence: sqli-017...
+    No code-level evidence patterns.
+  [22/45] redos-021 (str_pattern)
+    ? 10/10 — interesting
+    Evidence: redos-020...
+    ? 10/10 — interesting
+    Evidence: redos-018...
+    PoC: 
+/home/xcy/workSpace/code-agies/pocs/pydantic/rce_load_str_bytes_function_load_st
+r_bytes.py
+    Evidence: rce-015...
+    ? pattern matched (1 match(es))
+  [23/45] redos-022 (compile_pattern)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: suspicious-019...
+    ? pattern matched (2 match(es))
+  [24/45] redos-023 (url_regex)
+    ? 10/10 — interesting
+    Evidence: redos-021...
+    x rebutted
+      reason: The finding claims that `populate_validators` can be triggered 
+with untrusted input, but the provided source code shows no entry point that 
+accepts user input. The `populate_validators` method is called internally during
+model initialization, not from any external API. The simulated web endpoint in 
+the system wrapper is not part of the actual library. Additionally, the 
+`wrapper` function in `_migration.py` only handles hardcoded migration paths 
+(MOVED_IN_V2, DEPRECATED_MOVED_IN_V2, REDIRECT_TO_V1) and does not accept 
+arbitrary user-controlled strings. The `import_string` sink is only reached with
+predefined strings from these dictionaries, not attacker input. Therefore, the 
+data flow from untrusted input to the sink does not exist in the actual code.
+    Evidence: suspicious-019...
+    No code-level evidence patterns.
+  [25/45] redos-024 (multi_host_url_regex)
+    evidence found (7 match(es))
+      PoC: Create a malicious pickle file: `python -c "import pickle, os; 
+pickle.dump({'__reduce__': lambda: (os.system, ('id',))}, open('exploit.pkl', 
+'wb'))"`....
+  [26/45] redos-025 (host_regex)
+    ? pattern matched (1 match(es))
+  [27/45] redos-026 (to_snake)
+    ? 10/10 — interesting
+    Evidence: redos-023...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: redos-022...
+    not rebutted
+      weak point: The finding is hard to disprove because the code directly 
+passes user-controlled input to re.compile() without any validation or 
+sanitization against ReDoS patterns. The developer's assumption that catching 
+re.error is sufficient is incorrect, as it only catches syntax errors. The 
+compiled regex is later used for matching, enabling a ReDoS attack if an 
+attacker provides both a malicious pattern and a crafted input string.
+    PoC Agent: redos-022...
+    ? pattern matched (1 match(es))
+  [28/45] redos-027 (parse_str)
+    ? 10/10 — interesting
+    Evidence: redos-024...
+    ? 10/10 — interesting
+    Evidence: redos-025...
+    ? 10/10 — interesting
+    Evidence: redos-026...
+    ? pattern matched (1 match(es))
+  [29/45] lfi-028 (parse_toml)
+    ? pattern matched (4 match(es))
+  [30/45] redos-029 (_build_url)
+    ? pattern matched (1 match(es))
+  [31/45] redos-000 (to_camel)
+    ? 10/10 — interesting
+    Evidence: redos-027...
+    ? pattern matched (4 match(es))
+  [32/45] redos-001 (is_classvar_annotation)
+    ✓ 0/10 — safe
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-028...
+    PoC: 
+/home/xcy/workSpace/code-agies/pocs/pydantic/redos_since_compiled_regex_likely_c
+ompile_pattern.py
+    Evidence: redos-022...
+    ? 10/10 — interesting
+    Evidence: redos-029...
+    x rebutted
+      reason: The finding claims LFI via path traversal in path-builder 
+functions, but the provided source code does not contain any path-builder 
+functions (e.g., os.path.join, pathlib). The sink function `parse_toml` opens a 
+file path (`config_file`) that is not shown to be attacker-controlled. The entry
+point `__init__` in pydantic/json_schema.py does not accept any user input 
+parameter; it initializes internal state. The data flow annotations indicate 
+static analysis could not trace variable propagation, and there is no evidence 
+that `config_file` originates from untrusted input. The call chain from 
+`__init__` to `parse_toml` is not demonstrated; the two functions appear in 
+unrelated modules (json_schema.py vs mypy.py). Without a clear path from 
+attacker input to the file open, the vulnerability is not exploitable.
+    Evidence: lfi-028...
+    evidence found (1 match(es))
+      PoC: Pattern: `(a+)+b`
+Input: `aaaaaaaaac` (or any long string of 'a's not ending with 'b')
+The regex engine will attempt exponential backtracking, causing...
+  [33/45] redos-002 (from_name_error)
+    ? pattern matched (1 match(es))
+  [34/45] suspicious-003 (version_info)
+    ? pattern matched (4 match(es))
+  [35/45] redos-004 (parse_str)
+    ? 10/10 — interesting
+    Evidence: redos-000...
+    ? 10/10 — interesting
+    Evidence: suspicious-003...
+    No code-level evidence patterns.
+  [36/45] redos-005 (to_pascal)
+    ? pattern matched (2 match(es))
+  [37/45] lfi-006 (__call__)
+    ? 10/10 — interesting
+    Evidence: redos-004...
+    ? 10/10 — interesting
+    Evidence: redos-001...
+    ? pattern matched (4 match(es))
+  [38/45] suspicious-007 (__getattr__)
+    ? 10/10 — interesting
+    Evidence: redos-002...
+    ? pattern matched (1 match(es))
+  [39/45] lfi-008 (load_file)
+    ? 9/10 — interesting
+    path bridge: 2 builder + 2 consumer
+    Adversary: lfi-006...
+    ? pattern matched (1 match(es))
+  [40/45] rce-009 (_create_validators)
+    ? 10/10 — interesting
+    Evidence: suspicious-007...
+    No code-level evidence patterns.
+  [41/45] lfi-010 (load_file)
+    x rebutted
+      reason: The finding is rebutted because the reported vulnerability (LFI 
+via path traversal) is not exploitable in the provided code. The sink function 
+`__call__` (pydantic v1 env_settings.py:281) reads secrets from a directory 
+specified by `self.secrets_dir`, which is a configuration attribute, not 
+attacker-controlled input. The function iterates over `settings.__fields__` and 
+uses `find_case_path` to locate files within `secrets_path`. There is no user 
+input involved in constructing the path; the `env_name` comes from field 
+definitions, not from external untrusted data. The `[DATA FLOW]` annotation 
+indicates no identifiable parameters and that static analysis could not trace 
+variable propagation, but manual review confirms no untrusted input reaches the 
+path operations. Additionally, the `[REACHABILITY: BODY_ONLY]` header warns that
+the function was flagged only because its body contains dangerous API calls, but
+no caller chain was found inside the project. Without a realistic scenario where
+an attacker controls `self.secrets_dir` or `env_name`, the vulnerability is not 
+exploitable.
+    Evidence: lfi-006...
+    ? 10/10 — interesting
+    Evidence: redos-005...
+    ? pattern matched (4 match(es))
+  [42/45] rce-011 (load_str_bytes)
+    ? pattern matched (3 match(es))
+  [43/45] sqli-012 (execute)
+    ⚠ 10/10 — 1 contradiction(s)
+    path bridge: 2 builder + 2 consumer
+    Adversary: lfi-008...
+    ✓ 0/10 — safe
+    Evidence: rce-009...
+    x rebutted
+      reason: The finding is not exploitable. The sink function `load_file` uses
+`Path(path).read_bytes()` which does not involve any path-builder function like 
+`os.path.join` or `pathlib.Path.joinpath`. The `path` parameter is passed 
+directly to `Path()`, which does not perform any path truncation or symlink 
+resolution. However, the entry point `parse_file` is deprecated and the data 
+flow analysis could not trace untrusted input to `path`. The simulated wrapper 
+suggests attacker-controlled input reaches `parse_file`, but the actual library 
+code shows `parse_file` is a method on a Pydantic model, typically called with a
+file path from the application, not directly from user input. Without evidence 
+that an attacker can control the `path` argument, the vulnerability is not 
+authentically exploitable.
+    Evidence: lfi-008...
+    ? pattern matched (6 match(es))
+  [44/45] sqli-013 (create_model)
+    ⚠ 10/10 — 1 contradiction(s)
+    path bridge: 2 builder + 2 consumer
+    Adversary: lfi-010...
+    ? pattern matched (4 match(es))
+  [45/45] redos-014 (get_defs_ref)
+    x rebutted
+      reason: The finding is not exploitable. The sink function `load_file` uses
+`Path(path).read_bytes()` which directly reads the file at the given path. 
+However, the entry point `parse_file` is deprecated and the data flow analysis 
+could not trace untrusted input to the `path` parameter. The simulated wrapper 
+suggests untrusted input reaches `parse_file`, but the actual library code shows
+`parse_file` is a method on a Pydantic model, typically called with a file path 
+from the application's own logic, not from user input. There is no evidence that
+an attacker can control the `path` argument. Additionally, the sink does not use
+`os.path.join` or any path-builder function, so the path traversal via absolute 
+path truncation is not applicable. The vulnerability class mentioned (path 
+traversal in path-builder functions) does not match the actual sink behavior.
+    Evidence: lfi-010...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-011...
+    ? pattern matched (4 match(es))
+    not rebutted
+      weak point: The finding is hard to disprove because the attacker controls 
+both the `path` and `allow_pickle` parameters, and there is no validation on the
+file path or the pickle content. The guard `if not allow_pickle: raise 
+RuntimeError` is bypassed by setting `allow_pickle=True`. The data flow is clear
+and complete, leading to a pickle.loads() sink with attacker-controlled bytes.
+    PoC Agent: rce-011...
+    ? 10/10 — interesting
+    Evidence: sqli-012...
+    ? pattern matched (3 match(es))
+    ? 10/10 — interesting
+    Evidence: sqli-013...
+    No code-level evidence patterns.
+    ? 10/10 — interesting
+    Evidence: redos-014...
+    PoC: 
+/home/xcy/workSpace/code-agies/pocs/pydantic/rce_load_str_bytes_if_load_str_byte
+s.py
+    Evidence: rce-011...
+    ? pattern matched (2 match(es))
+    evidence found (7 match(es))
+      PoC: ```python
+import pickle
+import os
+
+# Create malicious pickle file
+class Exploit:
+    def __reduce__(self):
+        return (os.system, ('id',))
+
+with o...
+
+Phase E: Results
+  Blackboard: 31 cached intents, 213 knowledge entries, 43 phase results
+  High confidence (32):
+    redos-000: ? — ?
+      
+    redos-001: ? — ?
+      
+    redos-002: ? — ?
+      
+    redos-002: ? — ?
+      
+    suspicious-004: _import_string_logic — logic_gap
+      An attacker can craft a type annotation string such as 'os:system' or 
+'builtins:exec' and pass it to a pydantic model field that expects a type. For 
+example, if a FastAPI endpoint uses a pydantic model with a field of type 
+`SomeType` where `SomeType` is a forward reference resolved via string, the 
+attacker can control that string. The string flows through `find_validators` -> 
+`_import_string_logic` -> `import_module` and `getattr`, allowing arbitrary code
+execution.
+    redos-004: ? — ?
+      
+    redos-005: ? — ?
+      
+    redos-007: ? — ?
+      
+    redos-008: ? — ?
+      
+    rce-010: pickle.loads — logic_gap
+      Create a malicious pickle file (e.g., exploit.pkl) that executes a reverse
+shell. Send a POST request to /api/v1/trigger with untrusted_user_input pointing
+to the path of exploit.pkl. The server will deserialize the pickle and execute 
+the payload.
+    rce-011: pickle.loads — logic_gap
+      An attacker can craft a malicious pickle file and provide its path to 
+`parse_file` with `allow_pickle=True`. The pickle payload can execute arbitrary 
+commands, e.g., via `__reduce__`.
+    redos-012: ? — ?
+      
+    sqli-012: ? — ?
+      
+    rce-014: ? — ?
+      
+    redos-014: ? — ?
+      
+    rce-015: pickle.loads — logic_gap
+      If the application calls `parse_file` with `allow_pickle=True` and an 
+attacker-controlled file path, the attacker can create a pickle file with a 
+malicious payload (e.g., using `__reduce__` to execute a system command). The 
+payload will be executed when `pickle.loads` is called.
+    redos-018: ? — ?
+      
+    suspicious-019: _import_string_logic — logic_gap
+      An attacker can provide a crafted input that triggers the deprecated 
+attribute access path in `_migration.py`, e.g., setting a field type to a string
+like `'os:system'` which gets processed by `import_string`, leading to execution
+of `os.system('command')`.
+    redos-020: ? — ?
+      
+    redos-021: ? — ?
+      
+    redos-022: re.compile — logic_gap
+      Pattern: `(a+)+b` with input `aaaaaaaaac` (or any long string of 'a's not 
+ending with 'b') causes exponential backtracking.
+    redos-023: ? — ?
+      
+    redos-024: ? — ?
+      
+    redos-025: ? — ?
+      
+    redos-026: ? — ?
+      
+    redos-027: ? — ?
+      
+    redos-029: ? — ?
+      
+
+Pipeline Complete
+  Target: /home/xcy/.local/lib/python3.14/site-packages/pydantic
+  Model: deepseek-chat
+  Duration: 152.0s
+  Paths discovered: 41
+  Slices analyzed: 45
+  Findings: 32 high, 13 interesting
+  Tokens: 496,993 total (434,223 prompt + 62,770 completion)
+
+  Recommended verification targets:
+    REDOS redos-000: Code-level pattern evidence (2 matches): ?:if 
+re.match('^+[A-Za-z0-9]*$', snake) and not re.sea
+    REDOS redos-001: Code-level pattern evidence (1 matches): ?:if str_ann is 
+not None and _classvar_re.match(str_ann):
+    REDOS redos-002: Code-level pattern evidence (1 matches): 
+?:_ascii_domain_regex_cache = re.compile(
+    REDOS redos-002: Code-level pattern evidence (1 matches): ?:name = 
+re.search(r".*'(.+?)'", str(name_error)).group(1) 
+    SUSPICIOUS suspicious-003: The function version_info does not accept any 
+external input; it only uses internal constants (VERSI

@@ -1,0 +1,90 @@
+id: agno-fingerprint
+
+info:
+  name: Agno AI Agent Framework - Fingerprint
+  author: agies
+  severity: info
+  description: |
+    Detects Agno (agno-agi/agno, 40k+ stars) multi-agent AI framework.
+    Agno exposes AGUI REST endpoints by default. Confirmed agno = SSRF attack surface
+    via Image/File.get_content_bytes() and File.file_url_content.
+
+  classification:
+    cpe: cpe:2.3:a:agno-agi:agno:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 3
+    tags: agno,ai-agent,framework,tech-detect,ssrf
+
+http:
+  # ──────────────────────────────────────────────
+  # Fingerprint 1: FastAPI OpenAPI schema
+  # 最可靠——agno 的 AGUI router 注册了 /agui 端点
+  # ──────────────────────────────────────────────
+  - method: GET
+    path:
+      - "{{BaseURL}}/openapi.json"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "/agui"
+          - "RunAgentInput"
+          - "AGUI"
+        condition: and
+
+    extractors:
+      - type: json
+        name: agno_endpoints
+        json:
+          - ".paths | keys"
+
+  # ──────────────────────────────────────────────
+  # Fingerprint 2: 422 validation error 格式
+  # 发非法 body，agno 返回 FastAPI 的 pydantic 错误
+  # ──────────────────────────────────────────────
+  - method: POST
+    path:
+      - "{{BaseURL}}/agui"
+
+    headers:
+      Content-Type: application/json
+
+    body: '{}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "Field required"
+          - "threadId"
+          - "runId"
+        condition: and
+
+      - type: status
+        status:
+          - 422
+
+  # ──────────────────────────────────────────────
+  # Fingerprint 3: /status endpoint
+  # 部分部署有 /status 返回 {"status":"available"}
+  # ──────────────────────────────────────────────
+  - method: GET
+    path:
+      - "{{BaseURL}}/status"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "available"
+          - "ok"
+          - "ready"
+          - "running"
+        condition: or
+        case-insensitive: true
+
+      - type: word
+        words:
+          - "status"
+        condition: and

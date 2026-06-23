@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>agno RCE Demo — 代码审查助手</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #1a1a2e; color: #eee; }
+        h1 { color: #e94560; }
+        textarea { width: 100%; min-height: 150px; font-family: monospace; padding: 10px; background: #16213e; color: #eee; border: 1px solid #0f3460; border-radius: 8px; }
+        button { background: #e94560; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 10px 0; }
+        button:hover { background: #c73652; }
+        .result { background: #16213e; padding: 15px; border-radius: 8px; margin: 15px 0; white-space: pre-wrap; word-break: break-all; }
+        .flag { color: #0f3460; background: #e94560; padding: 10px; border-radius: 8px; font-weight: bold; font-size: 20px; text-align: center; }
+        .warning { background: #533483; padding: 10px; border-radius: 8px; margin: 10px 0; }
+        .success { background: #00b894; padding: 10px; border-radius: 8px; margin: 10px 0; }
+        code { background: #0f3460; padding: 2px 6px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 代码审查助手</h1>
+    <p>粘贴 GitHub Issue / PR 内容，AI 自动分析安全问题。</p>
+
+    {% if not api_key_set %}
+    <div class="warning">
+        ⚠️ OPENAI_API_KEY 未设置。请设置环境变量后重启服务。
+    </div>
+    {% endif %}
+
+    {% if flag %}
+    <div class="flag">
+        🚩 FLAG 文件已创建 — RCE 成功！
+    </div>
+    {% endif %}
+
+    {% if rce_success %}
+    <div class="success">
+        [!!!] RCE 验证通过！agent 被注入后执行了攻击者的命令。
+    </div>
+    {% endif %}
+
+    <form method="post" action="/analyze">
+        <label for="content"><strong>粘贴外部内容（GitHub Issue / PR 文本）：</strong></label>
+        <textarea name="content" placeholder="在这里粘贴外部内容..."></textarea>
+        <br>
+        <button type="submit">提交分析</button>
+    </form>
+
+    {% if result %}
+    <h3>Agent 分析结果：</h3>
+    <div class="result">{{ result }}</div>
+    {% endif %}
+</body>
+</html>

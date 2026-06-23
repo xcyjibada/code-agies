@@ -198,6 +198,46 @@ class LogicAgent:
         else:
             lib_mission = ""
 
+        # ── Security guard analysis — guard effectiveness evaluation ──
+        guard_analysis_section = (
+            "\n\n"
+            "SECURITY GUARD ANALYSIS - REQUIRED\n"
+            "You MUST evaluate every security guard, validation, access control, "
+            "or sanitization between the source (entry) and the sink. "
+            "For EACH guard, classify it into one of three categories:\n"
+            '\n'
+            '1. [CONDITIONAL GUARD] — The guard is gated behind a conditional '
+            "that can bypass it. Example: `if not self.follow_symlinks:` — when "
+            "follow_symlinks=True, the entire path containment check is skipped. "
+            "The guard condition itself may be attacker-controllable or configurable.\n"
+            '   → Ask: can the condition be flipped? Is the guard only active in some modes?\n'
+            '\n'
+            '2. [BYPASSABLE GUARD] — The guard exists but has a logic flaw that '
+            "makes it bypassable. Common patterns:\n"
+            "   - Type confusion: `if user.get(\"role\"):` — the string \"admin\" "
+            "is truthy just like True, so setting role=\"admin\" bypasses the check\n"
+            "   - TOCTOU: path is validated then the file is re-read — "
+            "a symlink can be swapped between check and use\n"
+            "   - Overridable permission: `context_role` parameter overrides "
+            "`self.role`, allowing privilege escalation\n"
+            "   - Incomplete validation: only checks prefix but not suffix, "
+            "only checks first path component but not subsequent ones\n"
+            '   → Ask: can an attacker craft input that passes the guard while still achieving the malicious goal?\n'
+            '\n'
+            '3. [MISSING GUARD] — No guard exists where one is expected. Common patterns:\n'
+            "   - IDOR: function returns user data based on user_id parameter "
+            "without checking if the requester owns that ID\n"
+            "   - No idempotency: payment/refund can be triggered multiple times "
+            "with the same transaction ID\n"
+            "   - No ownership check: any user can access any resource\n"
+            '   → Ask: what guard should exist here? Is its absence exploitable?\n'
+            '\n'
+            "IMPORTANT: If a guard is neither CONDITIONAL, BYPASSABLE, nor MISSING, "
+            "and effectively prevents the attack, explain WHY it cannot be bypassed. "
+            "Include your analysis in `reasoning_steps` using these labels, and "
+            "list ALL guards (including effective ones) in `guards_detected`.\n"
+        )
+
         # ── Dual-brain CoT reasoning (op.md Item ④) ──
         dual_brain_cot = (
             "\n\n"
@@ -268,6 +308,7 @@ class LogicAgent:
             "introduce security risks that the intent summary doesn't mention?\n"
             f"{bb_section}"
             f"{lib_mission}"
+            f"{guard_analysis_section}"
             f"{base_prompt}"
             f"{structured_ev_instructions}"
         )

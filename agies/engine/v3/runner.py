@@ -35,6 +35,7 @@ from agies.engine.v3.agents.merge import MergeLayer
 from agies.engine.v3.agents.path_code_loader import PathCodeLoader
 from agies.engine.v3.agents.evidence_checker import EvidenceChecker
 from agies.engine.v3.prompts.stdlib_guides import get_stdlib_guide
+from agies.engine.v3.pathfinder.source_classifier import filter_paths, format_stats
 from agies.engine.v3.agents.bridge_verifier import (
     BridgeVerifier, BridgeAnnotation, scan_path_bridge_evidence,
 )
@@ -67,6 +68,7 @@ def run_v3_pipeline(
     project_type: str = "auto",
     consensus: bool = False,
     all_paths: bool = False,
+    keep_config_paths: bool = False,
 ) -> None:
     """Run the complete v3 pipeline against *target*.
 
@@ -130,10 +132,52 @@ def run_v3_pipeline(
         return
 
     # ==================================================================
+    # Phase A.5: Source Classification & Filtering
+    # ==================================================================
+    _print_header(console, "Phase A.5: Source Classification")
+
+    total_before = sum(r.total_sinks for r in results)
+    total_config = 0
+    total_constant = 0
+    total_filtered = 0
+    filtered_names: list[str] = []
+
+    for r in results:
+        if not r.paths:
+            continue
+        kept, stats = filter_paths(r.paths, keep_config=keep_config_paths)
+        # Collect names of filtered paths for transparency
+        for p in r.paths:
+            if p not in kept:
+                filtered_names.append(f"{p.vuln_type.value}:{p.sink}")
+        r.paths[:] = kept
+        r.total_sinks = len(kept)
+        total_config += stats.get("config", 0)
+        total_constant += stats.get("constant", 0)
+        total_filtered += stats.get("filtered", 0)
+
+    total_after = sum(r.total_sinks for r in results)
+
+    if total_filtered > 0:
+        _print(console, f"  Filtered {total_filtered} paths ({total_constant} constant + {total_config} config)")
+        if total_after > 0:
+            _print(console, f"  Remaining: {total_after}/{total_before} paths")
+        else:
+            _print(console, "  [yellow]All paths filtered — nothing to analyze.[/yellow]")
+            return
+        if verbose:
+            for name in filtered_names[:20]:
+                _print(console, f"    [dim]- {name}[/dim]")
+            if len(filtered_names) > 20:
+                _print(console, f"    [dim]... and {len(filtered_names) - 20} more[/dim]")
+    else:
+        _print(console, "  [dim]All paths passed — no config/constant sources detected.[/dim]")
+
+    # ==================================================================
     # Phase B: Path Slicing & Ranking
     # ==================================================================
-    total_paths = sum(r.total_sinks for r in results)
-    _print_header(console, f"Phase B: Slice Sorting ({total_paths} raw paths)")
+    total_paths = total_after
+    _print_header(console, f"Phase B: Slice Sorting ({total_paths} paths)")
 
     if total_paths == 0:
         _print(console, "  [dim]No dangerous sinks found. Nothing to analyze.[/dim]")
@@ -202,6 +246,30 @@ def run_v3_pipeline(
         reasons = f" ({', '.join(s.anomaly_reasons)})" if s.anomaly_reasons else ""
         reach_tag = f" [{s.reachability.value}]" if s.reachability != Reachability.CHAIN else ""
         _print(console, f"    [dim]Explore: {s.id} {s.sink} score={s.score:.2f}{reach_tag}{reasons}[/dim]")
+
+    # Phase B.5: Annotate PathSlices with reachability context from matrix
+    try:
+        reachability_matrix = getattr(finder, '_reachability', None) if finder else None
+        if reachability_matrix and reachability_matrix._computed:
+            ctx_count = 0
+            for slice_ in sort_result.all_slices:
+                ctx_parts = []
+                if slice_.source:
+                    sinks = reachability_matrix.get_reachable_sinks(slice_.source)
+                    if sinks:
+                        sink_types = ", ".join(f"{s}({v.value})" for s, v in sinks)
+                        ctx_parts.append(f'Source "{slice_.source}" can reach: {sink_types}')
+                if slice_.sink:
+                    sources = reachability_matrix.get_reachable_sources(slice_.sink)
+                    if sources:
+                        ctx_parts.append(f'Sink "{slice_.sink}" reachable from: {", ".join(sources)}')
+                if ctx_parts:
+                    slice_.reachability_context = "\n".join(ctx_parts)
+                    ctx_count += 1
+            if ctx_count:
+                _print(console, f"  Reachability: {ctx_count} slices annotated")
+    except Exception as exc:
+        logger.debug("Reachability annotation skipped: %s", exc)
 
     # Free Phase A memory — thousands of CodeQlPath/PathNode objects and
     # function bodies are no longer needed once slicing is complete.
@@ -374,7 +442,107 @@ def _run_treesitter_discovery(
         if r.total_sinks > 0:
             _print(console, f"    {r.label}: {r.total_sinks} sink(s)")
 
+    # Phase 0.5: Cross-file parameter flow enrichment
+    all_paths: list[CodeQlPath] = []
+    for r in results:
+        all_paths.extend(r.paths)
+
+    if finder.index is not None and all_paths:
+        try:
+            from agies.engine.v3.pathfinder.dataflow import enrich_paths
+            enrich_paths(finder.index, all_paths)
+            enriched = sum(1 for p in all_paths if p.cross_file_flow)
+            if enriched:
+                _print(console, f"  Cross-file flow: {enriched} paths annotated")
+        except Exception as exc:
+            logger.debug("Cross-file flow enrichment skipped: %s", exc)
+
+    # Phase 0.6: Source-sink reachability matrix
+    if finder.index is not None:
+        try:
+            from agies.engine.v3.pathfinder.reachability import ReachabilityMatrix
+            matrix = ReachabilityMatrix(
+                finder.index,
+                extra_sinks=getattr(finder, '_extra_sinks', None),
+            )
+            matrix.compute()
+            stats = matrix.stats
+            if stats["pairs"] > 0:
+                _print(console, f"  Reachability: {stats['sources']} sources → {stats['sinks']} sinks ({stats['pairs']} pairs)")
+                # Store for downstream use
+                finder._reachability = matrix
+        except Exception as exc:
+            logger.debug("Reachability matrix skipped: %s", exc)
+
+    # Phase 0.7: CPG-based data flow evidence
+    if finder.index is not None and all_paths:
+        try:
+            cpg = getattr(finder, '_cpg_builder', None)
+            if cpg and cpg.built:
+                from agies.engine.v3.pathfinder.dataflow import query_param_to_sink
+                flow_count = 0
+                for path in all_paths:
+                    if path.cross_file_flow or not path.body_detected:
+                        # Find sink function and check data flow
+                        sink_fn = None
+                        for fn in finder.index.funcs:
+                            if fn.name == path.sink:
+                                sink_fn = fn
+                                break
+                        if sink_fn and sink_fn.body:
+                            params = _extract_params_fast(sink_fn.signature)
+                            if params and path.body_sink_call:
+                                flows = query_param_to_sink(
+                                    cpg, sink_fn.name, sink_fn.body,
+                                    params, path.body_sink_call,
+                                )
+                                reachable = [f for f in flows if f["reachable"]]
+                                if reachable:
+                                    flow_count += 1
+                                    path.cpg_data_flow_evidence = format_cpg_evidence(reachable)
+                if flow_count:
+                    _print(console, f"  CPG data flow: {flow_count} sinks confirmed")
+        except Exception as exc:
+            logger.debug("CPG data flow skipped: %s", exc)
+
     return results, finder.index
+
+
+def _extract_params_fast(signature: str) -> list[str]:
+    """Quick parameter extraction for data flow queries (no import needed here)."""
+    import re
+    m = re.search(r"def\s+\w+\s*\(([^)]*)\)", signature, re.DOTALL)
+    if not m:
+        return []
+    raw = m.group(1)
+    params: list[str] = []
+    depth = 0
+    buf: list[str] = []
+    for ch in raw:
+        if ch in "([{":
+            depth += 1
+            buf.append(ch)
+        elif ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+        elif ch == "," and depth == 0:
+            part = "".join(buf).strip()
+            if part and part not in ("self", "cls", "/"):
+                if not part.startswith("*"):
+                    m2 = re.match(r"(\*{0,2}\w+)", part)
+                    if m2:
+                        params.append(m2.group(1))
+                else:
+                    params.append(part)
+            buf = []
+        else:
+            buf.append(ch)
+    remaining = "".join(buf).strip()
+    if remaining and remaining not in ("self", "cls", "/"):
+        m2 = re.match(r"(\*{0,2}\w+)", remaining)
+        if m2:
+            params.append(m2.group(1))
+    return params
 
 
 def _run_codeql_discovery(
@@ -678,7 +846,7 @@ def _run_phase_d(
                     llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
                 )
                 if poc_path:
-                    _safe_print(f"    [green]📄 PoC: {poc_path}[/green]")
+                    _safe_print(f"    [green] PoC: {poc_path}[/green]")
                     result = AgentPhaseResult(
                         path_id=result.path_id, vuln_type=result.vuln_type,
                         score=result.score, contradictions=result.contradictions,
@@ -688,25 +856,35 @@ def _run_phase_d(
                         poc_path=poc_path,
                     )
 
-        # Evidence Checker: always run code-level pattern matching
+                # Evidence Checker: always run code-level pattern matching
         checker = EvidenceChecker(
             llm_call_fn=lambda p: _call_llm(llm, p, console),
             blackboard=blackboard,
         )
         _safe_print(f"    Evidence: {slice_.id}...")
-        evidence = checker.run(result, code_block, slice_.nodes)
+        evidence = checker.run(
+            result, code_block, slice_.nodes,
+            cross_file_flow=slice_.cross_file_flow,
+            cpg_data_flow_evidence=slice_.cpg_data_flow_evidence,
+        )
 
         if evidence.evidence_found:
-            _safe_print(f"    [green]✓ evidence found ({len(evidence.matches)} match(es))[/green]")
+            _safe_print(f"    [green]✓ evidence found ({len(evidence.matches)} match(es), {len(evidence.sink_analyses)} sink analyses)[/green]")
+            if evidence.confidence_delta:
+                delta = evidence.confidence_delta
+                color = 'red' if delta < 0 else 'green'
+                _safe_print(f"    [{color}]arg analysis: {delta:+d} confidence[/{color}]")
             if evidence.poc:
                 _safe_print(f"      PoC: {evidence.poc[:150]}...")
-            # Boost confidence but don't override LLM's vulnerability judgment
+            # Apply static analysis delta on top of evidence-confirmed base
+            base_conf = max(result.confidence, 5)
+            adjusted = max(1, min(10, base_conf + evidence.confidence_delta))
             result = AgentPhaseResult(
                 path_id=result.path_id,
                 vuln_type=result.vuln_type,
                 score=result.score,
                 contradictions=result.contradictions,
-                confidence=max(result.confidence, 5),
+                confidence=adjusted,
                 analysis=evidence.analysis or result.analysis,
                 is_vulnerable=result.is_vulnerable,
             )
@@ -755,7 +933,7 @@ def _run_phase_d(
                     "matches": f"{len(evidence.matches)} pattern(s)",
                     "patterns": pattern_summary,
                 }],
-                confidence=max(result.confidence, 5),
+                confidence=max(1, min(10, max(result.confidence, 5) + evidence.confidence_delta)),
                 analysis=deterministic_analysis,
                 is_vulnerable=result.is_vulnerable,
             )
@@ -997,16 +1175,24 @@ def _run_phase_d_lib(
             blackboard=blackboard,
         )
         _safe_print(f"    Evidence: {slice_.id}...")
-        evidence = checker.run(result, code_block, nodes)
+        evidence = checker.run(
+            result, code_block, nodes,
+            cross_file_flow=slice_.cross_file_flow,
+            cpg_data_flow_evidence=slice_.cpg_data_flow_evidence,
+        )
 
         if evidence.evidence_found:
-            _safe_print(f"    [green]evidence found ({len(evidence.matches)} match(es))[/green]")
+            _safe_print(f"    [green]evidence found ({len(evidence.matches)} match(es), {len(evidence.sink_analyses)} sink analyses)[/green]")
+            if evidence.confidence_delta:
+                delta = evidence.confidence_delta
+                color = 'red' if delta < 0 else 'green'
+                _safe_print(f"    [{color}]arg analysis: {delta:+d} confidence[/{color}]")
             if evidence.poc:
                 _safe_print(f"      PoC: {evidence.poc[:150]}...")
             result = AgentPhaseResult(
                 path_id=result.path_id, vuln_type=result.vuln_type,
                 score=result.score, contradictions=result.contradictions,
-                confidence=max(result.confidence, 5),
+                confidence=max(1, min(10, max(result.confidence, 5) + evidence.confidence_delta)),
                 analysis=evidence.analysis or result.analysis,
                 is_vulnerable=result.is_vulnerable,
             )
@@ -1027,7 +1213,7 @@ def _run_phase_d_lib(
                     "matches": f"{len(evidence.matches)} pattern(s)",
                     "patterns": pattern_summary,
                 }],
-                confidence=max(result.confidence, 5),
+                confidence=max(1, min(10, max(result.confidence, 5) + evidence.confidence_delta)),
                 analysis=deterministic_analysis,
                 is_vulnerable=result.is_vulnerable,
             )
@@ -1205,11 +1391,11 @@ def _print_phase_d_result(console: Any, result: AgentPhaseResult) -> None:
     elif result.confidence >= 4:
         _print(console, f"    [yellow]? {result.confidence}/10 — interesting[/yellow]")
     else:
-        _print(console, f"    [dim]✓ {result.confidence}/10 — safe[/dim]")
+        _print(console, f"    [dim]✓ {result.confidence}/10 - safe[/dim]")
 
 
 # ======================================================================
-# Consensus voting — grey zone majority vote
+# Consensus voting - grey zone majority vote
 # ======================================================================
 
 
@@ -1349,6 +1535,9 @@ def _build_code_block(
     nodes: list[dict[str, Any]],
     source_controllability_proof: str = "",
     reachability: Reachability = Reachability.CHAIN,
+    cross_file_flow: str = "",
+    cpg_data_flow_evidence: str = "",
+    reachability_context: str = "",
 ) -> str:
     """Build a raw source code block from PathNode snippets.
 
@@ -1359,6 +1548,11 @@ def _build_code_block(
     of external input controllability.
     When ``reachability`` is BODY_ONLY or EXTERNAL_API, prepends a notice
     explaining the missing call chain so agents can adjust their analysis.
+
+    New parameters (Phase 2/3):
+    - cross_file_flow: cross-file parameter-level flow annotation
+    - cpg_data_flow_evidence: CPG intra-procedural WRITES_TO trace
+    - reachability_context: source→sink reachability info from matrix
     """
     parts: list[str] = []
 
@@ -1395,10 +1589,49 @@ def _build_code_block(
             "# ── ── ── ── ── ── ── ── ── ── ──"
         )
 
+    # ── Phase 2: Cross-file parameter flow ──
+    if cross_file_flow:
+        parts.append(
+            "# ── [CROSS-FILE PARAMETER FLOW] ──\n"
+            f"# {cross_file_flow}\n"
+            "# This shows which parameter carries taint at each function\n"
+            "# boundary. Traced deterministically by AST-level call-site\n"
+            "# matching (not LLM-inferred).\n"
+            "# Use this to trace which argument at each call site carries\n"
+            "# the dangerous data to the next function.\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
+
+    # ── Phase 2: CPG data flow evidence (intra-procedural) ──
+    if cpg_data_flow_evidence:
+        parts.append(
+            "# ── [CPG DATA FLOW EVIDENCE] ──\n"
+            f"# {cpg_data_flow_evidence}\n"
+            "# This traces the data-flow path from the sink function's\n"
+            "# parameter through local variables to the dangerous call\n"
+            "# argument. Built from tree-sitter CPG WRITES_TO edge\n"
+            "# backward traversal (not LLM-inferred).\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
+
+    # ── Phase 3: Reachability context ──
+    if reachability_context:
+        parts.append(
+            "# ── [REACHABILITY CONTEXT] ──\n"
+            f"# {reachability_context}\n"
+            "# This shows the static call-graph reachability between\n"
+            "# source entry points and sink functions in this project.\n"
+            "# All functions mentioned are confirmed reachable in the\n"
+            "# project's cross-file call graph.\n"
+            "# ── ── ── ── ── ── ── ── ── ── ──"
+        )
+
     # ── Taint flow annotation ──
-    taint_annotation = _annotate_taint_flow(nodes)
-    if taint_annotation:
-        parts.append(taint_annotation)
+    # Only use heuristic taint flow when no deterministic CPG evidence available
+    if not cpg_data_flow_evidence:
+        taint_annotation = _annotate_taint_flow(nodes)
+        if taint_annotation:
+            parts.append(taint_annotation)
 
     companion_shown = False
     for i, node in enumerate(nodes):
@@ -1896,6 +2129,10 @@ def main() -> None:
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--type", default="auto", choices=["auto", "app", "lib"],
                         help="Project type (auto-detect, app, or lib)")
+    parser.add_argument("--keep-config-paths", action="store_true",
+                        help="Keep CONFIG_DRIVEN paths instead of filtering them")
+    parser.add_argument("--sandbox-verify", action="store_true",
+                        help="Enable process-level PoC verification in sandbox")
 
     args = parser.parse_args()
     run_v3_pipeline(
@@ -1904,6 +2141,7 @@ def main() -> None:
         verbose=args.verbose,
         use_codeql=args.codeql,
         project_type=args.type,
+        keep_config_paths=args.keep_config_paths,
     )
 
 

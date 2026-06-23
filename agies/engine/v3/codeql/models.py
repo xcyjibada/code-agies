@@ -118,6 +118,16 @@ class CodeQlPath:
     (L43) → sink(arg) (L44)").  Populated by TreeSitterPathFinder when CPG
     builder is enabled.  Empty string means no CPG evidence."""
 
+    cross_file_flow: str = ""
+    """Cross-file parameter-level flow annotation.
+    Populated by ``dataflow.annotate_paths()`` after path discovery.
+    Example: ``handle_request(request) → lookup_path(path) → open_file(filename)``
+    Shows which parameter carries taint at each hop in the path."""
+
+    reachability_score_bonus: float = 0.0
+    """Score bonus from reachability matrix (Phase 3).
+    Added to the path's static score when source is known in the matrix."""
+
     @property
     def key(self) -> str:
         """Deduplication key."""
@@ -137,6 +147,7 @@ class CodeQlPath:
             "confidence": self.confidence,
             "reachability": self.reachability.value,
             "cpg_data_flow_evidence": self.cpg_data_flow_evidence,
+            "cross_file_flow": self.cross_file_flow,
         }
 
 

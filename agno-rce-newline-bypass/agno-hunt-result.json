@@ -1,0 +1,55 @@
+{
+  "scan_time": "2026-06-16T13:47:33.418100",
+  "total": 1,
+  "agno_hits": 1,
+  "ssrf_hits": 0,
+  "results": [
+    {
+      "url": "http://127.0.0.1:18777",
+      "timestamp": "2026-06-16T13:46:59.480012",
+      "agno_detected": true,
+      "fingerprints": {
+        "openapi": "完整API Schema",
+        "status": "status=available",
+        "validation_422": "FastAPI + agno AGUI 错误格式"
+      },
+      "ssrf": [
+        {
+          "tag": "aws_meta",
+          "url": "http://169.254.169.254/latest/meta-data/",
+          "status": 200,
+          "hit": false,
+          "response_preview": "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"hunt-1781588819\",\"runId\":\"run-1781588819\"}\n\ndata: {\"type\":\"STATE_SNAPSHOT\",\"snapshot\":{}}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588819,\"event\":\"RunStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588819\",\"session_id\":\"hunt-1781588819\",\"nested_depth\":0,\"model\":\"ssrf-model\"},\"source\":\"agno\"}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588819,\"event\":\"ModelRequestStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588819\",\"sessi"
+        },
+        {
+          "tag": "gcp_meta",
+          "url": "http://metadata.google.internal/computeMetadata/v1/",
+          "status": 200,
+          "hit": false,
+          "response_preview": "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"hunt-1781588831\",\"runId\":\"run-1781588831\"}\n\ndata: {\"type\":\"STATE_SNAPSHOT\",\"snapshot\":{}}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588831,\"event\":\"RunStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588831\",\"session_id\":\"hunt-1781588831\",\"nested_depth\":0,\"model\":\"ssrf-model\"},\"source\":\"agno\"}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588831,\"event\":\"ModelRequestStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588831\",\"sessi"
+        },
+        {
+          "tag": "local_es",
+          "url": "http://127.0.0.1:9200/",
+          "status": 200,
+          "hit": false,
+          "response_preview": "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"hunt-1781588834\",\"runId\":\"run-1781588834\"}\n\ndata: {\"type\":\"STATE_SNAPSHOT\",\"snapshot\":{}}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588834,\"event\":\"RunStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588834\",\"session_id\":\"hunt-1781588834\",\"nested_depth\":0,\"model\":\"ssrf-model\"},\"source\":\"agno\"}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588834,\"event\":\"ModelRequestStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588834\",\"sessi"
+        },
+        {
+          "tag": "local_docker",
+          "url": "http://127.0.0.1:2375/version",
+          "status": 200,
+          "hit": false,
+          "response_preview": "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"hunt-1781588840\",\"runId\":\"run-1781588840\"}\n\ndata: {\"type\":\"STATE_SNAPSHOT\",\"snapshot\":{}}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588840,\"event\":\"RunStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588840\",\"session_id\":\"hunt-1781588840\",\"nested_depth\":0,\"model\":\"ssrf-model\"},\"source\":\"agno\"}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588840,\"event\":\"ModelRequestStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588840\",\"sessi"
+        },
+        {
+          "tag": "local_consul",
+          "url": "http://127.0.0.1:8500/v1/kv",
+          "status": 200,
+          "hit": false,
+          "response_preview": "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"hunt-1781588848\",\"runId\":\"run-1781588848\"}\n\ndata: {\"type\":\"STATE_SNAPSHOT\",\"snapshot\":{}}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588848,\"event\":\"RunStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588848\",\"session_id\":\"hunt-1781588848\",\"nested_depth\":0,\"model\":\"ssrf-model\"},\"source\":\"agno\"}\n\ndata: {\"type\":\"RAW\",\"event\":{\"created_at\":1781588848,\"event\":\"ModelRequestStarted\",\"agent_id\":\"cool-volta-031fd290\",\"run_id\":\"run-1781588848\",\"sessi"
+        }
+      ]
+    }
+  ]
+}

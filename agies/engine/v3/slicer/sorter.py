@@ -173,6 +173,12 @@ def score_path(path: CodeQlPath) -> float:
     if getattr(path, "body_detected", False):
         score += 0.15
 
+    # 8. Reachability score bonus (Phase 3)
+    #    If the path source is in the reachability matrix's known sources,
+    #    and/or the source→sink pair is confirmed reachable, add a small bump.
+    bonus = getattr(path, "reachability_score_bonus", 0.0)
+    score += bonus
+
     return min(max(score, 0.0), 1.0)
 
 
@@ -357,6 +363,10 @@ def _to_slice(
         anomaly_reasons=reasons,
         nodes=[n.__dict__ for n in path.nodes] if path.nodes else [],
         reachability=getattr(path, "reachability", Reachability.CHAIN),
+        cpg_data_flow_evidence=getattr(path, "cpg_data_flow_evidence", ""),
+        cross_file_flow=getattr(path, "cross_file_flow", ""),
+        body_detected=getattr(path, "body_detected", False),
+        body_sink_call=getattr(path, "body_sink_call", ""),
         # code_block is empty here — filled lazily by PathCodeLoader
     )
 

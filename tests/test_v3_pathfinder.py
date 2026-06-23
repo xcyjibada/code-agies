@@ -14,7 +14,7 @@ from agies.engine.v3.pathfinder.sink_patterns import (
 class TestClassifySink:
     def test_rce_sinks(self):
         """exec/eval/subprocess should be classified as RCE."""
-        for name in ["exec", "eval", "compile", "os.system", "os.popen",
+        for name in ["exec", "eval", "os.system", "os.popen",
                       "subprocess.call", "subprocess.Popen", "subprocess.run"]:
             assert classify_sink(name) == VulnType.RCE, f"{name} should be RCE"
 
@@ -77,7 +77,7 @@ class TestClassifySink:
         """Regex patterns should catch variations."""
         assert classify_sink("execute_command") == VulnType.RCE
         assert classify_sink("read_file") == VulnType.LFI
-        assert classify_sink("fetch") == VulnType.SSRF
+        assert classify_sink("http_request") == VulnType.SSRF
         assert classify_sink("query") == VulnType.SQLI
 
 

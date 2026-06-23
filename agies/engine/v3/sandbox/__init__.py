@@ -1,15 +1,17 @@
-"""Docker sandbox executor for PoC verification.
+"""Sandbox executor for PoC verification.
 
-Runs generated PoC scripts in isolated, network-disabled containers
-to validate exploitability.  Designed as a best-effort verification
-step — a failed or timed-out execution does not invalidate the finding
-(DoS vulnerabilities are expected to hang).
+Two backends:
+- ``PoCSandbox`` — Docker-based (requires Docker daemon)
+- ``SandboxRunner`` — process-level (subprocess + resource limits, no Docker)
 """
 
 from __future__ import annotations
 
 import logging
 import os
+
+from agies.engine.v3.sandbox.runner import SandboxRunner
+from agies.engine.v3.sandbox.models import SandboxResult, SandboxConfig
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ except ImportError:
         pass
 
 if not _DOCKER_AVAILABLE:
-    logger.info("Docker Python SDK not installed — sandbox disabled")
+    logger.info("Docker Python SDK not installed -- Docker sandbox disabled")
 
 
 class PoCSandbox:
@@ -79,10 +81,10 @@ class PoCSandbox:
         Returns
         -------
         dict with keys:
-          - ``verified``: bool — whether execution confirms exploitability
-          - ``output``: str — stdout/stderr from the container
-          - ``timeout``: bool — whether execution was killed by timeout
-          - ``error``: str — error message on failure
+          - ``verified``: bool -- whether execution confirms exploitability
+          - ``output``: str -- stdout/stderr from the container
+          - ``timeout``: bool -- whether execution was killed by timeout
+          - ``error``: str -- error message on failure
         """
         if not self._client:
             return {
@@ -138,12 +140,12 @@ class PoCSandbox:
                 }
 
             except Exception:
-                # Timeout — expected for DoS/infinite-loop PoCs
+                # Timeout -- expected for DoS/infinite-loop PoCs
                 container.kill()
                 return {
                     "verified": True,
                     "output": (
-                        "Execution timed out — "
+                        "Execution timed out -- "
                         "potential DoS/infinite loop confirmed"
                     ),
                     "timeout": True,

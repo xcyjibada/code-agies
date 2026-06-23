@@ -25,6 +25,7 @@ def audit(
     project_type: Optional[str] = typer.Option(None, "--project-type", help="Override project type: app or lib (v3 only)"),
     consensus: bool = typer.Option(False, "--consensus", help="Enable conditional majority voting for grey-zone findings (confidence 4-7)"),
     all_paths: bool = typer.Option(False, "--all-paths", help="Skip path filtering, send ALL discovered paths to analysis (v3 only, high-value targets)"),
+    keep_config_paths: bool = typer.Option(False, "--keep-config-paths", help="Keep CONFIG_DRIVEN paths in v3 pipeline (default: filtered out)"),
 ):
     """Run an AI-powered code audit on the target.
 
@@ -55,7 +56,8 @@ def audit(
               verbose=verbose, output=final_output, output_format=final_output_format,
               static_analysis=static_analysis, static_only=static_only,
               verify=final_verify, new_pipeline=new_pipeline, v3=v3,
-              project_type=project_type, consensus=consensus, all_paths=all_paths)
+              project_type=project_type, consensus=consensus, all_paths=all_paths,
+              keep_config_paths=keep_config_paths)
 
 
 @app.command()

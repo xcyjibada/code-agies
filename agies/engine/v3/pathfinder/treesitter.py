@@ -35,6 +35,7 @@ from agies.engine.v3.codeql.models import (
 from agies.engine.v3.pathfinder.sink_patterns import (
     classify_sink,
     classify_sensitive_body,
+    detect_logic_signal,
     SENSITIVE_CALL_PATTERNS,
     KNOWN_SINK_NAMES,
 )
@@ -429,6 +430,52 @@ class TreeSitterPathFinder:
                         duration_seconds=time.time() - start,
                     ))
 
+        # Fourth pass: logic signal detection
+        # Scans functions not caught by sink/body/attr passes for patterns
+        # suggesting logic vulnerabilities (type confusion, TOCTOU, IDOR, etc).
+        # Unlike SENSITIVE_CALL_PATTERNS, LOGIC_SIGNAL_PATTERNS detect logic
+        # flaws without dangerous API calls. Classified as SUSPICIOUS so the
+        # LLM determines the actual vulnerability type via guard analysis.
+        logic_count = 0
+        _covered_fns: set[str] = set()
+        for r in results:
+            for p in r.paths:
+                _covered_fns.add(p.sink)
+        for fn in index.funcs:
+            if fn.name in _covered_fns:
+                continue
+            if not fn.body:
+                continue
+            signal = detect_logic_signal(fn.body)
+            if signal is None:
+                continue
+            path = self._build_body_only_path(index, fn, VulnType.SUSPICIOUS)
+            if path is None:
+                continue
+            path.body_sink_call = f"[logic:{signal}]"
+            logic_count += 1
+            found = False
+            for r in results:
+                if r.vuln_type == VulnType.SUSPICIOUS:
+                    r.paths.append(path)
+                    r.total_sinks = len(r.paths)
+                    found = True
+                    break
+            if not found:
+                results.append(QueryResult(
+                    vuln_type=VulnType.SUSPICIOUS,
+                    label=VULN_LABELS.get(VulnType.SUSPICIOUS, "Suspicious"),
+                    total_sinks=1,
+                    paths=[path],
+                    duration_seconds=time.time() - start,
+                ))
+
+        if logic_count:
+            logger.info(
+                "TreeSitterPathFinder: +%d logic signal paths (Explore candidates)",
+                logic_count,
+            )
+
         return results
 
     def run_one(self, vuln_type: VulnType) -> QueryResult:
@@ -545,38 +592,53 @@ class TreeSitterPathFinder:
         Returns a list ``[caller, ..., sink]`` — the longest discovered
         chain (fewest hops with most callers).
 
+        Uses parent-pointer BFS (O(N) memory) instead of list-copy BFS
+        (O(N·depth)) to avoid OOM on large call graphs.
+
         Returns ``None`` if the sink is not in the call graph at all.
         """
         # call_graph is {callee_name: {caller_names}}
         if sink_name not in index.call_graph or not index.call_graph[sink_name]:
             return None
 
-        # BFS backwards
-        queue: deque[tuple[str, list[str]]] = deque()
-        queue.append((sink_name, [sink_name]))
-        best_chain: list[str] = [sink_name]
+        # Parent-pointer BFS: each node's parent is the callee that
+        # discovered it (shortest path).  We also track depth so we can
+        # find the node farthest from the sink.
+        queue: deque[str] = deque()
+        queue.append(sink_name)
+        parent: dict[str, str | None] = {sink_name: None}
+        depth: dict[str, int] = {sink_name: 0}
 
         while queue:
-            current, chain = queue.popleft()
-            if len(chain) > self._max_depth:
+            current = queue.popleft()
+            current_depth = depth[current]
+
+            if current_depth >= self._max_depth:
                 continue
 
             callers = index.call_graph.get(current, set())
-            if not callers:
-                if len(chain) > len(best_chain):
-                    best_chain = chain
-                continue
-
             for caller in callers:
-                # Avoid cycles — caller already in chain
-                if caller in chain:
-                    continue
-                new_chain = [caller] + chain
-                queue.append((caller, new_chain))
-                if len(new_chain) > len(best_chain):
-                    best_chain = new_chain
+                if caller not in parent:
+                    parent[caller] = current
+                    depth[caller] = current_depth + 1
+                    queue.append(caller)
 
-        return best_chain
+        if len(depth) <= 1:
+            # Only the sink was reachable — no callers found
+            return None
+
+        # Find the deepest node (farthest from sink)
+        deepest = max(depth, key=lambda n: depth[n])  # type: ignore[arg-type]
+
+        # Reconstruct chain from deepest → sink
+        chain: list[str] = []
+        node: str | None = deepest
+        while node is not None:
+            chain.append(node)
+            node = parent[node]
+        chain.reverse()
+
+        return chain
 
     # ------------------------------------------------------------------
     # Body orphan handling & public API detection

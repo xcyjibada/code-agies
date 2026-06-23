@@ -1,0 +1,38 @@
+agies — auditing 
+/tmp/bounty_test/zipp_src/zipp-45b7f675c0bcaa4f3f9d15b4399fc71e74f2408c
+
+  Languages: Python, YAML
+  Files: 36
+
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 68
+    Local File Inclusion: 2 sink(s)
+    Arbitrary File Overwrite: 2 sink(s)
+    ReDoS (Regular Expression DoS): 3 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 9 sink(s)
+
+Phase B: Slice Sorting (16 raw paths)
+  Body-detected orphans: 2 (no call chain)
+  Exploit: 14 + Explore: 0
+  Project type: lib
+
+Phase C: README Understanding
+  (skipped — library mode)
+  Token budget: 1,000,000 tokens
+
+Phase D: Library Analysis (14 slices)
+  [1/14] afo-000 (make)
+  [2/14] lfi-001 (open)
+  [3/14] redos-002 (glob)
+  [4/14] suspicious-003 (_base)
+  [5/14] redos-004 (star_not_empty)
+  [6/14] afo-005 (__eq__)
+Slice lfi-001 failed: cannot access local variable 'source' where it is not associated with a value
+    Error: lfi-001: cannot access local variable 'source' where it is not 
+associated with a value
+Slice redos-002 failed: cannot access local variable 'source' where it is not associated with a value
+  [7/14] suspicious-006 (match)
+    Error: redos-002: cannot access local variable 'source' where it is not 
+associated with a value
