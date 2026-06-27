@@ -141,6 +141,7 @@ class LogicAgent:
         code_block: str = "",
         project_type: str = "app",
         blackboard_knowledge: str = "",
+        trust_model: str = "",
     ) -> str:
         """Build the logic analysis prompt using VulnHuntr-style prompts.
 
@@ -232,10 +233,93 @@ class LogicAgent:
             "   - No ownership check: any user can access any resource\n"
             '   → Ask: what guard should exist here? Is its absence exploitable?\n'
             '\n'
-            "IMPORTANT: If a guard is neither CONDITIONAL, BYPASSABLE, nor MISSING, "
+            '4. [UNCHECKED TYPE PARAMETER] — A generic collection receives elements '
+            "without verifying their type at runtime. "
+            "This is NOT a data flow guard — it's a type system violation.\n"
+            "   Common patterns:\n"
+            "   - Deserialization (XML/JSON/form) populates `List<T>` or `Map<K,V>` "
+            "but never validates T or V at runtime\n"
+            "   - Framework auto-binding (Spring @ModelAttribute, Stapler config.xml, "
+            "FastAPI Pydantic) fills object properties without checking type constraints\n"
+            "   - A type allowlist (e.g. JEP-200 ClassFilter) checks individual types "
+            "but not whether they belong in THIS collection context\n"
+            "   - Python `**kwargs` or `setattr()` fills object fields from "
+            "user-controlled dict without expected-type validation\n"
+            '   → Ask: can an attacker inject a type the developer never expected in '
+            "this context, even though each individual type is 'allowed'?\n"
+            '   → Concrete test: if T is a List<SafeType>, can you put a '
+            "type with dangerous side effects (file read, HTTP serving, lazy eval) "
+            "into the list and get it invoked later?\n"
+            '\n'
+            "IMPORTANT: If a guard is neither CONDITIONAL, BYPASSABLE, MISSING, nor "
+            "UNCHECKED TYPE PARAMETER, "
             "and effectively prevents the attack, explain WHY it cannot be bypassed. "
             "Include your analysis in `reasoning_steps` using these labels, and "
             "list ALL guards (including effective ones) in `guards_detected`.\n"
+        )
+
+        # ── TOCTOU / Parser Differential / Cache Divergence (op.md §Check-Time≠Use-Time / §Parser Differential) ──
+        toctou_analysis_section = (
+            "\n\n"
+            "TIMING & PARSER ANALYSIS - REQUIRED\n"
+            "Evaluate the code with these three lens, each producing its own labeled findings:\n"
+            '\n'
+            '---[TOCTOU]---\n'
+            "Check-Time ≠ Use-Time: does the code validate or check an object, then later "
+            "operate on that same object WITHOUT re-validation?\n"
+            "Common signs:\n"
+            "  - Path/URL is validated at the beginning of a function, then used after "
+            "some intervening code (another function call, I/O, file system operation)\n"
+            "  - A permission/ownership check returns True, then the resource is accessed "
+            "without re-checking\n"
+            "  - A file exists check (os.path.exists, .is_file()) is followed by open() "
+            "with a gap that a symlink-swap could exploit\n"
+            "  - `request.GET.get('redirect_uri')` is read from query params, used for "
+            "a redirect, but the same value was previously validated by a different "
+            "component — what if the value changes between the two reads?\n"
+            "  - Cached validation results used past their freshness window (node-tar "
+            "dirCache pattern: CVE-2021-32803)\n"
+            "For each TOCTOU gap found, assess: is there an atomic operation or lock "
+            "that prevents the race? If not, the check is a TOCTOU vulnerability.\n"
+            '\n'
+            "---[PARSER_DIFF]---\n"
+            "Parser Differential: does the security-critical check use one parser while "
+            "the actual execution uses a different parser?\n"
+            "Common signs:\n"
+            "  - URL host check uses a simple string comparison (startswith, '==') but "
+            "the real URL is parsed by urllib/requests which handles edge cases differently\n"
+            "  - Path validation uses os.path.normpath but the file system uses a "
+            "different path resolution (symlinks, case-insensitive FS)\n"
+            "  - HTML/XML sanitizer uses regex but the browser uses a real parser\n"
+            "  - OAuth redirect_uri validation checks the scheme via urlparse, but "
+            "the redirect function constructs the URL by string concatenation\n"
+            "  - Multiple URL parsers in the same request path (Django, oauthlib, "
+            "your own) that may disagree on parameter order or duplicate handling\n"
+            "For each parser differential found, assess: can an attacker craft input "
+            "that the check-parser sees as SAFE but the execution-parser sees as DANGEROUS?\n"
+            '\n'
+            "---[STATE_DIVERGENCE]---\n"
+            "State Divergence: does the code maintain a cached/derived state that could "
+            "diverge from the authoritative source?\n"
+            "Common signs:\n"
+            "  - A dirCache/memoization/cache that stores 'this path is safe' and "
+            "subsequent operations skip validation based on the cached entry\n"
+            "  - Session state that persists across requests but the underlying "
+            "resource changes (permissions revoked, file deleted and recreated)\n"
+            "  - Lazy-loaded properties that are computed once and never updated\n"
+            "  - An in-memory object graph that mirrors database state but isn't "
+            "refreshed after DB writes\n"
+            "  - Permissions/ACLs that are evaluated at login time and assumed "
+            "stable throughout the session (ghost permission pattern)\n"
+            "For each state divergence found, assess: what triggers a state refresh? "
+            "Can an attacker perform an action between the state snapshot and its use "
+            "that invalidates the cached assumption?\n"
+            '\n'
+            "IMPORTANT: Include any TOCTOU, Parser Differential, or State Divergence "
+            "findings in the `contradictions` output array with the contradiction_type "
+            "set to 'toctou', 'parser_diff', or 'state_divergence' respectively. "
+            "If none found, include a note in `reasoning_steps` that the check was "
+            "performed and no issues were detected."
         )
 
         # ── Dual-brain CoT reasoning (op.md Item ④) ──
@@ -306,9 +390,11 @@ class LogicAgent:
             "Your task: Find contradictions between the developer intent above "
             "and the actual source code below. Does the implementation "
             "introduce security risks that the intent summary doesn't mention?\n"
+            f"{trust_model}"
             f"{bb_section}"
             f"{lib_mission}"
             f"{guard_analysis_section}"
+            f"{toctou_analysis_section}"
             f"{base_prompt}"
             f"{structured_ev_instructions}"
         )

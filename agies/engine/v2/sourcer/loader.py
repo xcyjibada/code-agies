@@ -130,6 +130,8 @@ def build_index(
                 resolved.add(os.path.normpath(os.path.join(project_path, p)))
         full_index_paths = resolved
 
+    # Phase 1: Collect eligible files (serial, fast)
+    file_batch: list[tuple[str, str, bool]] = []
     for root, dirs, files in os.walk(project_path):
         # Prune excluded directories in-place (affects os.walk behaviour)
         dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
@@ -167,22 +169,45 @@ def build_index(
             if not do_full:
                 do_full = any(p in text for p in _DANGEROUS_IMPORT_PATTERNS)
 
-            if do_full:
-                funcs = extract_functions(sf)
-                index.add(sf, funcs)
+            file_batch.append((fpath, text, do_full))
 
-                # Build call graph for this file
-                if funcs:
-                    try:
-                        calls = extract_call_graph(sf)
-                        if calls:
-                            index.build_call_graph_from_calls(calls)
-                    except Exception:
-                        # Gracefully degrade — call graph is best-effort
-                        pass
-            else:
-                # Basic metadata only — add file without function extraction
-                index.sources[sf.path] = sf
+    # Phase 2: Parse files in parallel (tree-sitter releases GIL)
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    lock = threading.Lock()
+    workers = min(8, (os.cpu_count() or 1) + 4)
+
+    def _process_one(
+        fpath: str, text: str, do_full: bool,
+    ) -> tuple[SourceFile, list[Any] | None, list[Any] | None]:
+        sf = SourceFile(path=fpath, source=text)
+        funcs = None
+        calls = None
+        if do_full:
+            funcs = extract_functions(sf)
+            if funcs:
+                try:
+                    calls = extract_call_graph(sf)
+                except Exception:
+                    pass  # Gracefully degrade
+        return sf, funcs, calls
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        fut_to_info = {
+            executor.submit(_process_one, fpath, text, do_full): (fpath, do_full)
+            for fpath, text, do_full in file_batch
+        }
+        for future in as_completed(fut_to_info):
+            sf, funcs, calls = future.result()
+            with lock:
+                if funcs is not None:
+                    index.add(sf, funcs)
+                    if calls:
+                        index.build_call_graph_from_calls(calls)
+                else:
+                    # Basic metadata only — add file without function extraction
+                    index.sources[sf.path] = sf
 
     index.build_lut()
     return index

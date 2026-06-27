@@ -19,8 +19,10 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agies.engine.v2.sourcer.models import FunctionIndex, SourceFunction
@@ -273,15 +275,12 @@ def enrich_paths(index: FunctionIndex, paths: list[CodeQlPath]) -> None:
         if fn.name not in fn_by_name:
             fn_by_name[fn.name] = fn
 
-    enriched = 0
-    for path in paths:
-        # Build node list: [(source_name, source_fn), ...(nodes)..., (sink_name, sink_fn)]
-        # Deduplicate adjacent identical nodes (source may duplicate first node)
+    def _enrich_one(path: CodeQlPath) -> None:
+        """Process a single path — thread-safe, in-place."""
         node_names = [path.source]
         node_names += [n.function_name for n in path.nodes]
         node_names.append(path.sink)
 
-        # Deduplicate adjacent identical names to avoid self→self hops
         deduped_names: list[str] = []
         for name in node_names:
             if not deduped_names or deduped_names[-1] != name:
@@ -294,8 +293,14 @@ def enrich_paths(index: FunctionIndex, paths: list[CodeQlPath]) -> None:
         flow = _build_cross_file_flow(index, path, all_nodes)
         if flow:
             path.cross_file_flow = flow
-            enriched += 1
 
+    workers = min(8, (os.cpu_count() or 1) + 4)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_enrich_one, p) for p in paths]
+        for future in as_completed(futures):
+            future.result()  # re-raise exceptions
+
+    enriched = sum(1 for p in paths if p.cross_file_flow)
     if enriched:
         logger.info(
             "Cross-file flow: enriched %d/%d paths",

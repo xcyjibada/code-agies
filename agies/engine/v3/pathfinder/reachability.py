@@ -28,7 +28,9 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agies.engine.v2.sourcer.models import FunctionIndex
@@ -125,6 +127,26 @@ def build_forward_graph(index: FunctionIndex) -> dict[str, set[str]]:
     return dict(forward)
 
 
+def _bfs_closure(
+    forward_graph: dict[str, set[str]],
+    start_node: str,
+    max_depth: int,
+) -> tuple[str, set[str]]:
+    """BFS from *start_node* — helper for ``compute_transitive_closure``."""
+    visited: set[str] = set()
+    queue = deque([(start_node, 0)])
+    while queue:
+        current, depth = queue.popleft()
+        if current in visited or depth > max_depth:
+            continue
+        visited.add(current)
+        for callee in forward_graph.get(current, set()):
+            if callee not in visited:
+                queue.append((callee, depth + 1))
+    visited.discard(start_node)
+    return start_node, visited
+
+
 def compute_transitive_closure(
     forward_graph: dict[str, set[str]],
     max_depth: int = 15,
@@ -134,20 +156,16 @@ def compute_transitive_closure(
     Returns ``{func_name: {transitively_reachable_funcs}}``.
     """
     closure: dict[str, set[str]] = {}
+    workers = min(8, (os.cpu_count() or 1) + 4)
 
-    for start_node in list(forward_graph.keys()):
-        visited: set[str] = set()
-        queue = deque([(start_node, 0)])
-        while queue:
-            current, depth = queue.popleft()
-            if current in visited or depth > max_depth:
-                continue
-            visited.add(current)
-            for callee in forward_graph.get(current, set()):
-                if callee not in visited:
-                    queue.append((callee, depth + 1))
-        visited.discard(start_node)  # don't count self
-        closure[start_node] = visited
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        fut_to_node = {
+            executor.submit(_bfs_closure, forward_graph, n, max_depth): n
+            for n in list(forward_graph.keys())
+        }
+        for future in as_completed(fut_to_node):
+            start, visited = future.result()
+            closure[start] = visited
 
     return closure
 
@@ -155,6 +173,33 @@ def compute_transitive_closure(
 # ──────────────────────────────────────────────────────────────────────
 # Reachability matrix
 # ──────────────────────────────────────────────────────────────────────
+
+
+def _bfs_source(
+    forward: dict[str, set[str]],
+    sink_map: dict[str, VulnType],
+    src_name: str,
+    max_depth: int = 15,
+) -> tuple[str, list[tuple[str, VulnType]]] | tuple[str, None]:
+    """BFS from *src_name* through *forward*, collecting reachable sinks.
+
+    Helper for ``ReachabilityMatrix.compute()`` — thread-safe per-source.
+    Returns ``(src_name, list[(sink, VulnType)])`` or ``(src_name, None)``.
+    """
+    reachable: list[tuple[str, VulnType]] = []
+    visited: set[str] = set()
+    queue = deque([(src_name, 0)])
+    while queue:
+        current, depth = queue.popleft()
+        if current in visited or depth > max_depth:
+            continue
+        visited.add(current)
+        if current in sink_map:
+            reachable.append((current, sink_map[current]))
+        for callee in forward.get(current, set()):
+            if callee not in visited:
+                queue.append((callee, depth + 1))
+    return src_name, reachable if reachable else None
 
 
 class ReachabilityMatrix:
@@ -213,29 +258,16 @@ class ReachabilityMatrix:
 
         # 4. Compute matrix: for each source, BFS → check if reachable func is a sink
         source_list = list(self._sources.keys())
-        for src_name in source_list:
-            reachable_sinks: list[tuple[str, VulnType]] = []
-
-            # BFS from source
-            visited: set[str] = set()
-            queue = deque([(src_name, 0)])
-            while queue:
-                current, depth = queue.popleft()
-                if current in visited or depth > 15:
-                    continue
-                visited.add(current)
-
-                # Is this a sink?
-                if current in sink_map:
-                    reachable_sinks.append((current, sink_map[current]))
-
-                # Continue BFS to callees
-                for callee in forward.get(current, set()):
-                    if callee not in visited:
-                        queue.append((callee, depth + 1))
-
-            if reachable_sinks:
-                self._matrix[src_name] = reachable_sinks
+        workers = min(8, (os.cpu_count() or 1) + 4)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            fut_to_src = {
+                executor.submit(_bfs_source, forward, sink_map, src): src
+                for src in source_list
+            }
+            for future in as_completed(fut_to_src):
+                src_name, reachable = future.result()
+                if reachable is not None:
+                    self._matrix[src_name] = reachable
 
         # 5. Build reverse index: sink_name → [source_name, ...]
         for src_name, sink_list in self._matrix.items():

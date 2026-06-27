@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import networkx as nx
@@ -163,41 +165,65 @@ class CpgBuilder:
             return self._graph
 
         file_count = 0
-        # Track which query_file_paths were loaded (to avoid redundant loops)
-        for fp in files:
-            ext = os.path.splitext(fp)[1].lower()
-            lang = ext_map.get(ext)
-            if not lang:
-                continue
+        graph_lock = threading.Lock()
+        workers = min(8, (os.cpu_count() or 1) + 4)
 
-            parser_info = self._parsers.get(lang)
-            if parser_info is None:
-                continue
-            _lang_obj, _parser = parser_info  # (tree_sitter.Language, tree_sitter.Parser)
-
+        def _process_file(
+            fp: str, lang: str, parser_info: Any,
+        ) -> tuple[str, Any, bytes] | None:
+            """Parse one file with tree-sitter — releases GIL during parse."""
+            _lang_obj, _parser = parser_info
             try:
                 with open(fp, "rb") as f:
                     source_bytes = f.read()
             except OSError:
-                continue
+                return None
 
             try:
                 tree = _parser.parse(source_bytes)
             except Exception:
-                continue
+                return None
 
             if tree is None or tree.root_node is None:
-                continue
+                return None
 
-            # Run all queries for this language against this file
             rel_path = os.path.relpath(fp, self._project_path)
-            for qf_path, qf_queries in self._queries.items():
-                if not self._is_query_for_lang(qf_path, lang):
-                    continue
-                for query in qf_queries:
-                    self._apply_query(query, qf_path, tree.root_node, source_bytes, rel_path)
+            return rel_path, tree, source_bytes
 
-            file_count += 1
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            fut_to_meta: dict[Any, tuple[str, str]] = {}
+            for fp in files:
+                ext = os.path.splitext(fp)[1].lower()
+                lang = ext_map.get(ext)
+                if not lang:
+                    continue
+                parser_info = self._parsers.get(lang)
+                if parser_info is None:
+                    continue
+                fut = executor.submit(_process_file, fp, lang, parser_info)
+                fut_to_meta[fut] = (fp, lang)
+
+            for future in as_completed(fut_to_meta):
+                fp, lang = fut_to_meta[future]
+                try:
+                    result = future.result()
+                except Exception:
+                    continue
+                if result is None:
+                    continue
+                rel_path, tree, source_bytes = result
+
+                # Run queries and apply to graph (locked — graph is not thread-safe)
+                with graph_lock:
+                    for qf_path, qf_queries in self._queries.items():
+                        if not self._is_query_for_lang(qf_path, lang):
+                            continue
+                        for query in qf_queries:
+                            self._apply_query(
+                                query, qf_path, tree.root_node, source_bytes, rel_path,
+                            )
+
+                file_count += 1
 
         elapsed = time.time() - start
         self._built = True

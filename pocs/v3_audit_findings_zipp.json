@@ -1,0 +1,74 @@
+[
+  {
+    "path_id": "afo-000",
+    "vuln_type": "afo",
+    "actual_vuln_type": "",
+    "score": 0.47,
+    "confidence": 10,
+    "is_vulnerable": false,
+    "analysis_snippet": "The analyzed code path does not perform any file write operations. The sink functions are `__init__` and `__setstate__` which only call `super().__init__` with the same arguments, and `make` which returns a `CompleteDirs` instance or modifies the class of a `ZipFile` object. No file writing occurs, "
+  },
+  {
+    "path_id": "suspicious-003",
+    "vuln_type": "suspicious",
+    "actual_vuln_type": "none",
+    "score": 0.47,
+    "confidence": 10,
+    "is_vulnerable": false,
+    "analysis_snippet": "The code constructs a PurePosixPath from self.at or self.filename and accesses its suffixes property. This is a pure path manipulation operation with no file system access, no archive extraction, and no side effects. The path is not used for reading/writing files or traversing directories. The compa"
+  },
+  {
+    "path_id": "lfi-001",
+    "vuln_type": "lfi",
+    "actual_vuln_type": "",
+    "score": 0.44,
+    "confidence": 10,
+    "is_vulnerable": true,
+    "analysis_snippet": "The `open` method in the ZipFile entry class directly uses `self.at` (the entry name from the zip archive) to open a stream via `self.root.open(self.at, ...)`. There is no validation or sanitization of `self.at` for path traversal sequences (e.g., '../'). If an attacker can craft a zip archive with "
+  },
+  {
+    "path_id": "redos-004",
+    "vuln_type": "redos",
+    "actual_vuln_type": "",
+    "score": 0.5166666666666667,
+    "confidence": 8,
+    "is_vulnerable": true,
+    "analysis_snippet": "The glob pattern is user-controlled via the `pattern` parameter in `glob()` and `rglob()`. The pattern is processed by `star_not_empty()` which uses `re.sub()` with a dynamically constructed regex `not_seps_pattern` that matches non-separator characters. This regex is safe. However, the core vulnera"
+  },
+  {
+    "path_id": "suspicious-000",
+    "vuln_type": "suspicious",
+    "actual_vuln_type": "none",
+    "score": 0.3018181818181818,
+    "confidence": 9,
+    "is_vulnerable": false,
+    "analysis_snippet": "The code constructs paths using posixpath.join and posixpath.relpath, and then calls PurePosixPath.match. No file I/O, archive extraction, or resource allocation occurs. The operations are purely string-based path manipulations on PurePosixPath objects, which do not interact with the filesystem. The"
+  },
+  {
+    "path_id": "suspicious-001",
+    "vuln_type": "suspicious",
+    "actual_vuln_type": "none",
+    "score": 0.3018181818181818,
+    "confidence": 9,
+    "is_vulnerable": false,
+    "analysis_snippet": "The code constructs paths using posixpath.join and posixpath.relpath, but does not perform any path traversal validation. However, the paths are used only within the context of a zip file (self.root.filename), and the resulting string is not passed to any file system operation that could be exploite"
+  },
+  {
+    "path_id": "suspicious-002",
+    "vuln_type": "suspicious",
+    "actual_vuln_type": "none",
+    "score": 0.3018181818181818,
+    "confidence": 9,
+    "is_vulnerable": false,
+    "analysis_snippet": "The code performs pure path manipulation using posixpath.join and posixpath.relpath, and calls PurePosixPath.match. No file I/O, archive extraction, or resource allocation occurs. The operations are purely string-based and do not interact with the filesystem. There is no risk of path traversal, DoS,"
+  },
+  {
+    "path_id": "redos-002",
+    "vuln_type": "redos",
+    "actual_vuln_type": "",
+    "score": 0.44,
+    "confidence": 0,
+    "is_vulnerable": false,
+    "analysis_snippet": ""
+  }
+]

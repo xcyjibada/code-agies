@@ -1,0 +1,6 @@
+{
+  "name": "Agies v3 Call-Chain Auditor",
+  "description": "An interactive full-stack static call-chain analysis and denoising environment representing the agies v3 vulnerability discovery pipeline (VulnHuntr and CPRVul styles). Supports Python, JS, TS presets and real Gemini-powered logic audits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,23 @@
+  Language: Python
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 16012
+  Phase 0: 4 LLM-discovered sink(s)
+    Database._build_from_sources -> ssrf
+    Database._fetch_sources -> ssrf
+    Database.create_for -> ssrf
+    GitLabIntegration.post -> ssrf
+    Remote Code Execution: 20 sink(s)
+    Local File Inclusion: 26 sink(s)
+    Server-Side Request Forgery: 21 sink(s)
+    SQL Injection: 47 sink(s)
+    Arbitrary File Overwrite: 3 sink(s)
+    ReDoS (Regular Expression DoS): 20 sink(s)
+    XML External Entity (XXE) — XML parser with insecure defaults: 1 sink(s)
+    Server-Side Template Injection (SSTI) — template engine with user input: 3 
+sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 25 
+sink(s)
+    LangGraph Architecture — gRPC/gRPC no-auth, admin truncate, msgpack ext_hook
+RCE, template injection: 1 sink(s)

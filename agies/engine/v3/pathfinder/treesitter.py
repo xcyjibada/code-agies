@@ -19,6 +19,7 @@ import os
 import re
 import time
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agies.engine.v2.sourcer.loader import build_index
@@ -38,6 +39,10 @@ from agies.engine.v3.pathfinder.sink_patterns import (
     detect_logic_signal,
     SENSITIVE_CALL_PATTERNS,
     KNOWN_SINK_NAMES,
+)
+from agies.engine.v3.pathfinder.framework_sinks import (
+    detect_frameworks,
+    find_framework_sinks,
 )
 
 logger = logging.getLogger(__name__)
@@ -270,11 +275,23 @@ class TreeSitterPathFinder:
                 continue
 
             paths: list[CodeQlPath] = []
-            for sink_fn in sinks[:20]:  # cap per type to avoid explosion
-                path = self._build_path(index, sink_fn, vtype)
-                if path is not None:
-                    self._enrich_with_cpg(path, sink_fn)
-                    paths.append(path)
+            workers = min(8, (os.cpu_count() or 1) + 4)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                fut_to_fn = {
+                    executor.submit(self._build_path, index, sink_fn, vtype): sink_fn
+                    for sink_fn in sinks[:20]
+                }
+                for future in as_completed(fut_to_fn):
+                    try:
+                        path = future.result()
+                    except Exception:
+                        logger.exception(
+                            "Path build failed for '%s'", fut_to_fn[future].name
+                        )
+                        continue
+                    if path is not None:
+                        self._enrich_with_cpg(path, fut_to_fn[future])
+                        paths.append(path)
 
             results.append(QueryResult(
                 vuln_type=vtype,
@@ -475,6 +492,69 @@ class TreeSitterPathFinder:
                 "TreeSitterPathFinder: +%d logic signal paths (Explore candidates)",
                 logic_count,
             )
+
+        # ── Fifth pass: framework-level deserialization sinks ──
+        # Detect web framework auto-deserialization patterns (Stapler config.xml
+        # POST, Spring @RequestBody, Django REST ModelSerializer, FastAPI Pydantic).
+        # Unlike previous passes, these don't have a telltale function name — the
+        # "sink" is the framework's binding mechanism triggered by annotations.
+        framework_sink_count = 0
+        detected_frameworks = detect_frameworks(self._project_path)
+        if detected_frameworks:
+            fw_sinks = find_framework_sinks(
+                self._project_path, index, detected_frameworks,
+            )
+            if fw_sinks:
+                for fullname, vtype_str in fw_sinks.items():
+                    # Convert string type back to VulnType
+                    try:
+                        vt = VulnType(vtype_str.upper())
+                    except ValueError:
+                        vt = VulnType.SUSPICIOUS
+
+                    # Find the matching function in the index
+                    matched_fn = None
+                    for fn in index.funcs:
+                        if fn.fullname == fullname:
+                            matched_fn = fn
+                            break
+
+                    if matched_fn is None:
+                        continue
+
+                    # Build path from this framework sink
+                    path = self._build_path(index, matched_fn, vt)
+                    if path is None:
+                        path = self._build_body_only_path(index, matched_fn, vt)
+                    if path is None:
+                        continue
+
+                    if not path.body_sink_call:
+                        path.body_sink_call = f"[fw:{fullname}]"
+                    path.body_detected = True
+
+                    framework_sink_count += 1
+                    found = False
+                    for r in results:
+                        if r.vuln_type == vt:
+                            r.paths.append(path)
+                            r.total_sinks = len(r.paths)
+                            found = True
+                            break
+                    if not found:
+                        results.append(QueryResult(
+                            vuln_type=vt,
+                            label=VULN_LABELS.get(vt, str(vt)),
+                            total_sinks=1,
+                            paths=[path],
+                            duration_seconds=time.time() - start,
+                        ))
+
+            if framework_sink_count:
+                logger.info(
+                    "TreeSitterPathFinder: +%d framework-level sink paths (Explore candidates)",
+                    framework_sink_count,
+                )
 
         return results
 

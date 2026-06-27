@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>zipp ReDoS 沙箱</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #111; color: #eee; padding: 2rem; max-width: 700px; margin: auto; }
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: #f55; }
+.sub { color: #888; font-size: .85rem; margin-bottom: 1.5rem; }
+section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+h2 { font-size: 1rem; color: #fa0; margin-bottom: .75rem; }
+label { display: block; font-size: .85rem; color: #aaa; margin-bottom: .25rem; }
+input[type="text"], input[type="file"] { width: 100%; padding: .5rem; background: #222; border: 1px solid #444; border-radius: 4px; color: #eee; font-size: .9rem; margin-bottom: .75rem; }
+input[type="text"] { font-family: monospace; }
+button { background: #d32; color: #fff; border: none; padding: .5rem 1.25rem; border-radius: 4px; cursor: pointer; font-size: .9rem; }
+button:hover { background: #e43; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.status-row { display: flex; gap: 1.5rem; margin-top: .75rem; }
+.stat { flex: 1; }
+.stat-val { font-size: 1.6rem; font-weight: bold; font-family: monospace; }
+.stat-val.danger { color: #f55; }
+.stat-val.ok { color: #5a5; }
+.stat-label { font-size: .75rem; color: #888; }
+#result { display: none; }
+.log { margin-top: .75rem; background: #0a0a0a; border-radius: 4px; padding: .5rem; font-family: monospace; font-size: .8rem; max-height: 120px; overflow-y: auto; }
+.log-entry { color: #888; padding: 2px 0; }
+#cpu-bar-wrap { background: #222; border-radius: 4px; height: 8px; margin-top: 6px; overflow: hidden; }
+#cpu-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #5a5, #fa0, #f55); transition: width .3s; }
+</style>
+</head>
+<body>
+
+<h1>🔥 zipp ReDoS 沙箱</h1>
+<p class="sub">上传 ZIP → 输入 glob pattern → 观察 worker CPU 100%</p>
+
+<!-- Upload -->
+<section>
+<h2>1. 上传 ZIP</h2>
+<form id="upload-form" enctype="multipart/form-data">
+<input type="file" name="file" accept=".zip" id="zip-file">
+<button type="submit">Upload</button>
+</form>
+<div id="upload-status" class="log"></div>
+</section>
+
+<!-- Glob -->
+<section>
+<h2>2. 触发 glob</h2>
+<label>文件名</label>
+<input type="text" id="glob-file" placeholder="evil.zip" value="evil.zip">
+<label>Glob Pattern</label>
+<input type="text" id="glob-pattern" placeholder="*a*a*a*a*a*a" value="*a*a*a*a*a*a">
+<button id="glob-btn">Run</button>
+<div id="result">
+<div class="status-row">
+<div class="stat"><div class="stat-val" id="r-elapsed">—</div><div class="stat-label">耗时 (s)</div></div>
+<div class="stat"><div class="stat-val" id="r-matches">—</div><div class="stat-label">匹配数</div></div>
+<div class="stat"><div class="stat-val" id="r-cpu">—</div><div class="stat-label">CPU 耗时 (s)</div></div>
+<div class="stat"><div class="stat-val" id="r-cpu-pct">—</div><div class="stat-label">CPU 利用率</div></div>
+</div>
+</div>
+</section>
+
+<!-- CPU Monitor -->
+<section>
+<h2>CPU 实时</h2>
+<div style="display:flex;gap:2rem">
+<div><span id="cpu-val" style="font-size:1.6rem;font-family:monospace">0.0</span><span style="font-size:.85rem;color:#888">% 平均</span></div>
+<div><span id="cpu-max-val" style="font-size:1.6rem;font-family:monospace">0.0</span><span style="font-size:.85rem;color:#888">% 最热核心</span></div>
+<div><span id="cpu-cores" style="font-size:1.6rem;font-family:monospace"></span><span style="font-size:.85rem;color:#888">核心</span></div>
+</div>
+<div id="cpu-bar-wrap"><div id="cpu-bar"></div></div>
+</section>
+
+<script>
+const uploadForm = document.getElementById('upload-form');
+const uploadStatus = document.getElementById('upload-status');
+const globBtn = document.getElementById('glob-btn');
+const globFile = document.getElementById('glob-file');
+const globPattern = document.getElementById('glob-pattern');
+const result = document.getElementById('result');
+const rElapsed = document.getElementById('r-elapsed');
+const rMatches = document.getElementById('r-matches');
+const rCpu = document.getElementById('r-cpu');
+const rCpuPct = document.getElementById('r-cpu-pct');
+const cpuVal = document.getElementById('cpu-val');
+const cpuBar = document.getElementById('cpu-bar');
+
+uploadForm.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(uploadForm);
+    const file = document.getElementById('zip-file').files[0];
+    if (!file) return;
+    const resp = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    globFile.value = data.saved || file.name;
+    uploadStatus.innerHTML = `<div class="log-entry">✓ ${data.saved} (${data.size} bytes)</div>`;
+};
+
+globBtn.onclick = async () => {
+    const file = globFile.value.trim();
+    const pattern = globPattern.value.trim();
+    if (!file || !pattern) return;
+
+    globBtn.disabled = true;
+    globBtn.textContent = '运行中...';
+    result.style.display = 'block';
+    rElapsed.textContent = '…';
+    rMatches.textContent = '…';
+    rCpu.textContent = '…';
+    rElapsed.className = 'stat-val';
+
+    const start = Date.now();
+    const resp = await fetch(`/glob?file=${encodeURIComponent(file)}&pattern=${encodeURIComponent(pattern)}`);
+    const data = await resp.json();
+    const realElapsed = (Date.now() - start) / 1000;
+
+    rElapsed.textContent = (data.elapsed || realElapsed).toFixed(2);
+    rMatches.textContent = data.matches ?? 'err';
+    rCpu.textContent = data.cpu_time ? data.cpu_time.toFixed(2) : '—';
+    rCpuPct.textContent = data.cpu_pct != null ? data.cpu_pct + '%' : '—';
+
+    if (data.elapsed > 2) rElapsed.className = 'stat-val danger';
+    else rElapsed.className = 'stat-val ok';
+
+    globBtn.disabled = false;
+    globBtn.textContent = 'Run';
+};
+
+// CPU polling
+setInterval(async () => {
+    const resp = await fetch('/status');
+    const data = await resp.json();
+    const pct = data.cpu || 0;
+    const maxCore = data.max_core || 0;
+    const cores = data.cores || '—';
+    cpuVal.textContent = pct.toFixed(1);
+    document.getElementById('cpu-max-val').textContent = maxCore.toFixed(1);
+    document.getElementById('cpu-cores').textContent = cores;
+    // 按最热核心显示进度条
+    cpuBar.style.width = Math.min(maxCore, 100) + '%';
+}, 500);
+</script>
+</body>
+</html>

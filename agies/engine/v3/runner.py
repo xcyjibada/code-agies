@@ -30,6 +30,7 @@ from agies.engine.v3.aggregator.token_counter import TokenCounter, QuotaExceeded
 from agies.engine.v3.agents.intent_agent import IntentAgent, IntentAgentTask
 from agies.engine.v3.agents.logic_agent import LogicAgent
 from agies.engine.v3.agents.adversary_agent import AdversaryAgent
+from agies.engine.v3.agents.assumption_agent import AssumptionAgent
 from agies.engine.v3.agents.poc_agent import PoCAgent
 from agies.engine.v3.agents.merge import MergeLayer
 from agies.engine.v3.agents.path_code_loader import PathCodeLoader
@@ -40,6 +41,7 @@ from agies.engine.v3.agents.bridge_verifier import (
     BridgeVerifier, BridgeAnnotation, scan_path_bridge_evidence,
 )
 from agies.engine.v3.classifier import classify_project
+from agies.engine.v3.lang_adapter import detect_project_language, get_adaptation, get_label
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,12 @@ def run_v3_pipeline(
     llm = _init_llm(model, console)
     if llm is None:
         return
+
+    # Detect project language for prompt adaptation (lightweight file walk)
+    global _PROJECT_LANGUAGE
+    _PROJECT_LANGUAGE = detect_project_language(target)
+    detected_lang_label = get_label(_PROJECT_LANGUAGE)
+    _print(console, f"  [cyan]Language: {detected_lang_label}[/cyan]")
 
     # ==================================================================
     # Phase A: Path Discovery
@@ -315,6 +323,18 @@ def run_v3_pipeline(
     # ==================================================================
     # Phase D: Dual Pipeline
     # ==================================================================
+
+    # ── Framework Trust Model (Phase C.5) ──
+    trust_model = ""
+    try:
+        from agies.engine.v3.pathfinder.framework_trust_model import build_trust_model
+        trust_model, _ = build_trust_model(target)
+        if trust_model:
+            _print_header(console, "Phase C.5: Framework Trust Model")
+            _print(console, f"  [dim]{trust_model.split(chr(10))[1]}[/dim]")
+    except Exception as exc:
+        logger.debug("Trust model generation skipped: %s", exc)
+
     blackboard = BlackboardAggregator()
 
     # Initialize token budget counter — defaults to 1M tokens, use
@@ -340,6 +360,7 @@ def run_v3_pipeline(
                 target=target,
                 function_index=function_index,
                 consensus=consensus,
+                trust_model=trust_model,
             )
         else:
             _print_header(console, f"Phase D: Library Analysis ({len(sort_result.all_slices)} slices)")
@@ -351,20 +372,64 @@ def run_v3_pipeline(
                 function_index=function_index,
                 target=target,
                 consensus=consensus,
+                trust_model=trust_model,
             )
     except QuotaExceededException as qe:
         _print(console, f"  [red]Token budget exceeded ({qe.total_used:,}/{qe.budget:,}) — stopping.[/red]")
         phase_results = []
 
     # ==================================================================
+    # Phase D.5: Assumption Aggregation
+    # ==================================================================
+    _print_header(console, "Phase D.5: Assumption Cross-Correlation")
+    try:
+        # Count assumption entries in the blackboard
+        assumption_count = 0
+        violable_count = 0
+        for fn, entries in blackboard._knowledge.items():  # type: ignore[attr-defined]
+            for entry in entries:
+                val = entry.value if hasattr(entry, "value") else str(entry)
+                if "[ASSUMPTION" in val:
+                    assumption_count += 1
+                    if "violable=True" in val:
+                        violable_count += 1
+        if assumption_count > 0:
+            _print(console, f"  Assumptions collected: {assumption_count} ({violable_count} violable)")
+        else:
+            _print(console, f"  [dim]No assumptions recorded across {len(phase_results)} paths.[/dim]")
+    except Exception as exc:
+        logger.debug("Assumption aggregation display failed: %s", exc)
+        _print(console, f"  [dim]Assumption aggregation skipped.[/dim]")
+
+    # ==================================================================
     # Phase E: Blackboard summary
     # ==================================================================
     _print_header(console, "Phase E: Results")
 
-    high_conf = [r for r in phase_results if r.confidence >= 7]
-    medium_conf = [r for r in phase_results if 4 <= r.confidence < 7]
+    # ── Cross-type chain correlation ──
+    sort_result_for_chains = locals().get("sort_result")
+    path_slices = sort_result_for_chains.all_slices if sort_result_for_chains and hasattr(sort_result_for_chains, "all_slices") else None
+    chain_results = []
+    if len(phase_results) >= 2:
+        try:
+            from agies.engine.v3.aggregator.cross_type_chains import correlate_chains
+            chain_results = correlate_chains(phase_results, path_slices, blackboard=blackboard)
+        except Exception as exc:
+            logger.warning("Chain correlation failed: %s", exc)
+
+    all_results = phase_results + chain_results
+
+    high_conf = [r for r in all_results if r.confidence >= 7]
+    medium_conf = [r for r in all_results if 4 <= r.confidence < 7]
 
     _print(console, f"  {blackboard.summary()}")
+
+    if chain_results:
+        _print(console, f"  [bold]Attack chains ({len(chain_results)}):[/bold]")
+        for cr in chain_results:
+            _print(console, f"    → {cr.path_id} (conf={cr.confidence}/10)")
+            first_line = cr.analysis.split("\n")[0] if cr.analysis else ""
+            _print(console, f"      [dim]{first_line}[/dim]")
 
     if high_conf:
         _print(console, f"  [red]High confidence ({len(high_conf)}):[/red]")
@@ -621,6 +686,7 @@ def _run_phase_d(
     target: str,
     function_index=None,
     consensus: bool = False,
+    trust_model: str = "",
 ) -> list[AgentPhaseResult]:
     """Run Phase D with real LLM calls and verification routing.
 
@@ -721,6 +787,7 @@ def _run_phase_d(
             code_block=code_block,
             project_type="app",
             blackboard_knowledge=blackboard_knowledge,
+            trust_model=trust_model,
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
@@ -780,6 +847,29 @@ def _run_phase_d(
                 result = c_result
                 with _print_lock:
                     _print_phase_d_result(console, result)
+
+        # ── Phase D.5: Assumption Analysis (op.md methodology) ──
+        assumption_agent = AssumptionAgent()
+        bb_knowledge = blackboard.get_all_prior_knowledge(list({
+            node.get("function_name", "")
+            for node in nodes
+            if node.get("function_name")
+        }))
+        _safe_print(f"    Assumptions: {slice_.id}...")
+        assumptions = assumption_agent.run(
+            code_block=code_block,
+            intent_chain=intent_chain,
+            vuln_type=slice_.vuln_type.value,
+            blackboard_knowledge=bb_knowledge,
+            llm_call=lambda p: _call_llm(llm, p, console),
+        )
+        for fn, text in assumption_agent.format_for_blackboard(slice_.id):
+            blackboard.record_knowledge(fn, text, source_path_id=slice_.id)
+        if assumptions:
+            violable = sum(1 for a in assumptions if a.get("can_be_violated"))
+            _safe_print(f"      {len(assumptions)} assumptions ({violable} violable)")
+        else:
+            _safe_print(f"      [dim]no assumptions extracted[/dim]")
 
         # Adversary Agent: try to rebut before PoC generation
         if result.is_vulnerable:
@@ -969,6 +1059,7 @@ def _run_phase_d_lib(
     function_index=None,
     target: str = "",
     consensus: bool = False,
+    trust_model: str = "",
 ) -> list[AgentPhaseResult]:
     """Library-mode Phase D — parallel Intent+Logic pipeline.
 
@@ -1053,6 +1144,7 @@ def _run_phase_d_lib(
             code_block=code_block,
             project_type="lib",
             blackboard_knowledge=blackboard_knowledge,
+            trust_model=trust_model,
         )
         logic_response = _call_llm(llm, logic_prompt, console)
         if not logic_response:
@@ -1096,6 +1188,29 @@ def _run_phase_d_lib(
             if c_result is not result:
                 result = c_result
                 _print_phase_d_result(console, result)
+
+        # ── Phase D.5: Assumption Analysis (op.md methodology) ──
+        assumption_agent = AssumptionAgent()
+        lib_bb_knowledge = blackboard.get_all_prior_knowledge(list({
+            node.get("function_name", "")
+            for node in nodes
+            if node.get("function_name")
+        }))
+        _safe_print(f"    Assumptions: {slice_.id}...")
+        lib_assumptions = assumption_agent.run(
+            code_block=code_block,
+            intent_chain=intent_chain,
+            vuln_type=slice_.vuln_type.value,
+            blackboard_knowledge=lib_bb_knowledge,
+            llm_call=lambda p: _call_llm(llm, p, console),
+        )
+        for fn, text in assumption_agent.format_for_blackboard(slice_.id):
+            blackboard.record_knowledge(fn, text, source_path_id=slice_.id)
+        if lib_assumptions:
+            violable = sum(1 for a in lib_assumptions if a.get("can_be_violated"))
+            _safe_print(f"      {len(lib_assumptions)} assumptions ({violable} violable)")
+        else:
+            _safe_print(f"      [dim]no assumptions extracted[/dim]")
 
         bridge_result = _run_lib_bridge_verifier(llm, result, nodes, code_block, console)
         if bridge_result:
@@ -1328,6 +1443,13 @@ def _run_lib_bridge_verifier(
 _TOKEN_COUNTER: TokenCounter | None = None
 """Global token counter shared across the v3 pipeline."""
 
+_PROJECT_LANGUAGE: str = "python"
+"""Detected project language. Set once after Phase A.
+
+Used by ``_call_llm`` to inject language adaptation instructions
+when the project is not Python.  Zero changes to prompt templates.
+"""
+
 
 def _init_token_counter(budget: int = 0) -> TokenCounter:
     global _TOKEN_COUNTER
@@ -1353,6 +1475,15 @@ def _call_llm(
         stability.  Set to False for prompts that need raw output (e.g. PoC
         scripts, code fences).
     """
+    # ── Language adaptation (zero-changes to prompt templates) ──
+    # When the project is not Python, inject a language-context instruction
+    # so the LLM knows how to translate Python-specific references in the
+    # prompt (os.path.join, pickle, subprocess, etc.) to the target language.
+    global _PROJECT_LANGUAGE
+    if _PROJECT_LANGUAGE != "python":
+        adaptation = get_adaptation(_PROJECT_LANGUAGE)
+        if adaptation:
+            prompt = f"{adaptation}\n\n---\n\n{prompt}"
     try:
         kwargs = {}
         if force_json:

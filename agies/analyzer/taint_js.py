@@ -169,6 +169,8 @@ class TaintEngineJS:
         depth: int,
     ) -> None:
         """Route a statement node to the appropriate handler."""
+        if not hasattr(node, "type"):
+            return
         if node.type in ("lexical_declaration", "variable_declaration"):
             self._handle_var_decl(node, tainted, fn, depth)
 
