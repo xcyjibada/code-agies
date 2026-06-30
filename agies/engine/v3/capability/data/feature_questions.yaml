@@ -1,0 +1,521 @@
+# Feature → Question Mapping
+#
+# When a Feature is detected, the system auto-generates
+# these questions. Questions are NOT vulnerabilities —
+# they are prompts for the LLM to reason about.
+#
+# Each question:
+# - Is independent of the specific implementation
+# - Probes a trust boundary, invariant, or state change
+# - Can be answered by reading the code
+#
+# Questions are generated BEFORE any code is analyzed.
+# They guide the investigation, not confirm the finding.
+
+feature_questions:
+
+  # ── Reference & Resolution ──────────────────────────────────────────────
+  - feature_id: reference_expansion
+    questions:
+      - id: Q-REF-001
+        question: "Who controls the reference name? Is it user-supplied or hardcoded?"
+        probes:
+          - trust_boundary: input → reference name
+          - invariant: secret_opaque
+
+      - id: Q-REF-002
+        question: "When is the reference expanded? At configuration time, startup, or on every access?"
+        probes:
+          - state: timing of resolution
+          - invariant: secret_opaque
+
+      - id: Q-REF-003
+        question: "After expansion, is the value still treated as a secret with the same protections?"
+        probes:
+          - trust_boundary: post-resolution handling
+          - invariant: secret_opaque
+
+      - id: Q-REF-004
+        question: "Can the expanded value be observed by an attacker (error messages, logs, timing)?"
+        probes:
+          - state: value visibility
+          - invariant: secret_no_log
+
+      - id: Q-REF-005
+        question: "Is there a validation step before the reference is resolved (allowed env vars list)?"
+        probes:
+          - trust_boundary: validation gate
+          - invariant: secret_opaque
+
+  - feature_id: dynamic_dispatch
+    questions:
+      - id: Q-DYN-001
+        question: "Who controls the dispatch key? Can an attacker choose which component executes?"
+        probes:
+          - trust_boundary: input → dispatch key
+          - invariant: code_not_dynamic
+
+      - id: Q-DYN-002
+        question: "Is the set of dispatchable components bounded or enumerable?"
+        probes:
+          - invariant: plugin_source_trusted
+
+      - id: Q-DYN-003
+        question: "Does the dispatch bypass normal authorization checks?"
+        probes:
+          - invariant: authorization_on_every_access
+
+  # ── Data Movement ────────────────────────────────────────────────────────
+  - feature_id: remote_acquisition
+    questions:
+      - id: Q-REM-001
+        question: "Is the remote source URL user-controlled? Can an attacker redirect to a malicious server?"
+        probes:
+          - trust_boundary: source URL
+          - invariant: data_source_validated
+
+      - id: Q-REM-002
+        question: "Is the fetched data validated before use (type check, hash verification, signature)?"
+        probes:
+          - invariant: plugin_signed
+
+      - id: Q-REM-003
+        question: "Does the system follow redirects? Can the final destination differ from the original?"
+        probes:
+          - invariant: redirect_not_followed_untrusted
+
+      - id: Q-REM-004
+        question: "Is the fetched content cached? Can stale/malicious content persist in cache?"
+        probes:
+          - invariant: cache_consistent
+
+  - feature_id: serialization
+    questions:
+      - id: Q-SER-001
+        question: "Is the serialized data source user-controlled or untrusted?"
+        probes:
+          - trust_boundary: input source
+          - invariant: data_source_validated
+
+      - id: Q-SER-002
+        question: "Can deserialization trigger arbitrary code execution (unsafe formats like pickle)?"
+        probes:
+          - invariant: code_not_dynamic
+
+      - id: Q-SER-003
+        question: "Is the deserialized data validated/constrained before use?"
+        probes:
+          - invariant: data_source_validated
+
+  - feature_id: file_io
+    questions:
+      - id: Q-FIO-001
+        question: "Is the file path user-controlled? Can path traversal characters escape the intended directory?"
+        probes:
+          - trust_boundary: input → path
+          - invariant: data_source_validated
+
+      - id: Q-FIO-002
+        question: "Is the operation (read/write/delete) authorized for the target file?"
+        probes:
+          - invariant: authorization_on_every_access
+
+      - id: Q-FIO-003
+        question: "Does the path resolve symlinks? Can an attacker create a symlink to redirect operations?"
+        probes:
+          - state: path resolution
+
+  # ── Authentication & Identity ────────────────────────────────────────────
+  - feature_id: authentication
+    questions:
+      - id: Q-AUTH-001
+        question: "Is the authentication process complete? Are all factors verified before granting access?"
+        probes:
+          - invariant: auth_complete
+
+      - id: Q-AUTH-002
+        question: "Is there a timing attack vector (variable-time comparison)?"
+        probes:
+          - state: comparison method
+
+      - id: Q-AUTH-003
+        question: "Can authentication be bypassed via special inputs (null, empty, unicode normalization)?"
+        probes:
+          - trust_boundary: input validation
+          - invariant: auth_complete
+
+  - feature_id: authorization
+    questions:
+      - id: Q-AUTHZ-001
+        question: "Is the authorization check performed on every access, or only at the endpoint boundary?"
+        probes:
+          - invariant: authorization_on_every_access
+
+      - id: Q-AUTHZ-002
+        question: "Is ownership verified for specific resources, or just role/permission checked?"
+        probes:
+          - invariant: ownership_verified
+
+      - id: Q-AUTHZ-003
+        question: "Is the permission model default-deny or default-allow?"
+        probes:
+          - invariant: acl_monotonic
+
+      - id: Q-AUTHZ-004
+        question: "Can permissions be inherited implicitly without the user's knowledge?"
+        probes:
+          - invariant: acl_monotonic
+
+  - feature_id: identity_delegation
+    questions:
+      - id: Q-DEL-001
+        question: "Is the delegation scope bounded (specific actions) or unlimited (full impersonation)?"
+        probes:
+          - invariant: delegation_scope_bounded
+
+      - id: Q-DEL-002
+        question: "Can the delegated identity be used to access resources the original identity couldn't?"
+        probes:
+          - trust_boundary: delegation chain
+          - invariant: delegation_scope_bounded
+
+      - id: Q-DEL-003
+        question: "Is the delegation revocable? Does it expire?"
+        probes:
+          - state: delegation lifetime
+          - invariant: token_fresh
+
+  # ── Code Execution ──────────────────────────────────────────────────────
+  - feature_id: code_execution
+    questions:
+      - id: Q-EXEC-001
+        question: "Is the executed code/user input controllable by an attacker?"
+        probes:
+          - trust_boundary: input → code
+          - invariant: code_not_dynamic
+
+      - id: Q-EXEC-002
+        question: "Is there any sandbox or restriction on what the executed code can do?"
+        probes:
+          - invariant: sandbox_isolation
+
+      - id: Q-EXEC-003
+        question: "Can the execution error leak sensitive information in the error message?"
+        probes:
+          - invariant: secret_no_log
+
+  - feature_id: plugin_loading
+    questions:
+      - id: Q-PLG-001
+        question: "Is the plugin source user-controlled? Can an attacker supply a malicious plugin?"
+        probes:
+          - trust_boundary: source
+          - invariant: plugin_source_trusted
+
+      - id: Q-PLG-002
+        question: "Is the plugin cryptographically signed? Is the signature verified before loading?"
+        probes:
+          - invariant: plugin_signed
+
+      - id: Q-PLG-003
+        question: "Does the plugin run with the same privileges as the host process?"
+        probes:
+          - invariant: sandbox_isolation
+
+  - feature_id: template_evaluation
+    questions:
+      - id: Q-TMP-001
+        question: "Is the template string user-controlled? Can the attacker inject expressions?"
+        probes:
+          - trust_boundary: input → template
+          - invariant: code_not_dynamic
+
+      - id: Q-TMP-002
+        question: "Does the template engine restrict access to dangerous methods/objects?"
+        probes:
+          - invariant: sandbox_isolation
+
+      - id: Q-TMP-003
+        question: "Can the template output be used to execute code (XSS in rendered HTML)?"
+        probes:
+          - invariant: output_encoded
+
+  # ── Configuration & Secrets ─────────────────────────────────────────────
+  - feature_id: configuration_loading
+    questions:
+      - id: Q-CFG-001
+        question: "Is the config source user-controlled? Can an attacker supply a malicious config file?"
+        probes:
+          - trust_boundary: source
+          - invariant: config_source_trusted
+
+      - id: Q-CFG-002
+        question: "Does config loading trust user-controlled environment variables?"
+        probes:
+          - trust_boundary: env source
+          - invariant: config_source_trusted
+
+      - id: Q-CFG-003
+        question: "Can config values override security-critical settings (auth backends, trust flags)?"
+        probes:
+          - invariant: config_change_authorized
+
+  - feature_id: secret_management
+    questions:
+      - id: Q-SEC-001
+        question: "Does the system interpret or expand secret values (e.g., $ENV_VAR, template resolution)?"
+        probes:
+          - invariant: secret_opaque
+
+      - id: Q-SEC-002
+        question: "Are secrets visible in logs, error messages, or debugging output?"
+        probes:
+          - invariant: secret_no_log
+
+      - id: Q-SEC-003
+        question: "Are secrets transmitted over unencrypted channels or included in URLs?"
+        probes:
+          - invariant: secret_no_url
+
+      - id: Q-SEC-004
+        question: "Can a low-privilege user read secrets they shouldn't have access to?"
+        probes:
+          - invariant: authorization_on_every_access
+
+  # ── Network & Communication ─────────────────────────────────────────────
+  - feature_id: outbound_request
+    questions:
+      - id: Q-OUT-001
+        question: "Is the target URL user-controlled? Can the attacker trigger SSRF?"
+        probes:
+          - trust_boundary: target URL
+          - invariant: data_source_validated
+
+      - id: Q-OUT-002
+        question: "Are redirects followed? Can the destination be changed via redirect?"
+        probes:
+          - invariant: redirect_not_followed_untrusted
+
+      - id: Q-OUT-003
+        question: "Does the request include sensitive credentials (API keys in headers, auth tokens)?"
+        probes:
+          - invariant: secret_no_url
+
+  - feature_id: proxy_forwarding
+    questions:
+      - id: Q-PRX-001
+        question: "Is the forwarding destination user-controlled? Can the attacker direct traffic to internal services?"
+        probes:
+          - trust_boundary: destination
+          - invariant: proxy_destination_validated
+
+      - id: Q-PRX-002
+        question: "Does forwarding preserve the original request's authorization context?"
+        probes:
+          - trust_boundary: auth context
+          - invariant: delegation_scope_bounded
+
+      - id: Q-PRX-003
+        question: "Can proxy responses leak internal service information to the attacker?"
+        probes:
+          - invariant: output_encoded
+
+  - feature_id: redirect_handling
+    questions:
+      - id: Q-RED-001
+        question: "Is the redirect target user-controlled? Can the attacker redirect users to phishing sites?"
+        probes:
+          - trust_boundary: target
+          - invariant: redirect_not_followed_untrusted
+
+      - id: Q-RED-002
+        question: "Are server-side redirects validated before issuing the 3xx response?"
+        probes:
+          - invariant: redirect_not_followed_untrusted
+
+  - feature_id: webhook
+    questions:
+      - id: Q-WHK-001
+        question: "Is the webhook URL user-controlled? Can the attacker exfiltrate data via webhooks?"
+        probes:
+          - trust_boundary: target URL
+          - invariant: proxy_destination_validated
+
+      - id: Q-WHK-002
+        question: "Does the webhook payload contain sensitive data (tokens, secrets, PII)?"
+        probes:
+          - invariant: secret_no_log
+
+      - id: Q-WHK-003
+        question: "Can webhook delivery be used to SSRF internal services?"
+        probes:
+          - invariant: proxy_destination_validated
+
+  # ── Data Processing ─────────────────────────────────────────────────────
+  - feature_id: data_query
+    questions:
+      - id: Q-DQ-001
+        question: "Is the query/condition string user-controlled? Can the attacker inject operators?"
+        probes:
+          - trust_boundary: input → query
+          - invariant: code_not_dynamic
+
+      - id: Q-DQ-002
+        question: "Is the query parameterized or escaped? Can special characters alter the query?"
+        probes:
+          - invariant: data_source_validated
+
+  - feature_id: data_export
+    questions:
+      - id: Q-DXP-001
+        question: "Does the export include user-controlled content without encoding?"
+        probes:
+          - invariant: output_encoded
+
+      - id: Q-DXP-002
+        question: "Can the export format execute code when opened (CSV injection, macro)?"
+        probes:
+          - invariant: output_encoded
+
+  - feature_id: file_upload
+    questions:
+      - id: Q-UPL-001
+        question: "Is the uploaded file content validated (type, magic bytes, virus scan)?"
+        probes:
+          - invariant: uploaded_file_scanned
+
+      - id: Q-UPL-002
+        question: "Is the destination path sanitized against path traversal?"
+        probes:
+          - invariant: data_source_validated
+
+      - id: Q-UPL-003
+        question: "Are uploaded files served in a way that could execute server-side code?"
+        probes:
+          - invariant: code_not_dynamic
+
+  # ── State & Lifecycle ───────────────────────────────────────────────────
+  - feature_id: caching
+    questions:
+      - id: Q-CCH-001
+        question: "Is the cache key user-controlled? Can cache key collision mix data between users?"
+        probes:
+          - invariant: cache_consistent
+
+      - id: Q-CCH-002
+        question: "Is cache invalidated when the source data changes?"
+        probes:
+          - invariant: cache_consistent
+
+      - id: Q-CCH-003
+        question: "Can an attacker poison the cache with malicious data?"
+        probes:
+          - invariant: cache_consistent
+
+  - feature_id: rate_limiting
+    questions:
+      - id: Q-RTL-001
+        question: "Is rate limiting enforced server-side or client-side?"
+        probes:
+          - invariant: quota_enforced
+
+      - id: Q-RTL-002
+        question: "Can the rate limit key be controlled by the attacker to exhaust another user's quota?"
+        probes:
+          - trust_boundary: key selection
+          - invariant: quota_enforced
+
+  - feature_id: state_machine
+    questions:
+      - id: Q-SM-001
+        question: "Are all state transitions validated against the allowed transition matrix?"
+        probes:
+          - invariant: state_transition_valid
+
+      - id: Q-SM-002
+        question: "Can an attacker skip intermediate states (e.g., order without payment)?"
+        probes:
+          - invariant: state_transition_valid
+
+      - id: Q-SM-003
+        question: "Is the state stored server-side or can the client manipulate it?"
+        probes:
+          - trust_boundary: state storage
+          - invariant: state_transition_valid
+
+  # ── Audit & Compliance ──────────────────────────────────────────────────
+  - feature_id: audit_logging
+    questions:
+      - id: Q-AUD-001
+        question: "Can the attacker inject arbitrary content into audit logs (CRLF injection)?"
+        probes:
+          - invariant: output_encoded
+
+      - id: Q-AUD-002
+        question: "Does the audit log contain sensitive user data (PII, secrets, tokens)?"
+        probes:
+          - invariant: audit_no_pii
+
+      - id: Q-AUD-003
+        question: "Can audit entries be deleted or modified by users?"
+        probes:
+          - invariant: audit_tamper_proof
+
+  # ── Trust & Isolation ──────────────────────────────────────────────────
+  - feature_id: sandbox_isolation
+    questions:
+      - id: Q-SBX-001
+        question: "Is the sandbox a security boundary or a behavior restriction?"
+        probes:
+          - invariant: sandbox_isolation
+
+      - id: Q-SBX-002
+        question: "Can the sandbox be escaped via allowed operations (file I/O, module imports, reflection)?"
+        probes:
+          - invariant: sandbox_isolation
+          - invariant: code_not_dynamic
+
+  - feature_id: trust_evaluation
+    questions:
+      - id: Q-TRS-001
+        question: "Is trust evaluated based on verifiable criteria or implicit characteristics?"
+        probes:
+          - invariant: trust_decision_explicit
+
+      - id: Q-TRS-002
+        question: "Can the user influence whether their input is trusted (trust_remote_code flag)?"
+        probes:
+          - trust_boundary: trust decision
+          - invariant: trust_decision_explicit
+
+  # ── Special ─────────────────────────────────────────────────────────────
+  - feature_id: object_reference
+    questions:
+      - id: Q-IDOR-001
+        question: "Is authorization checked before returning the referenced object?"
+        probes:
+          - invariant: ownership_verified
+
+      - id: Q-IDOR-002
+        question: "Are object IDs predictable/guessable (sequential, timestamp-based, low entropy)?"
+        probes:
+          - state: ID generation
+          - invariant: ownership_verified
+
+  - feature_id: permission_inheritance
+    questions:
+      - id: Q-PINH-001
+        question: "Is permission inheritance documented and intended, or implicit?"
+        probes:
+          - invariant: acl_monotonic
+
+      - id: Q-PINH-002
+        question: "Can a user gain permissions through indirect group/role membership they don't know about?"
+        probes:
+          - invariant: acl_monotonic
+
+      - id: Q-PINH-003
+        question: "Is there a path from low-privilege user to admin through inheritance chains?"
+        probes:
+          - invariant: acl_monotonic
+          - invariant: delegation_scope_bounded

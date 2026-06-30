@@ -14,6 +14,7 @@ from agies.engine.v3.agents.logic_agent import LogicAgent
 from agies.engine.v3.agents.merge import MergeLayer
 from agies.engine.v3.agents.path_code_loader import PathCodeLoader
 from agies.engine.v3.agents.aggregator import PathResultAggregator
+from agies.engine.v3.agents.synthesis_agent import SynthesisAgent, SynthesisHypothesis, SynthesisResult
 
 __all__ = [
     "IntentAgent",
@@ -22,4 +23,7 @@ __all__ = [
     "MergeLayer",
     "PathCodeLoader",
     "PathResultAggregator",
+    "SynthesisAgent",
+    "SynthesisHypothesis",
+    "SynthesisResult",
 ]

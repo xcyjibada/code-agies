@@ -1,0 +1,375 @@
+agies — auditing /tmp/django
+
+  Languages: JSON, JavaScript, Python, Shell, YAML
+  Files: 7042
+
+  Language: Python
+
+Phase A: Path Discovery
+  Backend: tree-sitter
+  Functions: 9408
+  Phase 0: 1 LLM-discovered sink(s)
+    DatabaseClient.settings_to_cmd_args_env -> rce
+    Remote Code Execution: 51 sink(s)
+    Local File Inclusion: 32 sink(s)
+    Server-Side Request Forgery: 4 sink(s)
+    SQL Injection: 54 sink(s)
+    Arbitrary File Overwrite: 17 sink(s)
+    ReDoS (Regular Expression DoS): 29 sink(s)
+    Server-Side Template Injection (SSTI) — template engine with user input: 15 
+sink(s)
+    Suspicious — requires analysis (path constructor / logic pattern): 32 
+sink(s)
+    LangGraph Architecture — gRPC/gRPC no-auth, admin truncate, msgpack ext_hook
+RCE, template injection: 1 sink(s)
+  Cross-file flow: 235 paths annotated
+  Reachability: 1288 sources → 3 sinks (2434 pairs)
+
+Phase A.5: Source Classification
+  Filtered 9 paths (0 constant + 9 config)
+  Remaining: 226/235 paths
+
+Phase B: Slice Sorting (226 paths)
+  Body-detected orphans: 23 (no call chain)
+  Exploit: 30 + Explore: 15
+    Explore: suspicious-000 generate_checksum_file score=0.67 (non_std_sink, 
+unusual_naming)
+    Explore: suspicious-001 do_checksum score=0.65 (non_std_sink, 
+unusual_naming)
+    Explore: sqli-002 execute_sql score=0.65 (non_std_sink, unusual_naming)
+  Semantic anchors: 424 matches (424 slices)
+    sem-token_management-000: get_api_token (token_management)  
+/tmp/django/scripts/manage_translations.py
+    sem-input_validation-001: validate_env (input_validation)  
+/tmp/django/scripts/archive_eol_stable_branches.py
+    sem-authorization-002: default_role_error (authorization)  
+/tmp/django/docs/_ext/djangodocs.py
+    sem-authorization-003: permission_denied (authorization)  
+/tmp/django/django/views/defaults.py
+    sem-gateway-004: get_default_exception_reporter_filter (gateway)  
+/tmp/django/django/views/debug.py
+    ... and 419 more
+  Semantic leaks: 79 leaks, 196 sensitive vars in 47 files
+  Project type: app
+
+Phase C: README Understanding
+  README: 2000 chars
+  Summary: ```json
+{
+  "project_type": "Django is a high-level Python web framework for building web 
+applications, including both f...
+
+Phase D: Intent+Logic Agents (45 slices)
+  [1/45] afo-000 (cleanup)
+  [2/45] langgraph-001 (__init__)
+  [3/45] lfi-002 (open)
+  [4/45] rce-003 (compile)
+  [5/45] redos-004 (check_trac_ticket)
+  [6/45] sqli-005 (executemany)
+  [7/45] ssrf-006 (get_api_response)
+  [8/45] ssti-007 (construct_relative_path)
+    ? 10/10 — interesting
+    Evidence: sqli-005...
+    ? 10/10 — interesting
+    Evidence: redos-004...
+    ? pattern match, LLM skeptical (5 match(es))
+  [9/45] suspicious-008 (check_absolute_targets_doc_role)
+    ? 10/10 — interesting
+    Evidence: afo-000...
+    ? pattern match, LLM skeptical (3 match(es))
+  [10/45] rce-009 (process_lhs)
+    ? 10/10 — interesting
+    Evidence: lfi-002...
+    ? pattern match, LLM skeptical (5 match(es))
+  [11/45] rce-010 (process_rhs)
+    ? pattern match, LLM skeptical (7 match(es))
+  [12/45] sqli-011 (using)
+    ? 10/10 — interesting
+    Evidence: ssrf-006...
+    ? 10/10 — interesting
+    Evidence: rce-003...
+    ⚠ 9/10 — 1 contradiction(s)
+    Adversary: langgraph-001...
+    ? pattern match, LLM skeptical (9 match(es))
+  [13/45] sqli-012 (using)
+    ? 10/10 — interesting
+    Evidence: suspicious-008...
+  [14/45] lfi-013 (django_check_file)
+    ? 10/10 — interesting
+    Evidence: ssti-007...
+  [15/45] rce-014 (infix)
+    ? pattern match, LLM skeptical (3 match(es))
+  [16/45] rce-015 (prefix)
+    ✗ rebutted
+      reason: The provided source code is from Django internals (related 
+descriptors, decorators, and a simple error class) and has no relation to 
+LangGraph. The finding describes vulnerabilities in a LangGraph deployment 
+(gRPC, msgpack, etc.), but the code analyzed is Django utility code. There is no
+evidence that this code is part of LangGraph or that the described 
+vulnerabilities exist in the provided code. The data flow trace is irrelevant 
+and does not demonstrate any exploitable path in the actual LangGraph codebase.
+    Evidence: langgraph-001...
+  [17/45] lfi-016 (create_checksum_file)
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: lfi-013...
+    ? 10/10 — interesting
+    Evidence: rce-009...
+    ✓ not rebutted
+      weak point: The function is a public API with no input validation, and the
+sink directly opens the user-controlled filename. The data flow is clear and 
+untrusted input reaches the sink without sanitization.
+    PoC Agent: lfi-013...
+  [18/45] redos-017 (check_pr_title_has_ticket)
+    Error: lfi-013: '"success"'
+    ✓ 0/10 - safe
+    Evidence: rce-014...
+    ✓ 0/10 - safe
+    Evidence: rce-015...
+    ? 10/10 — interesting
+    Evidence: rce-010...
+    ? pattern match, LLM skeptical (8 match(es))
+  [19/45] redos-018 (check_branch_description)
+    ? 10/10 — interesting
+    Evidence: lfi-016...
+    ? 10/10 — interesting
+    Evidence: sqli-011...
+  [20/45] redos-019 (check_ai_disclosure)
+    ? pattern match, LLM skeptical (7 match(es))
+  [21/45] redos-020 (check_checklist)
+    ? pattern match, LLM skeptical (7 match(es))
+  [22/45] redos-021 (strip_html_comments)
+    ? pattern match, LLM skeptical (8 match(es))
+  [23/45] rce-022 (render)
+    ✓ 0/10 - safe
+    Evidence: sqli-012...
+  [24/45] sqli-023 (_execute_query)
+    ? pattern match, LLM skeptical (13 match(es))
+  [25/45] rce-024 (get_commit_hash)
+    ? 10/10 — interesting
+    Evidence: redos-017...
+    ? 10/10 — interesting
+    Evidence: redos-020...
+    ? 10/10 — interesting
+    Evidence: redos-018...
+    ? pattern match, LLM skeptical (1 match(es))
+  [26/45] rce-025 (batch_process_rhs)
+    ? 10/10 — interesting
+    Evidence: redos-019...
+    ? 10/10 — interesting
+    Evidence: rce-024...
+    ? pattern match, LLM skeptical (1 match(es))
+  [27/45] rce-026 (resolve_expression_parameter)
+    ? pattern match, LLM skeptical (2 match(es))
+  [28/45] rce-027 (as_mysql)
+    ? 10/10 — interesting
+    Evidence: redos-021...
+    ? 10/10 — interesting
+    Evidence: sqli-023...
+    ? pattern match, LLM skeptical (1 match(es))
+  [29/45] rce-028 (run)
+    ? pattern match, LLM skeptical (3 match(es))
+  [30/45] rce-029 (run)
+    ? pattern match, LLM skeptical (2 match(es))
+  [31/45] suspicious-000 (generate_checksum_file)
+    ? pattern match, LLM skeptical (7 match(es))
+  [32/45] suspicious-001 (do_checksum)
+    ? 10/10 — interesting
+    Evidence: rce-025...
+    ? 10/10 — interesting
+    Evidence: rce-027...
+    ? 10/10 — interesting
+    Evidence: rce-022...
+    ? pattern match, LLM skeptical (7 match(es))
+  [33/45] sqli-002 (execute_sql)
+    ? pattern match, LLM skeptical (8 match(es))
+  [34/45] sqli-003 (execute_sql)
+    ? pattern match, LLM skeptical (6 match(es))
+  [35/45] sqli-004 (database_forwards)
+    ? 10/10 — interesting
+    Evidence: suspicious-000...
+  [36/45] sqli-005 (_remake_table)
+    ? 10/10 — interesting
+    Evidence: rce-026...
+    ? pattern match, LLM skeptical (8 match(es))
+  [37/45] sqli-006 (delete_model)
+    ? 10/10 — interesting
+    Evidence: suspicious-001...
+  [38/45] sqli-007 (_alter_field)
+    ? 10/10 — interesting
+    Evidence: rce-028...
+    ? 10/10 — interesting
+    Evidence: rce-029...
+    ? pattern match, LLM skeptical (8 match(es))
+  [39/45] sqli-008 (_alter_many_to_many)
+    ? pattern match, LLM skeptical (8 match(es))
+  [40/45] redos-009 (_lazy_re_compile)
+    ? 10/10 — interesting
+    Evidence: sqli-004...
+    ? 10/10 — interesting
+    Evidence: sqli-002...
+    ? 10/10 — interesting
+    Evidence: sqli-003...
+    ? 10/10 — interesting
+    Evidence: sqli-005...
+    ? pattern match, LLM skeptical (1 match(es))
+  [41/45] lfi-010 (technical_404_response)
+    ? pattern match, LLM skeptical (2 match(es))
+  [42/45] lfi-011 (default_urlconf)
+    ? 10/10 — interesting
+    Evidence: sqli-007...
+    ? 10/10 — interesting
+    Evidence: sqli-006...
+    ? pattern match, LLM skeptical (1 match(es))
+  [43/45] ssrf-012 (_non_atomic_requests)
+    ? pattern match, LLM skeptical (3 match(es))
+  [44/45] afo-013 (_clone_test_db)
+    ? pattern match, LLM skeptical (4 match(es))
+  [45/45] ssti-014 (nonce_attr)
+    ? 10/10 — interesting
+    Evidence: redos-009...
+    ? pattern match, LLM skeptical (4 match(es))
+    ? pattern match, LLM skeptical (1 match(es))
+    ? 10/10 — interesting
+    Evidence: ssrf-012...
+    ? pattern match, LLM skeptical (3 match(es))
+    ? 10/10 — interesting
+    Evidence: ssti-014...
+    ? 10/10 — interesting
+    Evidence: afo-013...
+    ? 10/10 — interesting
+    Evidence: lfi-011...
+    ? pattern match, LLM skeptical (2 match(es))
+    ⚠ 10/10 — 1 contradiction(s)
+    Adversary: sqli-008...
+    ? 10/10 — interesting
+    Evidence: lfi-010...
+    ? pattern match, LLM skeptical (7 match(es))
+    ✗ rebutted
+      reason: The finding claims SQL injection via _alter_many_to_many in 
+sqlite3/schema.py. However, the table and column names originate from Django 
+model metadata (e.g., old_field.remote_field.through._meta.db_table), which is 
+defined by developers in code, not from user input. In standard Django usage, an
+attacker cannot control model definitions. The code path is only reachable 
+during migrations, which require developer intervention. The prior knowledge 
+correctly indicates no SQL injection. The theoretical scenario where an attacker
+controls model definitions is unrealistic in typical deployments. Therefore, the
+vulnerability is not authentically exploitable.
+    Evidence: sqli-008...
+    ? pattern match, LLM skeptical (5 match(es))
+    ? pattern match, LLM skeptical (3 match(es))
+
+Phase D.3: Assumption Agent (424 anchors)
+  102 assumptions, 15 contradictions
+     存在凭据验证（views.py:3 (LoginView)）但 session 
+退出时不失效（middleware.py:24 (SessionMiddleware)），认证 session 可被重复
+     存在凭据验证（views.py:3 (LoginView)）但 session 
+退出时不失效（base_session.py:14 (BaseSessionManager)），认证 session 可
+     存在凭据验证（views.py:3 (LoginView)）但 session 
+退出时不失效（signed_cookies.py:58 (SessionStore)），认证 session 可被重复使
+  Attack chain: {
+  "attack_chains": [
+    {
+      "chain_id": "CVE-2024-001",
+      "title": "Session固定与重用攻击链",
+      "prerequisites": [
+        "攻击者能够获取或预测一个有效的会话标识符（session ID）",
+        "系统在用户登录后不重新生成会话ID",
+     ...
+
+Phase D.5: Assumption Aggregation
+  Assumptions: 102, Contradictions: 15
+
+Phase E: Results
+  Blackboard: 58 cached intents, 388 knowledge entries, 45 phase results
+  High confidence (40):
+    afo-000: ? — ?
+      
+    langgraph-001: ? — logic_gap
+      
+    lfi-002: ? — ?
+      
+    sqli-002: ? — ?
+      
+    rce-003: ? — ?
+      
+    sqli-003: ? — ?
+      
+    redos-004: ? — ?
+      
+    sqli-004: ? — ?
+      
+    sqli-005: ? — ?
+      
+    sqli-005: ? — ?
+      
+    ssrf-006: ? — ?
+      
+    sqli-006: ? — ?
+      
+    sqli-007: ? — ?
+      
+    rce-009: ? — ?
+      
+    redos-009: ? — ?
+      
+    rce-010: ? — ?
+      
+    lfi-010: ? — ?
+      
+    lfi-011: ? — ?
+      
+    ssrf-012: ? — ?
+      
+    afo-013: ? — ?
+      
+    lfi-016: ? — ?
+      
+    redos-017: ? — ?
+      
+    redos-018: ? — ?
+      
+    redos-019: ? — ?
+      
+    redos-020: ? — ?
+      
+    redos-021: ? — ?
+      
+    rce-022: ? — ?
+      
+    sqli-023: ? — ?
+      
+    rce-024: ? — ?
+      
+    rce-025: ? — ?
+      
+    rce-026: ? — ?
+      
+    rce-027: ? — ?
+      
+    rce-028: ? — ?
+      
+    rce-029: ? — ?
+      
+
+Pipeline Complete
+  Target: /tmp/django
+  Model: deepseek-chat
+  Duration: 183.1s
+  Paths discovered: 226
+  Slices analyzed: 45
+  Findings: 40 high, 18 interesting
+  Tokens: 497,818 total (438,667 prompt + 59,151 completion)
+
+  Recommended verification targets:
+    AFO afo-000: Code-level pattern evidence (7 matches): 
+?:os.unlink(self.work_path); ?:self.stdout.write(; ?:self.s
+    SUSPICIOUS suspicious-000: The code is a test suite that creates checksum 
+files using hardcoded, safe values. No user input is 
+    LANGGRAPH langgraph-001: The LangGraph deployment has multiple critical 
+vulnerabilities. The gRPC port (50051) is exposed onl
+    SUSPICIOUS suspicious-001: The code path is entirely within a test suite. 
+All inputs are hardcoded constants (e.g., 'Django-5.2
+    LFI lfi-002: Code-level pattern evidence (5 matches): ?:self.file = 
+self.storage.open(self.name, mode); ?:self.fi
+
+v3 CodeQL pipeline complete.

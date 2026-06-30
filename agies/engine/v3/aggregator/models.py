@@ -48,6 +48,19 @@ class IntentResult:
     suspicious: list[str] = field(default_factory=list)
     """Anything that looks odd (no conclusions, just observations)."""
 
+    security_contract: str = ""
+    """Security contract: what security property does this function claim
+    to enforce?  E.g. 'Validates that the path does not escape BASE_DIR'
+    or 'Ensures only admin users can access this resource.'
+
+    This is the ``specification`` half of spec-falsification analysis.
+    The Logic Agent compares the contract against the actual implementation
+    to find violations (falsifications).
+
+    Empty string means no security contract was extracted (normal for
+    pure helper functions).
+    """
+
     confidence: float = 1.0
     """How confident the Intent Agent is in this analysis (0-1)."""
 

@@ -37,6 +37,8 @@ from agies.engine.v3.agents.path_code_loader import PathCodeLoader
 from agies.engine.v3.agents.evidence_checker import EvidenceChecker
 from agies.engine.v3.prompts.stdlib_guides import get_stdlib_guide
 from agies.engine.v3.pathfinder.source_classifier import filter_paths, format_stats
+from agies.engine.v3.pathfinder.semantic_anchors import SemanticAnchorFinder
+from agies.engine.v3.pathfinder.semantic_leaks import SemanticLeakDetector
 from agies.engine.v3.agents.bridge_verifier import (
     BridgeVerifier, BridgeAnnotation, scan_path_bridge_evidence,
 )
@@ -181,6 +183,87 @@ def run_v3_pipeline(
     else:
         _print(console, "  [dim]All paths passed — no config/constant sources detected.[/dim]")
 
+    # Initialize blackboard early for capability recording (Phase B-1)
+    blackboard = BlackboardAggregator()
+
+    # ==================================================================
+    # Phase B-1: Capability Discovery — Feature → Question pipeline
+    # ==================================================================
+    if function_index is not None:
+        try:
+            from agies.engine.v3.capability import discover_capabilities, build_context, CapabilityAgent
+
+            _print_header(console, "Phase B-1: Capability Discovery")
+
+            cap_results = discover_capabilities(function_index)
+            cap_results_with_features = [r for r in cap_results if r.has_features()]
+
+            if cap_results_with_features:
+                _print(console,
+                    f"  {len(cap_results_with_features)}/{len(cap_results)} "
+                    f"functions with capabilities detected")
+
+                # Print top capabilities
+                seen_features: set[str] = set()
+                for r in cap_results_with_features[:10]:
+                    for f in r.features:
+                        if f.name not in seen_features:
+                            seen_features.add(f.name)
+                            _print(console,
+                                f"    [cyan]{f.name}[/cyan] — "
+                                f"e.g. {r.function_name} "
+                                f"[dim]({r.file_path}:{r.line_start})[/dim]")
+
+                if len(cap_results_with_features) > 10:
+                    _print(console,
+                        f"    [dim]... and {len(cap_results_with_features) - 10} more[/dim]")
+
+                # Run Capability Agent on interesting findings
+                try:
+                    cap_agent = CapabilityAgent(
+                        llm_call=lambda p: _call_llm(llm, p, console, force_json=True)
+                    )
+                    contexts = [build_context(r) for r in cap_results_with_features[:20]]
+                    analyses = cap_agent.analyze_batch(contexts)
+
+                    # Record capability questions to blackboard for downstream phases
+                    for analysis in analyses:
+                        fn_name = analysis.context.function_name
+                        for q in analysis.questions:
+                            blackboard.record_knowledge(
+                                fn_name,
+                                f"[capability] {q.question} "
+                                f"(invariant: {q.probes_invariant}, severity: {q.severity_hint})",
+                                source_path_id="phase-b-1",
+                            )
+
+                    cap_questions = sum(len(a.questions) for a in analyses)
+                    _print(console,
+                        f"  Capability Agent: {cap_questions} questions generated "
+                        f"from {len(analyses)} analyses")
+
+                    # Show top questions
+                    for analysis in analyses[:5]:
+                        for q in analysis.questions[:2]:
+                            _print(console,
+                                f"    [dim][{q.severity_hint}][/dim] "
+                                f"{q.question[:100]}")
+
+                except Exception as ca_exc:
+                    logger.debug("Capability Agent failed: %s", ca_exc)
+                    _print(console,
+                        f"  [dim]Capability Agent skipped: {ca_exc}[/dim]")
+            else:
+                _print(console,
+                    "  [dim]No business capabilities detected "
+                    "(all functions are utility/internal).[/dim]")
+
+        except ImportError as ie:
+            _print(console, f"  [dim]Capability discovery not available: {ie}[/dim]")
+        except Exception as exc:
+            logger.debug("Capability discovery failed: %s", exc)
+            _print(console, "  [dim]Capability discovery skipped.[/dim]")
+
     # ==================================================================
     # Phase B: Path Slicing & Ranking
     # ==================================================================
@@ -291,6 +374,56 @@ def run_v3_pipeline(
         function_index.slim()
 
     # ==================================================================
+    # Phase B.7: Semantic Anchor & Leak Discovery
+    # ==================================================================
+    semantic_slices: list[Any] = []
+    semantic_leak_prompts: dict[str, str] = {}
+    anchor_finder: Any = None
+    try:
+        # Semantic Anchor Discovery — high-value logical controllers
+        anchor_finder = SemanticAnchorFinder(target)
+        anchor_matches = anchor_finder.scan(function_index=function_index)
+        if anchor_matches:
+            semantic_slices = anchor_finder.build_semantic_slices()
+            _print(console,
+                f"  [cyan]Semantic anchors: {len(anchor_matches)} matches "
+                f"({len(semantic_slices)} slices)[/cyan]")
+            for s in semantic_slices[:5]:
+                _print(console,
+                    f"    {s.id}: {s.primary_class} ({s.anchor_type})"
+                    f"  [dim]{s.file_path}[/dim]")
+            if len(semantic_slices) > 5:
+                _print(console,
+                    f"    [dim]... and {len(semantic_slices) - 5} more[/dim]")
+
+        # Semantic Leak Detection — sensitive variable boundary crossing
+        leak_detector = SemanticLeakDetector()
+        leak_results = leak_detector.scan_project(target)
+        if leak_results:
+            total_leaks = sum(r.total_leaks for r in leak_results)
+            total_vars = sum(r.total_vars for r in leak_results)
+            _print(console,
+                f"  [cyan]Semantic leaks: {total_leaks} leaks, "
+                f"{total_vars} sensitive vars in {len(leak_results)} files[/cyan]")
+            # Build leak prompts keyed by file path (injected into code_block later)
+            for lr in leak_results:
+                if lr.leaks:
+                    # Use the first leak's file path as key for quick lookup
+                    key = lr.file_path
+                    if key not in semantic_leak_prompts:
+                        semantic_leak_prompts[key] = ""
+            # Build aggregated leak prompt
+            from agies.engine.v3.pathfinder.semantic_leaks import build_leak_prompt
+            all_leaks = [l for r in leak_results for l in r.leaks]
+            if all_leaks:
+                combined_leak_prompt = build_leak_prompt(all_leaks)
+                if combined_leak_prompt:
+                    semantic_leak_prompts["_global"] = combined_leak_prompt
+    except Exception as exc:
+        logger.debug("Semantic discovery skipped: %s", exc)
+        _print(console, "  [dim]Semantic discovery skipped.[/dim]")
+
+    # ==================================================================
     # Project Type Detection
     # ==================================================================
     if project_type == "auto":
@@ -335,8 +468,6 @@ def run_v3_pipeline(
     except Exception as exc:
         logger.debug("Trust model generation skipped: %s", exc)
 
-    blackboard = BlackboardAggregator()
-
     # Initialize token budget counter — defaults to 1M tokens, use
     # AGIES_TOKEN_BUDGET env var to override.  0 = unlimited.
     token_budget = int(os.environ.get("AGIES_TOKEN_BUDGET", "0"))
@@ -379,22 +510,88 @@ def run_v3_pipeline(
         phase_results = []
 
     # ==================================================================
+    # Phase D.3: Assumption Agent — sink-free semantic discovery
+    # ==================================================================
+    if anchor_finder is not None and anchor_finder.matches:
+        _print_header(console, f"Phase D.3: Assumption Agent ({len(anchor_finder.matches)} anchors)")
+        try:
+            from agies.engine.v3.agents.assumption_agent import AssumptionAgent
+            assumption_agent = AssumptionAgent()
+            aa_result = assumption_agent.run_all(
+                anchor_matches=anchor_finder.matches,
+                llm_call=lambda p: _call_llm(llm, p, console, force_json=True),
+            )
+            contradictions = aa_result.get("contradictions", [])
+            chain = aa_result.get("attack_chains", "")
+            # Convert contradictions to AgentPhaseResult for pipeline compatibility
+            sem_results_list: list[AgentPhaseResult] = []
+            for c in contradictions:
+                analysis_text = c.description
+                sem_result = AgentPhaseResult(
+                    path_id=f"sem-{c.assumption_a.label}x{c.assumption_b.label}",
+                    vuln_type="SEMANTIC",
+                    score=0.8 if c.severity == "high" else 0.5,
+                    contradictions=[{
+                        "contradiction_type": f"{c.assumption_a.label}x{c.assumption_b.label}",
+                        "actual": c.description,
+                        "severity": c.severity,
+                    }],
+                    confidence=8 if c.severity == "high" else (5 if c.severity == "medium" else 3),
+                    analysis=analysis_text,
+                    is_vulnerable=c.severity == "high",
+                )
+                sem_results_list.append(sem_result)
+
+            # Attach the full attack chain synthesis to the highest-severity result
+            if chain and sem_results_list:
+                sem_results_list[0] = AgentPhaseResult(
+                    path_id=sem_results_list[0].path_id,
+                    vuln_type="SEMANTIC",
+                    score=sem_results_list[0].score,
+                    contradictions=sem_results_list[0].contradictions,
+                    confidence=sem_results_list[0].confidence,
+                    analysis=sem_results_list[0].analysis
+                              + f"\n\n[ATTACK CHAIN]\n{chain[:2000]}",
+                    is_vulnerable=sem_results_list[0].is_vulnerable,
+                )
+
+            for sr in sem_results_list:
+                phase_results.append(sr)
+                blackboard.record_phase_result(sr)
+
+            # Record to blackboard for cross-phase knowledge
+            for fn, text in assumption_agent.format_for_blackboard():
+                blackboard.record_knowledge(fn, text, source_path_id="phase-d.3")
+
+            n_assumptions = len(aa_result.get("assumptions", []))
+            n_contradictions = len(contradictions)
+            _print(console, f"  {n_assumptions} assumptions, {n_contradictions} contradictions")
+            for c in contradictions[:3]:
+                _print(console, f"    [{c.severity}] {c.description[:100]}")
+            chain = aa_result.get("attack_chains", "")
+            if chain:
+                _print(console, f"  Attack chain: {chain[:200]}...")
+        except Exception as exc:
+            logger.error("Assumption Agent failed: %s", exc)
+            _print(console, f"  [red]Assumption Agent error: {exc}[/red]")
+
+    # ==================================================================
     # Phase D.5: Assumption Aggregation
     # ==================================================================
-    _print_header(console, "Phase D.5: Assumption Cross-Correlation")
+    _print_header(console, "Phase D.5: Assumption Aggregation")
     try:
-        # Count assumption entries in the blackboard
+        # Collect assumption + contradiction entries from blackboard
         assumption_count = 0
-        violable_count = 0
-        for fn, entries in blackboard._knowledge.items():  # type: ignore[attr-defined]
+        contradiction_count = 0
+        for _fn, entries in blackboard._knowledge.items():  # type: ignore[attr-defined]
             for entry in entries:
                 val = entry.value if hasattr(entry, "value") else str(entry)
                 if "[ASSUMPTION" in val:
                     assumption_count += 1
-                    if "violable=True" in val:
-                        violable_count += 1
-        if assumption_count > 0:
-            _print(console, f"  Assumptions collected: {assumption_count} ({violable_count} violable)")
+                if "[CONTRADICTION" in val:
+                    contradiction_count += 1
+        if assumption_count > 0 or contradiction_count > 0:
+            _print(console, f"  Assumptions: {assumption_count}, Contradictions: {contradiction_count}")
         else:
             _print(console, f"  [dim]No assumptions recorded across {len(phase_results)} paths.[/dim]")
     except Exception as exc:
@@ -443,6 +640,89 @@ def run_v3_pipeline(
             _print(console, f"    {r.path_id}: path {r.vuln_type} score={r.score:.2f}")
     else:
         _print(console, "  [dim]No contradictions found.[/dim]")
+
+    # ==================================================================
+    # Phase E-1: Synthesis Agent — blind spot + attack chain detection
+    # ==================================================================
+    try:
+        from agies.engine.v3.agents.synthesis_agent import SynthesisAgent
+        syn_agent = SynthesisAgent(
+            blackboard=blackboard,
+            function_index=function_index,
+            llm_call=lambda p: _call_llm(llm, p, console, force_json=True),
+        )
+        syn_result = syn_agent.synthesize(
+            phase_results=all_results,
+            chain_results=chain_results,
+            path_slices=path_slices,
+            project_path=target,
+        )
+
+        if syn_result.hypotheses:
+            _print_header(console, "Phase E-1: Synthesis Agent")
+            _print(console, f"  Hypotheses generated: {len(syn_result.hypotheses)}")
+
+            # Show blind spots
+            blind = [h for h in syn_result.hypotheses if h.title.startswith("Blind spot")]
+            if blind:
+                _print(console, f"  [yellow]Blind spots ({len(blind)}):[/yellow]")
+                for h in blind[:5]:
+                    _print(console, f"    • {h.title}")
+                    _print(console, f"      [dim]{h.description[:100]}[/dim]")
+
+            # Show cross-cuts
+            cross = [h for h in syn_result.hypotheses if h.title.startswith("Cross-cut")]
+            if cross:
+                _print(console, f"  [red]Cross-cuts ({len(cross)}):[/red]")
+                for h in cross[:5]:
+                    _print(console, f"    → {h.title}")
+                    _print(console, f"      [dim]conf={h.confidence}, paths: {h.related_path_ids[:3]}[/dim]")
+
+            # PoC Agent for high-confidence hypotheses
+            poc_hypotheses = [h for h in syn_result.hypotheses if h.requires_poc and h.confidence >= 6]
+            if poc_hypotheses:
+                _print(console, f"  [bold]Generating PoCs for {len(poc_hypotheses)} synthesis hypotheses...[/bold]")
+                poc_agent = PoCAgent(
+                    output_dir=os.path.join(os.getcwd(), "pocs"),
+                    target=target,
+                )
+                for h in poc_hypotheses[:3]:
+                    try:
+                        poc_prompt = (
+                            f"You are generating a Proof-of-Concept for a synthesis hypothesis.\n\n"
+                            f"## Hypothesis\n{h.title}\n\n"
+                            f"## Description\n{h.description}\n\n"
+                            f"## Evidence\n{h.evidence[:500]}\n\n"
+                            f"## Reasoning\n{h.poc_reasoning}\n\n"
+                            f"Generate a self-contained Python PoC script. "
+                            f"Include a verify() function returning "
+                            f"{{'success': bool, 'evidence': str}}."
+                        )
+                        poc_path = poc_agent.run(
+                            path_id=f"synthesis-{poc_hypotheses.index(h)+1:03d}",
+                            vuln_type="synthesis",
+                            analysis=f"Synthesis hypothesis: {h.title}",
+                            contradiction="(synthesis hypothesis, no contradiction)",
+                            code_block=h.evidence,
+                            weakness="",
+                            sink_name="",
+                            llm_call=lambda p: _call_llm(llm, p, console, force_json=False),
+                        )
+                        if poc_path:
+                            _print(console, f"    [green] PoC: {poc_path}[/green]")
+                    except Exception as poc_exc:
+                        logger.debug("Synthesis PoC failed: %s", poc_exc)
+
+            # Merge new findings into all_results for report
+            if syn_result.new_findings:
+                all_results.extend(syn_result.new_findings)
+                _print(console, f"  [bold]{len(syn_result.new_findings)} new findings promoted to report[/bold]")
+        else:
+            logger.debug("Synthesis Agent: no hypotheses generated")
+
+    except Exception as syn_exc:
+        logger.debug("Synthesis Agent failed: %s", syn_exc)
+        _print(console, "  [dim]Synthesis Agent skipped.[/dim]")
 
     # ==================================================================
     # Summary
@@ -848,29 +1128,6 @@ def _run_phase_d(
                 with _print_lock:
                     _print_phase_d_result(console, result)
 
-        # ── Phase D.5: Assumption Analysis (op.md methodology) ──
-        assumption_agent = AssumptionAgent()
-        bb_knowledge = blackboard.get_all_prior_knowledge(list({
-            node.get("function_name", "")
-            for node in nodes
-            if node.get("function_name")
-        }))
-        _safe_print(f"    Assumptions: {slice_.id}...")
-        assumptions = assumption_agent.run(
-            code_block=code_block,
-            intent_chain=intent_chain,
-            vuln_type=slice_.vuln_type.value,
-            blackboard_knowledge=bb_knowledge,
-            llm_call=lambda p: _call_llm(llm, p, console),
-        )
-        for fn, text in assumption_agent.format_for_blackboard(slice_.id):
-            blackboard.record_knowledge(fn, text, source_path_id=slice_.id)
-        if assumptions:
-            violable = sum(1 for a in assumptions if a.get("can_be_violated"))
-            _safe_print(f"      {len(assumptions)} assumptions ({violable} violable)")
-        else:
-            _safe_print(f"      [dim]no assumptions extracted[/dim]")
-
         # Adversary Agent: try to rebut before PoC generation
         if result.is_vulnerable:
             adversary = AdversaryAgent()
@@ -1189,29 +1446,6 @@ def _run_phase_d_lib(
                 result = c_result
                 _print_phase_d_result(console, result)
 
-        # ── Phase D.5: Assumption Analysis (op.md methodology) ──
-        assumption_agent = AssumptionAgent()
-        lib_bb_knowledge = blackboard.get_all_prior_knowledge(list({
-            node.get("function_name", "")
-            for node in nodes
-            if node.get("function_name")
-        }))
-        _safe_print(f"    Assumptions: {slice_.id}...")
-        lib_assumptions = assumption_agent.run(
-            code_block=code_block,
-            intent_chain=intent_chain,
-            vuln_type=slice_.vuln_type.value,
-            blackboard_knowledge=lib_bb_knowledge,
-            llm_call=lambda p: _call_llm(llm, p, console),
-        )
-        for fn, text in assumption_agent.format_for_blackboard(slice_.id):
-            blackboard.record_knowledge(fn, text, source_path_id=slice_.id)
-        if lib_assumptions:
-            violable = sum(1 for a in lib_assumptions if a.get("can_be_violated"))
-            _safe_print(f"      {len(lib_assumptions)} assumptions ({violable} violable)")
-        else:
-            _safe_print(f"      [dim]no assumptions extracted[/dim]")
-
         bridge_result = _run_lib_bridge_verifier(llm, result, nodes, code_block, console)
         if bridge_result:
             result = bridge_result
@@ -1514,6 +1748,115 @@ def _call_llm(
             raise
         _print(console, f"    [red]LLM error: {exc}[/red]")
         return None
+
+
+def _run_semantic_analysis(
+    semantic_slices: list[Any],
+    llm: Any,
+    blackboard: BlackboardAggregator,
+    target: str,
+    readme_summary: str = "",
+    max_workers: int = 3,
+    console=None,
+) -> list[AgentPhaseResult]:
+    """Run SemanticIntentAgent + SemanticLogicAgent on semantic slices.
+
+    This is the sink-free semantic pipeline track.  It runs in parallel
+    after the main Phase D (sink-based analysis).
+
+    Pipeline per slice:
+        1. SemanticIntentAgent — extracts security contracts per method
+        2. SemanticLogicAgent  — spec falsification (do contracts hold?)
+    """
+    from agies.engine.v3.agents.semantic_intent_agent import SemanticIntentAgent
+    from agies.engine.v3.agents.semantic_logic_agent import SemanticLogicAgent
+
+    sem_intent = SemanticIntentAgent(
+        llm_call_fn=lambda p: _call_llm(llm, p, console, force_json=False),
+    )
+    sem_logic = SemanticLogicAgent(
+        llm_call_fn=lambda p: _call_llm(llm, p, console, force_json=True),
+    )
+
+    _print_lock = threading.Lock()
+
+    def _safe_print(msg: str) -> None:
+        with _print_lock:
+            if console:
+                console.print(msg)
+            else:
+                print(msg)
+
+    results: list[AgentPhaseResult] = []
+    total = len(semantic_slices)
+
+    for idx, ss in enumerate(semantic_slices):
+        _safe_print(f"  [{idx+1}/{total}] {ss.id} ({ss.anchor_type})")
+
+        # Build method list from slice (class + companion methods)
+        methods: list[dict[str, Any]] = []
+        methods.append({
+            "function_name": ss.primary_class,
+            "file_path": ss.file_path,
+            "code": ss.code_block,
+        })
+        for cm in ss.companion_functions:
+            methods.append({
+                "function_name": cm,
+                "file_path": ss.file_path,
+                "code": "",
+            })
+
+        # Build code block with semantic analysis hint for context
+        code_block = ss.code_block
+        if ss.semantic_analysis_hint:
+            code_block = (
+                f"[SEMANTIC ANALYSIS HINT]\n"
+                f"{ss.semantic_analysis_hint}\n[/SEMANTIC ANALYSIS HINT]\n"
+                f"\n{code_block}"
+            )
+
+        # ── Step 1: SemanticIntentAgent — extract security contracts ──
+        _safe_print(f"    Intent (security contracts)...")
+        intent_results = sem_intent.analyze(
+            anchor_type=ss.anchor_type,
+            semantic_hint=ss.semantic_analysis_hint,
+            code_block=code_block,
+            functions=methods,
+            file_path=ss.file_path,
+        )
+        if not intent_results:
+            _safe_print(f"    [dim]No intent results.[/dim]")
+            continue
+
+        # Cache intent results in blackboard for cross-slice reuse
+        for ir in intent_results:
+            blackboard.cache_intent(ir)
+
+        # Filter to non-empty security contracts
+        contracts = [(r.func_name, r.security_contract) for r in intent_results if r.security_contract]
+        if not contracts:
+            _safe_print(f"    [dim]No security contracts — nothing to falsify.[/dim]")
+            continue
+
+        _safe_print(f"    {len(contracts)} contract(s) extracted")
+
+        # ── Step 2: SemanticLogicAgent — spec falsification ──
+        _safe_print(f"    Logic (spec falsification)...")
+        result = sem_logic.run(
+            path_id=ss.id,
+            contracts=contracts,
+            code_block=code_block,
+        )
+        blackboard.record_phase_result(result)
+
+        if result.contradictions and result.confidence >= 5:
+            _safe_print(f"    [!] Contract falsified (conf={result.confidence}/10, {len(result.contradictions)} violation(s))")
+            results.append(result)
+        else:
+            _safe_print(f"    [dim]Contracts upheld (conf={result.confidence}/10).[/dim]")
+
+    return results
 
 
 def _print_phase_d_result(console: Any, result: AgentPhaseResult) -> None:

@@ -1,0 +1,490 @@
+# Feature Taxonomy — Business Capability Classification
+#
+# Defines what capabilities a code unit adds to the system.
+# Each Feature is a product-level abstraction, NOT an API name.
+#
+# 90% of business logic CVEs can be reduced to <30 feature types
+# and <50 invariant types (research hypothesis from boxIdea.md).
+#
+# Design principles:
+# - Feature names are IMPLEMENTATION-INDEPENDENT
+# - Features don't mention specific APIs (exec, os.environ, pickle)
+# - Features describe what the USER can now do that they couldn't before
+# - Multiple API patterns can map to the same Feature
+
+features:
+
+  # ── Reference & Resolution ──────────────────────────────────────────────
+  - id: reference_expansion
+    name: "Reference Expansion"
+    description: >
+      A value (secret, config, URL) can contain a reference
+      that is resolved at runtime to another value.
+    examples:
+      - '"$ENV_VAR" in API key field'
+      - '"${VAR}" in config files'
+      - '"%VAR%" in Windows-style config'
+      - '"vault://secret/my-key" in connection strings'
+      - '"ref://path/to/value" in deployment config'
+    detection_patterns:
+      - regex: '(?i)\$\{?\w+\}?'
+      - regex: '(?i)resolve.*(?:env|ref|secret|value|key)'
+      - regex: '(?i)(?:env|ref|secret|key|value).*resolve'
+    security_relevance: >
+      Reference expansion breaks the OPAQUE invariant of secrets/config.
+      After expansion, the origin of the value is unclear — it could be
+      attacker-controlled if the reference name is user-controllable.
+
+  - id: dynamic_dispatch
+    name: "Dynamic Dispatch"
+    description: >
+      The system selects which code/component to execute
+      based on runtime data (string, type name, URL).
+    examples:
+      - '"model = load_model(model_uri)" where model_uri is user-controlled'
+      - '"provider = get_provider(provider_name)" from config'
+      - '"executor = create_executor(type_name)" from user input'
+    detection_patterns:
+      - regex: '(?i)(?:load|get|create|select|dispatch|route).*(?:model|provider|executor|handler|plugin)'
+      - regex: '(?i)__import__|import_module|importlib'
+    security_relevance: >
+      Dynamic dispatch lets attackers control which code runs.
+      If the dispatch key is user-controlled, any registered
+      component becomes reachable.
+
+  # ── Data Movement ───────────────────────────────────────────────────────
+  - id: remote_acquisition
+    name: "Remote Acquisition"
+    description: >
+      The system fetches data/code from a remote source
+      (URL, network share, external API).
+    examples:
+      - "load model from s3://bucket/key"
+      - "download plugin from https://example.com/plugin"
+      - "import artifact from remote registry"
+      - "fetch config from external URL"
+    detection_patterns:
+      - regex: '(?i)(?:url|uri|remote|download|fetch|wget|curl)'
+      - regex: '(?i)(?:s3|gs|azure|https?).*://'
+    security_relevance: >
+      Remote acquisition introduces a supply chain risk.
+      If the source is attacker-controlled or if redirects
+      are followed, the system may load malicious content.
+
+  - id: serialization
+    name: "Serialization / Deserialization"
+    description: >
+      Data is converted to/from a serialized format.
+      This includes both standard and custom formats.
+    examples:
+      - "pickle.dumps(model) / pickle.loads(data)"
+      - "json.dumps(obj) / json.loads(data)"
+      - "yaml.dump(config) / yaml.load(config)"
+      - "custom binary format encode/decode"
+    detection_patterns:
+      - regex: '(?i)(?:serial|deserial|pickle|marshal|dill|cloudpickle|shelve)'
+      - regex: '(?i)\.(?:loads?|dumps?)\s*\('
+    security_relevance: >
+      Deserialization of untrusted data is a common RCE vector.
+      Even safe formats (JSON, YAML) can have semantic issues
+      like object injection.
+
+  - id: file_io
+    name: "File I/O"
+    description: >
+      The system reads from or writes to the filesystem.
+      Paths may be user-controlled or derived from user input.
+    examples:
+      - "open(user_provided_path, 'r')"
+      - "shutil.copy(src, dst) where src/dst is user-controlled"
+      - "os.remove(user_path)"
+    detection_patterns:
+      - regex: '(?i)(?:open|read|write|file|path|dir)'
+      - regex: '(?i)shutil\.|os\.(?:remove|unlink|rename)'
+    security_relevance: >
+      File I/O with user-controlled paths enables path traversal,
+      arbitrary file read/write, and Zip Slip.
+
+  # ── Authentication & Identity ────────────────────────────────────────────
+  - id: authentication
+    name: "Authentication"
+    description: >
+      The system verifies the identity of a user or service.
+    examples:
+      - "login(username, password)"
+      - "verify_token(jwt)"
+      - "authenticate(api_key)"
+      - "OAuth/SSO callback handling"
+    detection_patterns:
+      - regex: '(?i)(?:auth|login|signin|sign_in|authenticate|verify)'
+      - regex: '(?i)(?:jwt|token|session|cookie|oauth|sso|oidc)'
+    security_relevance: >
+      Authentication is the primary trust boundary.
+      Bypasses, timing attacks, and logic flaws here
+      compromise the entire system.
+
+  - id: authorization
+    name: "Authorization / Access Control"
+    description: >
+      The system checks whether an identity has permission
+      to perform an action or access a resource.
+    examples:
+      - "check_permission(user, resource, action)"
+      - "require_role('admin')"
+      - '"owner = get_owner(resource); if user != owner: deny"'
+    detection_patterns:
+      - regex: '(?i)(?:permission|privilege|role|rbac|acl|authoriz|allow|deny|grant)'
+      - regex: '(?i)(?:can_|has_|is_)(?:access|read|write|delete|admin|owner)'
+    security_relevance: >
+      Authorization flaws (IDOR, privilege escalation, missing checks)
+      are among the most common and dangerous web vulnerabilities.
+
+  - id: identity_delegation
+    name: "Identity Delegation"
+    description: >
+      One identity acts on behalf of another,
+      or credentials are forwarded/proxied.
+    examples:
+      - "service A calls service B with user's token"
+      - "impersonate(user_id)"
+      - "credential forwarding in proxy"
+    detection_patterns:
+      - regex: '(?i)(?:delegat|impersonat|suplant|become|sudo|run.as)'
+      - regex: '(?i)(?:forward|proxy).*(?:auth|token|credential|identity)'
+    security_relevance: >
+      Delegation expands the trust boundary.
+      If delegation scope is not tightly controlled,
+      it enables privilege escalation.
+
+  # ── Code Execution ──────────────────────────────────────────────────────
+  - id: code_execution
+    name: "Code Execution"
+    description: >
+      The system creates or invokes code dynamically.
+      This includes eval, exec, subprocess, and dynamic import.
+    examples:
+      - "eval(user_input) / exec(user_code)"
+      - "subprocess.run(user_command)"
+      - "import_module(user_module_name)"
+      - "compile(user_code) / exec(user_compiled)"
+    detection_patterns:
+      - regex: '(?i)(?:eval|exec|compile|subprocess|popen|system|pwn)'
+      - regex: '(?i)(?:code|script|command|cmd).*(?:run|exec|eval)'
+    security_relevance: >
+      Dynamic code execution with user input is RCE by definition.
+      Even indirect paths (template injection, SSTI) are critical.
+
+  - id: plugin_loading
+    name: "Plugin / Extension Loading"
+    description: >
+      External code can be loaded as a plugin or extension.
+    examples:
+      - "load_plugin(plugin_path)"
+      - "Tool.from_code(user_code)"
+      - "import hooks / entry points"
+      - "dynamic class loading"
+    detection_patterns:
+      - regex: '(?i)(?:plugin|extension|hook|module|addon|middleware)'
+      - regex: '(?i)(?:load|register|install).*(?:plugin|extension|hook)'
+    security_relevance: >
+      Plugin loading by-passes normal code review.
+      If the plugin source is untrusted, this is arbitrary code execution.
+
+  - id: template_evaluation
+    name: "Template Evaluation"
+    description: >
+      Templates containing user data are evaluated,
+      potentially executing embedded expressions.
+    examples:
+      - "render_template_string(user_template)"
+      - "Template(user_input).render(context)"
+      - "str.format(user_supplied_format_string)"
+    detection_patterns:
+      - regex: '(?i)(?:template|render|format|interpolat|jinja|mako|mustache)'
+      - regex: '(?i)(?:render_template|render_to_string|from_string)'
+    security_relevance: >
+      Template injection (SSTI) enables RCE in most template engines.
+      Even safe-looking string formatting may leak data.
+
+  # ── Configuration & Secrets ─────────────────────────────────────────────
+  - id: configuration_loading
+    name: "Configuration Loading"
+    description: >
+      The system loads configuration from external sources
+      (files, environment, remote endpoints).
+    examples:
+      - "load_config(config_path) from user-supplied path"
+      - "yaml.safe_load(open(config_file))"
+      - "os.environ.get(CONFIG_KEY)"
+    detection_patterns:
+      - regex: '(?i)(?:config|setting|option|param|env|environ)'
+      - regex: '(?i)(?:load|read|parse|apply).*(?:config|setting)'
+    security_relevance: >
+      Configuration loading with user-controlled sources
+      can lead to arbitrary file read, SSRF, or injection.
+
+  - id: secret_management
+    name: "Secret Management"
+    description: >
+      The system stores, retrieves, or transmits secrets
+      (API keys, passwords, tokens, certificates).
+    examples:
+      - "store_api_key(user_provided_key)"
+      - "resolve_secret(secret_name)"
+      - "get_credential(service_name)"
+    detection_patterns:
+      - regex: '(?i)(?:secret|credential|api_key|api_secret|password|token)'
+      - regex: '(?i)(?:vault|keychain|key_store|key_management)'
+    security_relevance: >
+      Secrets have the OPAQUE invariant: they must never be
+      interpreted, resolved, or expanded. Any resolution of
+      a secret value breaks this invariant.
+
+  # ── Network & Communication ─────────────────────────────────────────────
+  - id: outbound_request
+    name: "Outbound Network Request"
+    description: >
+      The system makes HTTP/network requests to external services.
+    examples:
+      - "requests.get(user_url)"
+      - "urllib.request.urlopen(url)"
+      - "httpx.Client().send(request)"
+    detection_patterns:
+      - regex: '(?i)(?:request|urllib|httpx|aiohttp|http_client|urlopen)'
+      - regex: '(?i)(?:get|post|put|patch|delete)\(.*http'
+    security_relevance: >
+      Outbound requests with user-controlled URLs enable SSRF,
+      especially when redirects are followed automatically.
+
+  - id: proxy_forwarding
+    name: "Proxy / Request Forwarding"
+    description: >
+      The system forwards incoming requests to backend services,
+      acting as a gateway or proxy.
+    examples:
+      - "forward_request_to_backend(user_path)"
+      - "proxy_pass = user_url"
+      - "gateway routing based on user input"
+    detection_patterns:
+      - regex: '(?i)(?:proxy|forward|gateway|reverse_proxy|upstream)'
+      - regex: '(?i)(?:api_base|base_url|target_url|backend_url)'
+    security_relevance: >
+      Proxy forwarding without URL validation enables SSRF,
+      internal network scanning, and access to protected services.
+
+  - id: redirect_handling
+    name: "Redirect Handling"
+    description: >
+      The system follows HTTP redirects or performs
+      server-side redirects based on user input.
+    examples:
+      - "requests.get(url, allow_redirects=True)"
+      - "redirect(next_url) where next_url is user-controlled"
+      - "follow redirect chain to final destination"
+    detection_patterns:
+      - regex: '(?i)(?:redirect|forward|next|return_to|callback_url)'
+      - regex: '(?i)(?:allow_redirect|follow_redirect|max_redirect)'
+    security_relevance: >
+      Open redirect enables phishing. Redirect following in
+      outbound requests can mask the final destination (SSRF bypass).
+
+  - id: webhook
+    name: "Webhook / Callback"
+    description: >
+      The system registers external URLs to be called when
+      events occur, or accepts callback registrations.
+    examples:
+      - "register_webhook(user_url, event_type)"
+      - "notify(url, payload)"
+      - "callback_url in request body"
+    detection_patterns:
+      - regex: '(?i)(?:webhook|callback|notify|hook|event_handler)'
+      - regex: '(?i)(?:register|trigger|fire).*(?:hook|callback|webhook)'
+    security_relevance: >
+      Webhooks send internal data to external URLs.
+      SSRF, data exfiltration, and request smuggling via webhooks.
+
+  # ── Data Processing ──────────────────────────────────────────────────────
+  - id: data_query
+    name: "Data Query / Search"
+    description: >
+      The system constructs and executes queries (SQL, NoSQL,
+      search, filter) based on user input.
+    examples:
+      - "SELECT * FROM users WHERE id = {user_input}"
+      - "db.execute(filter_string)"
+      - "search(q=user_query)"
+    detection_patterns:
+      - regex: '(?i)(?:query|search|filter|find|where|execute|select)'
+      - regex: '(?i)(?:sql|nosql|orm|database|db\.)'
+    security_relevance: >
+      SQL injection is one of the most prevalent vulnerabilities.
+      Even ORM-based queries can be injected via raw filters/sorting.
+
+  - id: data_export
+    name: "Data Export / Generation"
+    description: >
+      The system generates output documents, files, or images
+      based on user data. May include CSV injection, XSS in reports.
+    examples:
+      - "generate_csv(user_data)"
+      - "export_report(format, data)"
+      - "create_pdf(template, user_input)"
+    detection_patterns:
+      - regex: '(?i)(?:export|generate|report|output|write|save).*(?:csv|pdf|xls|doc)'
+      - regex: '(?i)(?:csv|excel|spreadsheet|pdf|report).*(?:write|create|generate)'
+    security_relevance: >
+      Data export can inject formulas (CSV injection) or scripts
+      into generated documents that execute when opened.
+
+  - id: file_upload
+    name: "File Upload"
+    description: >
+      The system accepts file uploads from users.
+    examples:
+      - "upload_file(request.files['file'])"
+      - "save_upload(file, destination_path)"
+      - "multipart form data handling"
+    detection_patterns:
+      - regex: '(?i)(?:upload|file|multipart|form_data|blob|attachment)'
+      - regex: '(?i)(?:save|store|write).*(?:upload|file|attachment)'
+    security_relevance: >
+      File upload without validation enables arbitrary file write.
+      Uploaded files may be served as static content (XSS)
+      or interpreted as scripts (RCE).
+
+  # ── State & Lifecycle ──────────────────────────────────────────────────
+  - id: caching
+    name: "Caching"
+    description: >
+      The system caches data/results and serves cached
+      versions on subsequent requests.
+    examples:
+      - "cache.get(user_key) / cache.set(key, value)"
+      - "redis.get(session_id)"
+      - "memoize(function, args)"
+    detection_patterns:
+      - regex: '(?i)(?:cache|memoize|redis|memcache|ttl|stale|fresh)'
+      - regex: '(?i)(?:get|set|store).*(?:cache|redis|memcache)'
+    security_relevance: >
+      Cache poisoning, cache key collision, and stale data
+      can lead to privilege escalation or data leakage.
+
+  - id: rate_limiting
+    name: "Rate Limiting / Quota"
+    description: >
+      The system limits how often an action can be performed
+      or how many resources a user can consume.
+    examples:
+      - "rate_limit(user_id, max_requests)"
+      - "check_quota(api_key, remaining)"
+      - "throttle(request)"
+    detection_patterns:
+      - regex: '(?i)(?:rate_limit|throttle|quota|max_request|limit|backoff)'
+      - regex: '(?i)(?:429|too_many|retry_after|rate_limit)'
+    security_relevance: >
+      Rate limiting bypass enables brute force, enumeration,
+      and resource exhaustion attacks.
+
+  - id: state_machine
+    name: "State Machine / Workflow"
+    description: >
+      The system tracks state across multiple steps
+      and enforces ordering constraints.
+    examples:
+      - '"order.status transitions: pending→paid→shipped→delivered"'
+      - "multi-step wizard / checkout flow"
+      - "approval workflow"
+    detection_patterns:
+      - regex: '(?i)(?:state|status|workflow|transition|stage|phase|step)'
+      - regex: '(?i)(?:machine|fsm|workflow|pipeline).*(?:state|status|transition)'
+    security_relevance: >
+      State machine violations (skipping steps, invalid transitions,
+      replay) can lead to business logic abuse.
+
+  # ── Audit & Compliance ──────────────────────────────────────────────────
+  - id: audit_logging
+    name: "Audit Logging"
+    description: >
+      The system records events for audit or debug purposes.
+    examples:
+      - "log(user_action, user_input)"
+      - "audit.record(event_type, details)"
+      - "logger.info(f'User {user} performed {action}')"
+    detection_patterns:
+      - regex: '(?i)(?:audit|log|loggin|track|record|monitor)'
+      - regex: '(?i)(?:event|activity|history|trail).*(?:log|record)'
+    security_relevance: >
+      Log injection (CRLF, log forging) and sensitive data
+      leakage in logs. Attacker-controlled log content
+      can also corrupt log parsing.
+
+  # ── Trust & Isolation ──────────────────────────────────────────────────
+  - id: sandbox_isolation
+    name: "Sandbox / Isolation"
+    description: >
+      The system restricts what code/data can access within
+      a sandboxed environment.
+    examples:
+      - "LocalPythonExecutor with restricted imports"
+      - "Docker container with limited capabilities"
+      - "chroot / seccomp / AppArmor"
+    detection_patterns:
+      - regex: '(?i)(?:sandbox|isolate|restrict|jail|container|namespace)'
+      - regex: '(?i)(?:seccomp|apparmor|selinux|chroot|landlock)'
+    security_relevance: >
+      Sandboxes claim to enforce a security boundary.
+      Any bypass means the boundary is violated.
+      Sandboxes are NOT security boundaries by default.
+
+  - id: trust_evaluation
+    name: "Trust Evaluation"
+    description: >
+      The system evaluates whether a value/source is trusted,
+      or makes trust decisions about input.
+    examples:
+      - "is_trusted_source(url)"
+      - "trust_remote_code = True"
+      - "whitelist/allowlist check"
+    detection_patterns:
+      - regex: '(?i)(?:trust|allowlist|whitelist|approve|verif)'
+      - regex: '(?i)(?:trusted|untrusted|safe|unsafe|malicious)'
+    security_relevance: >
+      Trust decisions are critical security boundaries.
+      If trust evaluation is flawed, all downstream protections fail.
+
+  # ── Special ─────────────────────────────────────────────────────────────
+  - id: object_reference
+    name: "Object Reference / ID Handling"
+    description: >
+      The system uses identifiers (IDs, keys, names) to
+      reference objects/resources.
+    examples:
+      - "get_user(user_id) where user_id is from request"
+      - "access_resource(resource_id) from URL parameter"
+      - "update_object(obj_id, data)"
+    detection_patterns:
+      - regex: '(?i)(?:get|find|fetch|load|access).*(?:by_?id|by_?name|by_?key)'
+      - regex: '(?i)(?:id|key|guid|uuid|slug|handle).*(?:param|arg|input)'
+    security_relevance: >
+      Insecure Direct Object References (IDOR) occur when
+      authorization is not checked on each object access.
+      Sequential/guessable IDs amplify the risk.
+
+  - id: permission_inheritance
+    name: "Permission Inheritance / Propagation"
+    description: >
+      Permissions are inherited or propagated based on
+      group membership, ownership, or hierarchy.
+    examples:
+      - '"if user.is_admin: grant_all()"'
+      - "group = get_group(user); resource.check_permission(group)"
+      - "owner = get_owner(obj); return user == owner"
+    detection_patterns:
+      - regex: '(?i)(?:inherit|propagat|parent|child|hierarch|group|team)'
+      - regex: '(?i)(?:owner|creator|admin|manager|supervisor)'
+    security_relevance: >
+      Permission inheritance is a common source of privilege
+      escalation. If inheritance chains are not validated,
+      users can gain access through indirect paths.
+

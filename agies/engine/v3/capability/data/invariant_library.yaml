@@ -1,0 +1,461 @@
+# Security Invariant Library
+#
+# Each invariant is a security property that MUST hold
+# for a given domain/type. When a Feature interacts with
+# a domain, its invariants are automatically checked.
+#
+# Invariant types:
+#   OPAQUE — value must never be interpreted/expanded (secrets)
+#   IMMUTABLE — value must never be modified after creation (config, policies)
+#   BOUNDED — value must be checked against an allowlist (permissions)
+#   MONOTONIC — privileges can only be removed, never added (ACLs)
+#   VERIFIED — value must pass cryptographic/trust verification (plugins, tokens)
+#   FRESH — value must be recent / not stale (sessions, tokens)
+#   CONSISTENT — value must match across replicas (cache, state)
+#   COMPLETE — operation must cover all items (batch, migration)
+
+invariants:
+
+  # ── Secret & Credential Invariants ──────────────────────────────────────
+  - id: secret_opaque
+    name: "Secret Opaque"
+    category: OPAQUE
+    applies_to:
+      - secret
+      - credential
+      - api_key
+      - password
+      - token_value
+    description: >
+      A secret must NEVER be interpreted or expanded.
+      The system must treat secrets as opaque byte strings.
+    violation: >
+      If a secret is resolved (e.g., $ENV_VAR expansion, Vault reference),
+      the secret is no longer opaque. An attacker who controls the
+      reference name can exfiltrate arbitrary server-side values.
+    examples:
+      - "Resolving '$AWS_ACCESS_KEY_ID' in api_key field"
+      - "Expanding '${DB_PASSWORD}' in connection string"
+      - "Looking up 'vault://secret/key' at runtime"
+
+  - id: secret_no_log
+    name: "Secret Not Logged"
+    category: OPAQUE
+    applies_to:
+      - secret
+      - credential
+      - api_key
+      - password
+    description: >
+      Secrets must never appear in logs, error messages,
+      stack traces, or debug output.
+    violation: >
+      Secret leakage in logs leads to credential compromise.
+    examples:
+      - "logger.info(f'Authenticating with key {api_key}')"
+      - "str(secret) in exception message"
+
+  - id: secret_no_url
+    name: "Secret Not In URL"
+    category: OPAQUE
+    applies_to:
+      - secret
+      - credential
+      - api_key
+      - token_value
+    description: >
+      Secrets must never be transmitted in URLs
+      (query parameters, path segments).
+    violation: >
+      URLs are logged by proxies, stored in browser history,
+      and visible in referrer headers.
+    examples:
+      - "https://api.example.com/?api_key=sk-12345"
+      - "https://user:password@host.com"
+
+  # ── Authentication & Identity Invariants ────────────────────────────────
+  - id: auth_complete
+    name: "Authentication Complete"
+    category: COMPLETE
+    applies_to:
+      - authentication
+      - session
+      - token
+    description: >
+      Authentication must verify ALL factors. Partial authentication
+      (verified username but not password) is not authentication.
+    violation: >
+      Incomplete authentication allows attackers to bypass
+      credential verification.
+    examples:
+      - "Returning user object after step 1 of 2-factor auth"
+      - "Creating session before password verification"
+
+  - id: session_bound
+    name: "Session Bound to Identity"
+    category: BOUNDED
+    applies_to:
+      - session
+      - token
+    description: >
+      Sessions must be bound to the authenticating identity.
+      Session fixation (binding to an unauthenticated session)
+      is a violation.
+    violation: >
+      If session is not bound, an attacker can hijack
+      another user's session.
+    examples:
+      - "Setting session['user'] = user_input without verification"
+      - "Accepting session_id from URL parameter"
+
+  - id: token_verified
+    name: "Token Cryptographically Verified"
+    category: VERIFIED
+    applies_to:
+      - token
+      - jwt
+      - signature
+    description: >
+      Tokens must be cryptographically verified (signature)
+      before being used for authorization decisions.
+    violation: >
+      Unverified tokens can be forged by attackers.
+    examples:
+      - "Decoding JWT without verifying signature"
+      - "Accepting any algorithm in JWT header (alg:none)"
+
+  - id: token_fresh
+    name: "Token Fresh / Not Expired"
+    category: FRESH
+    applies_to:
+      - token
+      - jwt
+      - session
+    description: >
+      Tokens expire after a defined period and must be
+      rejected if expired.
+    violation: >
+      Expired tokens allow unauthorized access replay.
+    examples:
+      - "Not checking exp claim in JWT"
+      - "Not invalidating sessions on logout"
+
+  # ── Authorization Invariants ────────────────────────────────────────────
+  - id: acl_monotonic
+    name: "ACL Monotonic"
+    category: MONOTONIC
+    applies_to:
+      - acl
+      - permission
+      - role
+    description: >
+      Permissions can only be removed or checked,
+      never implicitly added. If a user has no explicit
+      permission, access is denied (default-deny).
+    violation: >
+      If permissions can be implicitly added (default-allow,
+      inheritance without restriction), users can escalate.
+    examples:
+      - "Default-allow permission model"
+      - "Implicit admin via group membership without check"
+
+  - id: authorization_on_every_access
+    name: "Authorization On Every Access"
+    category: COMPLETE
+    applies_to:
+      - authorization
+      - permission_check
+    description: >
+      Authorization must be checked on EVERY resource access,
+      not just on the first access or at boundary.
+    violation: >
+      Missing authorization on individual operations
+      allows IDOR and privilege escalation.
+    examples:
+      - "Checking permission only at endpoint level, not per-object"
+      - "Authorization bypass via direct object reference"
+
+  - id: ownership_verified
+    name: "Resource Ownership Verified"
+    category: VERIFIED
+    applies_to:
+      - authorization
+      - object_reference
+    description: >
+      Resource ownership must be verified before access:
+      verify that the requesting user owns the resource
+      or has been explicitly granted access.
+    violation: >
+      Missing ownership verification enables IDOR:
+      user A can access user B's resources.
+    examples:
+      - "get_object_by_id(id) without checking user==owner"
+      - "update(object) without ownership check"
+
+  # ── Plugin & Code Invariants ────────────────────────────────────────────
+  - id: plugin_signed
+    name: "Plugin Signature Verified"
+    category: VERIFIED
+    applies_to:
+      - plugin
+      - extension
+      - module
+    description: >
+      External plugins/extensions must be cryptographically
+      signed by a trusted authority before loading.
+    violation: >
+      Unsigned plugins can be replaced by attackers,
+      leading to arbitrary code execution.
+    examples:
+      - "Tool.from_code(untrusted_code) without verification"
+      - "pip install from untrusted source without hash check"
+
+  - id: plugin_source_trusted
+    name: "Plugin Source Trusted"
+    category: BOUNDED
+    applies_to:
+      - plugin
+      - remote_acquisition
+    description: >
+      Plugin sources must be from a trusted, bounded set.
+      User-controlled URLs for plugin loading violate this invariant.
+    violation: >
+      Loading plugins from arbitrary URLs enables supply chain attacks.
+    examples:
+      - "load_plugin(user_provided_url)"
+      - "import from user-controlled repository"
+
+  - id: code_not_dynamic
+    name: "Code Not Dynamically Generated From User Input"
+    category: BOUNDED
+    applies_to:
+      - code_execution
+      - template_evaluation
+    description: >
+      User input must not be concatenated into code strings,
+      eval'd, exec'd, or compiled.
+    violation: >
+      Dynamic code execution with user input is always RCE.
+    examples:
+      - "exec(user_code)"
+      - "eval(request.POST['expression'])"
+      - "subprocess.run(f'cat {user_file}', shell=True)"
+
+  # ── Data Integrity Invariants ───────────────────────────────────────────
+  - id: data_source_validated
+    name: "External Data Source Validated"
+    category: BOUNDED
+    applies_to:
+      - remote_acquisition
+      - file_io
+      - configuration_loading
+    description: >
+      Before fetching/reading data from a user-controlled source,
+      the source must be validated against an allowlist.
+    violation: >
+      Unvalidated data sources enable arbitrary file read,
+      SSRF, and path traversal.
+    examples:
+      - "open(user_path, 'r')"
+      - "requests.get(user_url)"
+      - "load_config(user_provided_path)"
+
+  - id: output_encoded
+    name: "Output Properly Encoded For Context"
+    category: BOUNDED
+    applies_to:
+      - template_evaluation
+      - data_export
+      - webhook
+    description: >
+      Data output to web pages, documents, or other contexts
+      must be properly encoded for that context.
+    violation: >
+      Unencoded output enables XSS, CSV injection, and
+      other injection attacks.
+    examples:
+      - "Returning user HTML without escaping"
+      - "Writing user data to CSV without sanitizing formulas"
+
+  - id: uploaded_file_scanned
+    name: "Uploaded File Content Validated"
+    category: VERIFIED
+    applies_to:
+      - file_upload
+    description: >
+      Uploaded files must have their content validated
+      (type checking, virus scanning, size limits).
+    violation: >
+      Unvalidated uploads allow arbitrary file write,
+      malware distribution, and RCE via file execution.
+    examples:
+      - "Saving uploaded file without content-type check"
+      - "Serving uploaded file as static content"
+
+  # ── State & Workflow Invariants ─────────────────────────────────────────
+  - id: state_transition_valid
+    name: "State Transition Valid"
+    category: COMPLETE
+    applies_to:
+      - state_machine
+      - workflow
+    description: >
+      State transitions must be validated against the
+      allowed transition matrix. Invalid transitions
+      (skip steps, go backwards) must be rejected.
+    violation: >
+      Invalid state transitions enable business logic abuse:
+      ordering unpaid items, approving without review.
+    examples:
+      - "Transitioning from 'pending' to 'shipped' without 'paid'"
+      - "Replaying 'approve' action"
+
+  - id: cache_consistent
+    name: "Cache Consistent With Source"
+    category: CONSISTENT
+    applies_to:
+      - caching
+    description: >
+      Cached data must be consistent with the source of truth.
+      Stale cache must be invalidated when source changes.
+    violation: >
+      Stale cache can lead to authorization bypass
+      (user still admin after demotion) or data leakage.
+    examples:
+      - "Not invalidating cache on permission change"
+      - "Cache key collision between users"
+
+  - id: quota_enforced
+    name: "Server-Side Quota Enforced"
+    category: BOUNDED
+    applies_to:
+      - rate_limiting
+    description: >
+      Rate limits and quotas must be enforced server-side.
+      Client-side enforcement is not enforcement.
+    violation: >
+      Client-side quotas can be trivially bypassed.
+    examples:
+      - "Checking quota in JavaScript only"
+      - "Trusting client-reported usage counts"
+
+  # ── Network Invariants ──────────────────────────────────────────────────
+  - id: redirect_not_followed_untrusted
+    name: "Redirects Not Followed Automatically To Untrusted Destinations"
+    category: BOUNDED
+    applies_to:
+      - redirect_handling
+      - outbound_request
+    description: >
+      Automatic redirect following must validate the
+      final destination against an allowlist.
+    violation: >
+      Redirect following enables SSRF bypass:
+      attacker's URL redirects to internal IP.
+    examples:
+      - "requests.get(url, allow_redirects=True) without allowlist"
+      - "Following 3xx chain to internal address"
+
+  - id: proxy_destination_validated
+    name: "Proxy Destination Allowlisted"
+    category: BOUNDED
+    applies_to:
+      - proxy_forwarding
+    description: >
+      The destination of proxied requests must be
+      validated against an allowlist of allowed backends.
+    violation: >
+      Unvalidated proxy destination enables SSRF
+      to internal services and cloud metadata endpoints.
+    examples:
+      - "Forwarding to user-controlled api_base"
+      - "Gateway routing based on user-supplied endpoint"
+
+  # ── Configuration Invariants ────────────────────────────────────────────
+  - id: config_source_trusted
+    name: "Configuration Source Trusted"
+    category: VERIFIED
+    applies_to:
+      - configuration_loading
+    description: >
+      Configuration must be loaded from trusted, controlled sources.
+      User-controlled configuration files/sources violate this invariant.
+    violation: >
+      Attacker-controlled config can set arbitrary parameters,
+      including trusted_keys, auth_backends, and logging levels.
+    examples:
+      - "Loading YAML config from user upload path"
+      - "Accepting config via URL parameter"
+
+  - id: config_change_authorized
+    name: "Configuration Change Authorized"
+    category: BOUNDED
+    applies_to:
+      - configuration_loading
+    description: >
+      Runtime configuration changes must be authorized
+      (admin-only, with audit trail).
+    violation: >
+      Unauthorized config changes can disable security features.
+    examples:
+      - "API endpoint to update config without auth"
+      - "User-supplied config overwriting security settings"
+
+  # ── Trust Invariants ────────────────────────────────────────────────────
+  - id: trust_decision_explicit
+    name: "Trust Decision Explicit"
+    category: BOUNDED
+    applies_to:
+      - trust_evaluation
+    description: >
+      Trust decisions must be explicit and based on verifiable
+      criteria. Implicit trust (trusting based on source location,
+      file extension, or user-supplied flag) is not trust.
+    violation: >
+      Implicit trust allows attackers to bypass security checks.
+    examples:
+      - "trust_remote_code=True flag from user config"
+      - "Trusting files based on .py extension only"
+
+  - id: delegation_scope_bounded
+    name: "Delegation Scope Bounded"
+    category: BOUNDED
+    applies_to:
+      - identity_delegation
+    description: >
+      Delegation must be scoped to specific actions/resources.
+      Unlimited delegation (full impersonation) violates this invariant.
+    violation: >
+      Unlimited delegation allows privilege escalation.
+    examples:
+      - "Forwarding user token to any service"
+      - "Impersonate any user without scope restriction"
+
+  # ── Audit Invariants ────────────────────────────────────────────────────
+  - id: audit_tamper_proof
+    name: "Audit Log Tamper-Proof"
+    category: IMMUTABLE
+    applies_to:
+      - audit_logging
+    description: >
+      Audit logs must be append-only and tamper-proof.
+      Users must not be able to delete or modify audit entries.
+    violation: >
+      Mutable audit logs allow attackers to cover their tracks.
+    examples:
+      - "API to delete audit entries"
+      - "Storing audit in user-writable database table"
+
+  - id: audit_no_pii
+    name: "Audit Log Excludes Sensitive Data"
+    category: OPAQUE
+    applies_to:
+      - audit_logging
+    description: >
+      Audit logs must not contain secrets, PII, or other
+      sensitive data.
+    violation: >
+      Sensitive data in audit logs creates a data breach risk.
+    examples:
+      - "Logging full request body including passwords"
+      - "Logging API keys in access logs"
